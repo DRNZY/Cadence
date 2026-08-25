@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Radial Gradient -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1c1f2b"/>
+      <stop offset="70%" stop-color="#0c0e14"/>
+      <stop offset="100%" stop-color="#050608"/>
+    </radialGradient>
+
+    <!-- Vinyl Center Core Gradient -->
+    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+
+    <!-- Specular Light Sheen -->
+    <linearGradient id="sheen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.22)"/>
+      <stop offset="35%" stop-color="rgba(255,255,255,0.02)"/>
+      <stop offset="50%" stop-color="rgba(255,255,255,0.0)"/>
+      <stop offset="65%" stop-color="rgba(255,255,255,0.02)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0.22)"/>
+    </linearGradient>
+
+    <!-- Drop Shadow Filter -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#a855f7" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- App Rounded Squircle Container -->
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="#08090e" stroke="rgba(255,255,255,0.12)" stroke-width="3" filter="url(#shadow)"/>
+
+  <!-- Turntable Platter / Vinyl Record -->
+  <g transform="translate(256, 256)">
+    <!-- Base Record -->
+    <circle cx="0" cy="0" r="185" fill="url(#bg)" stroke="#222530" stroke-width="4"/>
+    
+    <!-- Micro Grooves -->
+    <circle cx="0" cy="0" r="172" fill="none" stroke="#252936" stroke-width="1.5" stroke-dasharray="8 3"/>
+    <circle cx="0" cy="0" r="158" fill="none" stroke="#1d202b" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="144" fill="none" stroke="#252936" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="130" fill="none" stroke="#1d202b" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="116" fill="none" stroke="#252936" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="102" fill="none" stroke="#1d202b" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="88" fill="none" stroke="#252936" stroke-width="1.5"/>
+
+    <!-- Dynamic Glowing Center Label -->
+    <circle cx="0" cy="0" r="68" fill="url(#core)" stroke="rgba(255,255,255,0.3)" stroke-width="3"/>
+    
+    <!-- Spindle Hole & Brass Ring -->
+    <circle cx="0" cy="0" r="22" fill="#08090e" stroke="#d4af37" stroke-width="3"/>
+    <circle cx="0" cy="0" r="8" fill="#d4af37"/>
+
+    <!-- Light Sheen Cone Overlay -->
+    <circle cx="0" cy="0" r="185" fill="url(#sheen)"/>
+
+    <!-- Glowing Audio Pulse Rings -->
+    <circle cx="0" cy="0" r="74" fill="none" stroke="#a855f7" stroke-width="2" opacity="0.6"/>
+  </g>
+</svg>
