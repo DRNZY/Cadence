@@ -13,7 +13,10 @@ const SERVER_PORT = 3001;
 const DEV_URL = "http://localhost:5173";
 const PROD_URL = `http://localhost:${SERVER_PORT}`;
 
-// Enable Wayland & GPU Acceleration on Linux
+// High-Efficiency V8 & GPU switches for minimal RAM & CPU footprint
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=160 --expose-gc");
+app.commandLine.appendSwitch("renderer-process-limit", "1");
+app.commandLine.appendSwitch("disable-features", "SpareRendererForSitePerProcess,LocalNetworkAccessChecks");
 app.commandLine.appendSwitch("enable-features", "UseOzonePlatform,VaapiVideoDecoder");
 app.commandLine.appendSwitch("ozone-platform-hint", "auto");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
@@ -39,7 +42,8 @@ function startBackendServer() {
   const serverTs = path.join(projectRoot, "server/index.ts");
 
   if (fs.existsSync(serverMjs)) {
-    serverProcess = fork(serverMjs, [], {
+    // Launch lightweight system node process with 64MB memory cap instead of full Electron
+    serverProcess = spawn("node", ["--max-old-space-size=64", serverMjs], {
       cwd: projectRoot,
       env: { ...process.env, PORT: SERVER_PORT.toString(), NODE_ENV: "production" },
       stdio: "inherit"
@@ -93,7 +97,9 @@ async function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false // Allow local audio streaming and CORS
+      webSecurity: false, // Allow local audio streaming and CORS
+      spellcheck: false, // Disables background spellcheck dictionary RAM
+      backgroundThrottling: true
     }
   });
 

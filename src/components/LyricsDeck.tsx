@@ -76,6 +76,7 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
   // Fetch lyrics whenever track changes
   useEffect(() => {
     setIsUserInteracting(false);
+    lineRefs.current = [];
     if (userScrollTimeoutRef.current) {
       window.clearTimeout(userScrollTimeoutRef.current);
     }
@@ -300,42 +301,26 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
             const distance = Math.abs(idx - activeIndex);
 
             return (
-              <motion.div
+              <div
                 key={`${idx}-${line.time}`}
                 ref={el => {
                   lineRefs.current[idx] = el;
                 }}
                 onClick={() => handleLineClick(line, idx)}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{
-                  opacity: !lyricsState.synced
-                    ? 0.75
-                    : isActive
-                    ? 1
-                    : isPast
-                    ? 0.35
-                    : Math.max(0.2, 0.6 - distance * 0.1),
-                  scale: isActive ? 1.05 : 0.98,
-                  filter: !lyricsState.synced
-                    ? "blur(0px)"
-                    : isActive
-                    ? "blur(0px)"
-                    : distance > 3
-                    ? "blur(2px)"
-                    : "blur(0.5px)",
-                  x: isActive ? 8 : 0
-                }}
-                transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                className={`transition-all duration-300 text-left rounded-2xl p-2.5 ${
+                className={`transition-all duration-300 ease-out text-left rounded-2xl p-2.5 transform-gpu ${
                   lyricsState.synced ? "cursor-pointer" : "cursor-default"
                 } ${
                   isActive
-                    ? "text-white font-bold text-2xl md:text-3xl leading-snug drop-shadow-[0_4px_16px_var(--primary-glow)]"
-                    : "text-neutral-400 font-medium text-lg md:text-xl hover:text-neutral-200"
+                    ? "text-white font-bold text-2xl md:text-3xl leading-snug scale-105 translate-x-2 drop-shadow-[0_4px_16px_var(--primary-glow)] opacity-100"
+                    : isPast
+                    ? "text-neutral-400 font-medium text-lg md:text-xl opacity-30 hover:opacity-60"
+                    : distance > 3
+                    ? "text-neutral-400 font-medium text-lg md:text-xl opacity-20 hover:opacity-50"
+                    : "text-neutral-400 font-medium text-lg md:text-xl opacity-50 hover:opacity-80"
                 }`}
               >
                 {line.text}
-              </motion.div>
+              </div>
             );
           })
         ) : (

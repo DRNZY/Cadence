@@ -13,7 +13,7 @@ interface LibraryBrowserProps {
   onRescan: () => void;
 }
 
-export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
+export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
   tracks,
   currentTrack,
   isPlaying,
@@ -359,6 +359,8 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
                     <img
                       src={coverUrl}
                       alt={item.album}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-xs">
@@ -421,7 +423,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
                 >
                   <div className="flex items-center space-x-3 min-w-0 flex-1">
                     <div className="relative w-9 h-9 rounded-lg overflow-hidden bg-black/40 shrink-0 border border-white/10">
-                      <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+                      <img src={coverUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                       <button
                         onClick={() => onPlayTrack(t)}
                         className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
@@ -924,4 +926,4 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
       </AnimatePresence>
     </div>
   );
-};
+});

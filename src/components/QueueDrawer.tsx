@@ -13,7 +13,7 @@ interface QueueDrawerProps {
   onMoveQueueItem: (fromIdx: number, toIdx: number) => void;
 }
 
-export const QueueDrawer: React.FC<QueueDrawerProps> = ({
+export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
   queue,
   currentTrack,
   isPlaying,
@@ -85,6 +85,8 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
               <img
                 src={currentTrack.coverPath ? `/covers?path=${encodeURIComponent(currentTrack.coverPath)}` : `/covers`}
                 alt=""
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
               />
             </div>
@@ -184,4 +186,4 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
       </div>
     </div>
   );
-};
+});

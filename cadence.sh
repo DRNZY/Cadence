@@ -40,8 +40,11 @@ fi
 
 cd "$PROJECT_DIR"
 
-# 3. Launch AuraDeck Native Desktop Application
+# 3. Launch Cadence Native Desktop Application with memory capping
 exec "$ELECTRON_BIN" \
+  --js-flags="--max-old-space-size=160 --expose-gc" \
+  --renderer-process-limit=1 \
+  --disable-features=SpareRendererForSitePerProcess,LocalNetworkAccessChecks \
   --enable-features=UseOzonePlatform,VaapiVideoDecoder \
   --ozone-platform-hint=auto \
   --enable-gpu-rasterization \

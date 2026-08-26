@@ -18,7 +18,7 @@ interface VinylDeckProps {
   onEndScratch?: (spinUpMs?: number) => void;
 }
 
-export const VinylDeck: React.FC<VinylDeckProps> = ({
+export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   currentTrack,
   isPlaying,
   currentTime,
@@ -32,10 +32,11 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
   onScratch,
   onEndScratch
 }) => {
-  const [rotationAngle, setRotationAngle] = useState(0);
   const [isScratching, setIsScratching] = useState(false);
   const [scratchRpmDisplay, setScratchRpmDisplay] = useState<number>(0);
   
+  const platterRef = useRef<HTMLDivElement | null>(null);
+  const rotationAngleRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(performance.now());
   const scratchStartAngleRef = useRef<number>(0);
   const scratchCenterRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -45,8 +46,9 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
   const lastMoveTimeRef = useRef<number>(performance.now());
   const lastAngleRef = useRef<number>(0);
   const smoothVelocityRef = useRef<number>(0);
+  const isScratchingRef = useRef<boolean>(false);
 
-  // Smooth continuous rotation preserving angle on pause
+  // High-performance DOM-level continuous rotation (0 React re-renders while spinning!)
   useEffect(() => {
     let animId: number;
 
@@ -54,11 +56,15 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
       const delta = (now - lastTimeRef.current) / 1000;
       lastTimeRef.current = now;
 
-      if (isPlaying && !isScratching) {
+      if (isPlaying && !isScratchingRef.current) {
         // 33.3 RPM is 200 deg/sec at 1.0x speed
         const speedMultiplier = playbackRate;
         const degPerSec = 200 * speedMultiplier;
-        setRotationAngle(prev => (prev + degPerSec * delta) % 360);
+        rotationAngleRef.current = (rotationAngleRef.current + degPerSec * delta) % 360;
+        
+        if (platterRef.current) {
+          platterRef.current.style.transform = `rotate(${rotationAngleRef.current}deg)`;
+        }
       }
 
       animId = requestAnimationFrame(tick);
@@ -67,7 +73,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
     lastTimeRef.current = performance.now();
     animId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying, isScratching, playbackRate]);
+  }, [isPlaying, playbackRate]);
 
   // Tone arm angle: 0deg = rested on cradle, 21deg to 37deg across the record
   const progressRatio = duration > 0 ? currentTime / duration : 0;
@@ -88,11 +94,12 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
     scratchCenterRef.current = { x: centerX, y: centerY };
 
     const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
-    scratchStartAngleRef.current = angle - rotationAngle;
+    scratchStartAngleRef.current = angle - rotationAngleRef.current;
     lastAngleRef.current = angle;
     lastMoveTimeRef.current = performance.now();
     smoothVelocityRef.current = 0;
 
+    isScratchingRef.current = true;
     setIsScratching(true);
     setScratchRpmDisplay(0);
     onStartScratch?.();
@@ -101,7 +108,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isScratching) return;
+    if (!isScratchingRef.current) return;
     const now = performance.now();
     const dt = Math.max(0.005, (now - lastMoveTimeRef.current) / 1000);
     lastMoveTimeRef.current = now;
@@ -122,8 +129,12 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
     const currentRpm = Math.round(smoothVelocityRef.current / 6);
     setScratchRpmDisplay(currentRpm);
 
-    const newRotAngle = rotationAngle + delta;
-    setRotationAngle(newRotAngle);
+    const newRotAngle = rotationAngleRef.current + delta;
+    rotationAngleRef.current = newRotAngle;
+
+    if (platterRef.current) {
+      platterRef.current.style.transform = `rotate(${newRotAngle}deg)`;
+    }
 
     // Call Real-time Audio Scratch Modulator
     if (onScratch) {
@@ -135,7 +146,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    if (isScratching) {
+    if (isScratchingRef.current) {
+      isScratchingRef.current = false;
       setIsScratching(false);
       setScratchRpmDisplay(0);
       onEndScratch?.(220);
@@ -226,9 +238,10 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
             {/* Mode 1: Spinning Vinyl Record */}
             {deckMode === "vinyl" && (
               <div
+                ref={platterRef}
                 style={{
-                  transform: `rotate(${rotationAngle}deg)`,
-                  transition: isScratching ? "none" : "transform 0.05s linear"
+                  willChange: "transform",
+                  transform: "rotate(0deg)"
                 }}
                 className="w-[90%] h-[90%] rounded-full bg-[#0a0a0d] shadow-2xl relative flex items-center justify-center vinyl-grooves overflow-hidden border border-neutral-800"
               >
@@ -241,6 +254,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
                     <img
                       src={coverUrl}
                       alt={currentTrack?.album || "Cover"}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover select-none pointer-events-none"
                     />
                     <div className="absolute inset-0 bg-black/20" />
@@ -257,9 +272,10 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
             {/* Mode 2: Holographic CD Jewel Disc */}
             {deckMode === "cd" && (
               <div
+                ref={platterRef}
                 style={{
-                  transform: `rotate(${rotationAngle}deg)`,
-                  transition: isScratching ? "none" : "transform 0.05s linear"
+                  willChange: "transform",
+                  transform: "rotate(0deg)"
                 }}
                 className="w-[90%] h-[90%] rounded-full bg-gradient-to-tr from-neutral-700 via-neutral-300 to-neutral-600 shadow-2xl relative flex items-center justify-center overflow-hidden border border-neutral-400"
               >
@@ -273,6 +289,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
                     <img
                       src={coverUrl}
                       alt={currentTrack?.album || "Cover"}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover select-none pointer-events-none"
                     />
                   </div>
@@ -290,6 +308,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
                 <img
                   src={coverUrl}
                   alt={currentTrack?.album || "Cover"}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
@@ -310,7 +330,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
             className="absolute top-2 right-4 w-28 h-64 pointer-events-none z-30 origin-top-right transition-transform duration-700 ease-out"
             style={{
               transform: `rotate(${isScratching ? toneArmAngle + (smoothVelocityRef.current / 300) : toneArmAngle}deg)`,
-              transformOrigin: "85% 15%"
+              transformOrigin: "85% 15%",
+              willChange: "transform"
             }}
           >
             {/* Tone-Arm Base Pivot Gimbal */}
@@ -369,4 +390,4 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
       </div>
     </div>
   );
-};
+});

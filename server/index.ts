@@ -407,9 +407,12 @@ async function scanLibrary(): Promise<Track[]> {
 }
 
 scanCompletePromise = (async () => {
-  console.log(`[AuraDeck Server] Scanning library at ${MUSIC_DIR}...`);
+  console.log(`[Cadence Server] Scanning library at ${MUSIC_DIR}...`);
   cachedTracks = await scanLibrary();
-  console.log(`[AuraDeck Server] Cached ${cachedTracks.length} tracks.`);
+  console.log(`[Cadence Server] Cached ${cachedTracks.length} tracks.`);
+  if (global.gc) {
+    try { global.gc(); } catch {}
+  }
   return cachedTracks;
 })();
 
@@ -623,6 +626,7 @@ app.get("/stream", (req, res) => {
     const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
     const chunksize = end - start + 1;
     const file = fs.createReadStream(filePath, { start, end });
+    req.on("close", () => file.destroy());
     
     res.writeHead(206, {
       "Content-Range": `bytes ${start}-${end}/${fileSize}`,
@@ -639,7 +643,9 @@ app.get("/stream", (req, res) => {
       "Accept-Ranges": "bytes",
       "Access-Control-Allow-Origin": "*",
     });
-    fs.createReadStream(filePath).pipe(res);
+    const file = fs.createReadStream(filePath);
+    req.on("close", () => file.destroy());
+    file.pipe(res);
   }
 });
 

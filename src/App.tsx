@@ -212,21 +212,8 @@ export const App: React.FC = () => {
         transition: "background 1.2s cubic-bezier(0.4, 0, 0.2, 1)"
       }}
     >
-      {/* Dynamic Animated Ambient Liquid Mesh Backdrop */}
-      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
-        <div
-          className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full opacity-40 blur-[130px] transition-all duration-1000"
-          style={{ background: "var(--primary, #c084fc)" }}
-        />
-        <div
-          className="absolute -bottom-40 -right-40 w-[650px] h-[650px] rounded-full opacity-35 blur-[140px] transition-all duration-1000"
-          style={{ background: "var(--secondary-glow, #3b82f6)" }}
-        />
-        <div
-          className="absolute top-1/3 right-1/4 w-[400px] h-[400px] rounded-full opacity-20 blur-[110px] transition-all duration-1000"
-          style={{ background: "var(--primary-glow, #a855f7)" }}
-        />
-      </div>
+      {/* Dynamic Animated Ambient Liquid Mesh Backdrop via pure CSS gradients */}
+      <div className="absolute inset-0 pointer-events-none z-0 ambient-glow opacity-30" />
 
       {/* Top Studio TitleBar & Navigation */}
       <header className="h-14 w-full px-5 flex items-center justify-between border-b border-white/5 z-20 bg-neutral-950/60 backdrop-blur-xl shrink-0">
