@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Disc3, Sliders, Monitor, LayoutGrid, Sparkles, BookOpen, Music2, Maximize2, Minimize2, ListMusic, Mic2, Activity } from "lucide-react";
+import { Disc3, Sliders, Monitor, LayoutGrid, Sparkles, BookOpen, Music2, Maximize2, Minimize2, ListMusic, Mic2, Activity, Settings2 } from "lucide-react";
 import type { Track, DeckMode, VisualizerMode, LayoutMode } from "./types";
 import { useAudioEngine } from "./hooks/useAudioEngine";
 import { extractColors, applyThemeColors } from "./utils/colorExtractor";
@@ -11,6 +11,8 @@ import { SpectrumVisualizer } from "./components/SpectrumVisualizer";
 import { QueueDrawer } from "./components/QueueDrawer";
 import { ControlBar } from "./components/ControlBar";
 import { EqualizerModal } from "./components/EqualizerModal";
+import { SettingsModal, loadSettings } from "./components/SettingsModal";
+import type { AppSettings } from "./components/SettingsModal";
 
 export const App: React.FC = () => {
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -21,9 +23,11 @@ export const App: React.FC = () => {
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("studio");
   const [rightPanelTab, setRightPanelTab] = useState<"split" | "lyrics" | "queue">("split");
   const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<"off" | "all" | "one">("off");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(loadSettings);
 
   // Auto-detect screen aspect ratio & dimensions on mount/resize
   useEffect(() => {
@@ -204,6 +208,40 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [audioEngine, handleNext, handlePrevious]);
 
+  // Apply performance mode settings to DOM
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+
+    // Glass blur
+    if (settings.enableGlassBlur) {
+      const blur = settings.performanceMode === "quality" ? "blur(32px) saturate(180%)" : "blur(18px) saturate(160%)";
+      root.style.setProperty("--glass-backdrop", blur);
+      body.classList.remove("no-glass");
+    } else {
+      root.style.setProperty("--glass-backdrop", "none");
+      body.classList.add("no-glass");
+    }
+
+    // Ambient glow
+    if (settings.enableAmbientGlow) {
+      body.classList.remove("no-glow");
+    } else {
+      body.classList.add("no-glow");
+    }
+
+    // Dynamic theme — if off, reset to default purple
+    if (!settings.dynamicTheme) {
+      root.style.setProperty("--primary", "#c084fc");
+      root.style.setProperty("--primary-glow", "rgba(192,132,252,0.35)");
+      root.style.setProperty("--secondary-glow", "rgba(59,130,246,0.25)");
+      root.style.setProperty("--theme-bg-gradient", "#08090e");
+    }
+
+    // Persist
+    try { localStorage.setItem("cadence_settings", JSON.stringify(settings)); } catch {}
+  }, [settings]);
+
   return (
     <div
       className="flex flex-col h-screen w-screen text-white relative overflow-hidden select-none"
@@ -304,8 +342,23 @@ export const App: React.FC = () => {
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
+
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-colors"
+            title="Settings"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </header>
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onSettingsChange={setSettings}
+      />
 
       {/* Main Responsive Grid Layout */}
       <main className="flex-1 w-full p-3 md:p-4 overflow-hidden z-10">
@@ -379,15 +432,17 @@ export const App: React.FC = () => {
               {/* Sub-view: Split (Top Visualizer + Bottom Lyrics) */}
               {rightPanelTab === "split" && (
                 <div className="flex-1 flex flex-col gap-3 overflow-hidden">
-                  <div className="glass-panel rounded-3xl overflow-hidden h-40 shrink-0 shadow-xl">
-                    <SpectrumVisualizer
-                      isPlaying={audioEngine.isPlaying}
-                      visualizerMode={visualizerMode}
-                      onSetVisualizerMode={setVisualizerMode}
-                      getFrequencyData={audioEngine.getFrequencyData}
-                      getTimeDomainData={audioEngine.getTimeDomainData}
-                    />
-                  </div>
+                  {settings.visualizerEnabled && (
+                    <div className="glass-panel rounded-3xl overflow-hidden h-40 shrink-0 shadow-xl">
+                      <SpectrumVisualizer
+                        isPlaying={audioEngine.isPlaying}
+                        visualizerMode={visualizerMode}
+                        onSetVisualizerMode={setVisualizerMode}
+                        getFrequencyData={audioEngine.getFrequencyData}
+                        getTimeDomainData={audioEngine.getTimeDomainData}
+                      />
+                    </div>
+                  )}
                   <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
                     <LyricsDeck
                       currentTrack={audioEngine.currentTrack}
@@ -475,15 +530,17 @@ export const App: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-3.5 overflow-hidden min-w-0">
-              <div className="glass-panel rounded-3xl overflow-hidden h-44 shrink-0 shadow-xl">
-                <SpectrumVisualizer
-                  isPlaying={audioEngine.isPlaying}
-                  visualizerMode={visualizerMode}
-                  onSetVisualizerMode={setVisualizerMode}
-                  getFrequencyData={audioEngine.getFrequencyData}
-                  getTimeDomainData={audioEngine.getTimeDomainData}
-                />
-              </div>
+              {settings.visualizerEnabled && (
+                <div className="glass-panel rounded-3xl overflow-hidden h-44 shrink-0 shadow-xl">
+                  <SpectrumVisualizer
+                    isPlaying={audioEngine.isPlaying}
+                    visualizerMode={visualizerMode}
+                    onSetVisualizerMode={setVisualizerMode}
+                    getFrequencyData={audioEngine.getFrequencyData}
+                    getTimeDomainData={audioEngine.getTimeDomainData}
+                  />
+                </div>
+              )}
 
               <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
                 <QueueDrawer
@@ -528,15 +585,17 @@ export const App: React.FC = () => {
             </div>
 
             <div className="lg:col-span-5 flex flex-col gap-3.5 h-full overflow-hidden min-w-0">
-              <div className="glass-panel rounded-3xl overflow-hidden h-48 shrink-0 shadow-xl">
-                <SpectrumVisualizer
-                  isPlaying={audioEngine.isPlaying}
-                  visualizerMode={visualizerMode}
-                  onSetVisualizerMode={setVisualizerMode}
-                  getFrequencyData={audioEngine.getFrequencyData}
-                  getTimeDomainData={audioEngine.getTimeDomainData}
-                />
-              </div>
+              {settings.visualizerEnabled && (
+                <div className="glass-panel rounded-3xl overflow-hidden h-48 shrink-0 shadow-xl">
+                  <SpectrumVisualizer
+                    isPlaying={audioEngine.isPlaying}
+                    visualizerMode={visualizerMode}
+                    onSetVisualizerMode={setVisualizerMode}
+                    getFrequencyData={audioEngine.getFrequencyData}
+                    getTimeDomainData={audioEngine.getTimeDomainData}
+                  />
+                </div>
+              )}
               <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
                 <LyricsDeck
                   currentTrack={audioEngine.currentTrack}
