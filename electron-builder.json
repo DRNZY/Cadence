@@ -1,0 +1,39 @@
+{
+  "appId": "com.darnell.auradeck",
+  "productName": "AuraDeck",
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-server/**/*",
+    "electron/**/*",
+    "package.json"
+  ],
+  "asar": true,
+  "win": {
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      },
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "packaging/auradeck.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "AuraDeck"
+  },
+  "linux": {
+    "target": ["tar.gz"],
+    "icon": "packaging/auradeck.png",
+    "category": "Audio"
+  }
+}
