@@ -255,21 +255,13 @@ export const App: React.FC = () => {
 
       {/* Top Studio TitleBar & Navigation */}
       <header className="h-14 w-full px-5 flex items-center justify-between border-b border-white/5 z-20 bg-neutral-950/60 backdrop-blur-xl shrink-0">
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary to-blue-500 flex items-center justify-center shadow-lg shadow-primary/20">
             <Disc3 className="w-5 h-5 text-white" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-black tracking-wider uppercase bg-gradient-to-r from-white via-neutral-200 to-neutral-400 bg-clip-text text-transparent">
-                Cadence
-              </h1>
-              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-white/10 text-neutral-300 border border-white/10">
-                Native Standalone
-              </span>
-            </div>
-            <p className="text-[10px] font-mono text-neutral-400 -mt-0.5">Studio Hi-Fi Engine</p>
-          </div>
+          <h1 className="text-sm font-black tracking-wider uppercase bg-gradient-to-r from-white via-neutral-200 to-neutral-400 bg-clip-text text-transparent">
+            Cadence
+          </h1>
         </div>
 
         {/* Center: Layout Preset Selector Pills */}
@@ -279,73 +271,74 @@ export const App: React.FC = () => {
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-medium transition-all ${
               layoutMode === "studio" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
             }`}
-            title="Optimized 3-Panel Layout for standard 16:9 monitors & laptops"
+            title="Studio"
           >
             <LayoutGrid className="w-3.5 h-3.5 text-primary" />
-            <span>Studio 16:9</span>
+            <span>Studio</span>
           </button>
           <button
             onClick={() => setLayoutMode("panoramic")}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-medium transition-all ${
               layoutMode === "panoramic" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
             }`}
-            title="4-Panel Ultrawide Layout for 21:9 & 32:9 monitors"
+            title="Ultrawide"
           >
             <Monitor className="w-3.5 h-3.5 text-primary" />
-            <span>Ultrawide 32:9</span>
+            <span>Ultrawide</span>
           </button>
           <button
             onClick={() => setLayoutMode("stage")}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-medium transition-all ${
               layoutMode === "stage" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
             }`}
-            title="Vinyl Centerstage Focus"
+            title="Stage"
           >
             <Music2 className="w-3.5 h-3.5 text-primary" />
-            <span>Vinyl Stage</span>
+            <span>Stage</span>
           </button>
           <button
             onClick={() => setLayoutMode("browser")}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-medium transition-all ${
               layoutMode === "browser" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
             }`}
-            title="Library Discography Focus"
+            title="Library"
           >
             <BookOpen className="w-3.5 h-3.5 text-primary" />
-            <span>Library Focus</span>
+            <span>Library</span>
           </button>
         </div>
 
         {/* Right: Audio Engine Badges & Actions */}
-        <div className="flex items-center space-x-2.5">
-          <div className="hidden lg:flex items-center space-x-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 text-xs font-mono">
-            <span className="text-neutral-400">{tracks.length} Tracks</span>
+        <div className="flex items-center space-x-2">
+          <div className="hidden lg:flex items-center space-x-2 bg-black/40 px-2.5 py-1 rounded-full border border-white/10 text-xs font-mono">
+            <span className="text-neutral-400">{tracks.length} tracks</span>
             <span className="text-neutral-600">•</span>
-            <span className="text-emerald-400 flex items-center gap-1">
+            <span className="text-emerald-400 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              PipeWire/ALSA
+              PipeWire
             </span>
           </div>
 
           <button
             onClick={() => setIsEqualizerOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-colors"
+            title="Equalizer"
           >
             <Sliders className="w-3.5 h-3.5 text-primary" />
-            <span className="hidden sm:inline">10-Band EQ</span>
+            <span className="hidden sm:inline">EQ</span>
           </button>
 
           <button
             onClick={toggleFullscreen}
-            className="p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-colors"
-            title="Toggle Fullscreen (F11)"
+            className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-colors"
+            title="Fullscreen"
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
 
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-colors"
+            className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-colors"
             title="Settings"
           >
             <Settings2 className="w-3.5 h-3.5" />
@@ -407,7 +400,7 @@ export const App: React.FC = () => {
                   }`}
                 >
                   <Sparkles className="w-3 h-3 text-primary" />
-                  <span>Studio Mix</span>
+                  <span>Mix</span>
                 </button>
                 <button
                   onClick={() => setRightPanelTab("lyrics")}

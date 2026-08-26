@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic2, Music, Globe, RefreshCw, Search, Sparkles, ChevronDown } from "lucide-react";
+import { Mic2, Music, RefreshCw, Search, Sparkles } from "lucide-react";
 import { Track, LyricLine, LyricsState } from "../types";
 
 interface LyricsDeckProps {
@@ -187,7 +187,7 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
         <div className="flex items-center space-x-2">
           <Mic2 className="w-4 h-4 text-primary" />
           <span className="text-xs uppercase tracking-wider font-semibold text-neutral-300">
-            Karaoke Lyrics Deck
+            Lyrics
           </span>
         </div>
 
@@ -202,14 +202,7 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
               }`}
             >
               {lyricsState.synced && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
-              {lyricsState.source === "online" && <Globe className="w-3 h-3 text-primary" />}
-              <span>
-                {lyricsState.synced
-                  ? lyricsState.source === "online" || lyricsState.source === "cache"
-                    ? "Time-Synced (LRCLIB)"
-                    : "Time-Synced (Local)"
-                  : "Plain Lyrics"}
-              </span>
+              <span>{lyricsState.synced ? "Synced" : "Plain"}</span>
             </span>
           )}
 
@@ -221,7 +214,7 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
                 ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
                 : "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-300 hover:text-white"
             }`}
-            title="Search or Refresh Online Synced Lyrics"
+            title="Search lyrics"
           >
             <Search className="w-3.5 h-3.5" />
           </button>
@@ -230,7 +223,7 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
             onClick={() => fetchLyrics()}
             disabled={isLoading}
             className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-all disabled:opacity-50"
-            title="Re-fetch Lyrics"
+            title="Refresh lyrics"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-primary" : ""}`} />
           </button>
@@ -250,14 +243,14 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
             <div className="flex items-center gap-2">
               <input
                 type="text"
-                placeholder="Artist name..."
+                placeholder="Artist..."
                 value={searchArtist}
                 onChange={e => setSearchArtist(e.target.value)}
                 className="flex-1 bg-black/50 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-primary"
               />
               <input
                 type="text"
-                placeholder="Song title..."
+                placeholder="Title..."
                 value={searchTitle}
                 onChange={e => setSearchTitle(e.target.value)}
                 className="flex-1 bg-black/50 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-primary"
@@ -266,13 +259,10 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
                 type="submit"
                 className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-all shadow-md shadow-primary/20"
               >
-                <Globe className="w-3 h-3" />
-                <span>Fetch Online</span>
+                <Search className="w-3 h-3" />
+                <span>Search</span>
               </button>
             </div>
-            <p className="text-[10px] text-neutral-400 font-mono">
-              Powered by LRCLIB API. Fetches synchronized millisecond karaoke timestamps.
-            </p>
           </motion.form>
         )}
       </AnimatePresence>
@@ -292,7 +282,7 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-neutral-400 space-y-3">
             <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs font-mono text-neutral-300">Fetching synced lyrics from LRCLIB...</p>
+            <p className="text-xs font-mono text-neutral-400">Loading lyrics...</p>
           </div>
         ) : lines.length > 0 ? (
           lines.map((line, idx) => {
@@ -328,17 +318,14 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
             <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500">
               <Music className="w-8 h-8" />
             </div>
-            <div className="space-y-1.5">
-              <p className="text-base font-semibold text-neutral-300">No Synced Lyrics Found</p>
-              <p className="text-xs text-neutral-500 max-w-xs">
-                Click the search icon above to query LRCLIB online with custom artist or track title.
-              </p>
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-neutral-300">No synced lyrics</p>
               <button
                 onClick={() => setIsSearchOpen(true)}
-                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-xs font-semibold hover:bg-primary/30 transition-all"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-xs font-semibold hover:bg-primary/30 transition-all"
               >
                 <Search className="w-3.5 h-3.5" />
-                <span>Search LRCLIB Online</span>
+                <span>Search Lyrics</span>
               </button>
             </div>
           </div>
@@ -356,10 +343,10 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
           >
             <button
               onClick={handleResumeSync}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-white text-xs font-bold shadow-[0_4px_20px_var(--primary-glow)] hover:scale-105 active:scale-95 transition-all border border-white/20"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-primary text-white text-xs font-semibold shadow-[0_4px_20px_var(--primary-glow)] hover:scale-105 active:scale-95 transition-all border border-white/20"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Sync Lyrics to Playhead</span>
+              <span>Sync to Playhead</span>
             </button>
           </motion.div>
         )}

@@ -11,11 +11,7 @@ import {
   Volume2,
   VolumeX,
   Sliders,
-  Mic2,
-  Maximize2,
-  Minimize2,
-  Disc3,
-  ListMusic
+  Disc3
 } from "lucide-react";
 import { Track } from "../types";
 
@@ -137,7 +133,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             <button
               onClick={onPrevious}
               className="p-2 rounded-full text-neutral-300 hover:text-white hover:bg-white/10 transition-colors"
-              title="Previous Track"
+              title="Previous"
             >
               <SkipBack className="w-5 h-5 fill-current" />
             </button>
@@ -159,7 +155,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             <button
               onClick={onNext}
               className="p-2 rounded-full text-neutral-300 hover:text-white hover:bg-white/10 transition-colors"
-              title="Next Track"
+              title="Next"
             >
               <SkipForward className="w-5 h-5 fill-current" />
             </button>
@@ -169,7 +165,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
               className={`p-2 rounded-full transition-colors ${
                 repeatMode !== "off" ? "text-primary bg-primary/15" : "text-neutral-400 hover:text-white"
               }`}
-              title={`Repeat: ${repeatMode}`}
+              title="Repeat"
             >
               {repeatMode === "one" ? <Repeat1 className="w-4 h-4" /> : <Repeat className="w-4 h-4" />}
             </button>
@@ -221,7 +217,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
                 ? "bg-primary/20 text-primary border-primary/40"
                 : "bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white border-white/10"
             }`}
-            title="10-Band Graphic Studio Equalizer"
+            title="Equalizer"
           >
             <Sliders className="w-4 h-4" />
           </button>
@@ -231,6 +227,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             <button
               onClick={onToggleMute}
               className="text-neutral-400 hover:text-white transition-colors"
+              title={isMuted || volume === 0 ? "Unmute" : "Mute"}
             >
               {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
             </button>

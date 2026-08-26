@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Music, Disc, User, Play, Plus, Check, Mic2, Sparkles, FolderSync, ListMusic, Download, Upload, Trash2, Heart, ShieldCheck, MoreVertical } from "lucide-react";
+import { Search, User, Play, Plus, Mic2, FolderSync, ListMusic, Download, Upload, Trash2, ShieldCheck } from "lucide-react";
 import { Track, Playlist } from "../types";
 
 interface LibraryBrowserProps {
@@ -248,7 +248,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
-              placeholder="Search library, artists, albums, or lyrics..."
+              placeholder="Search tracks, artists, albums..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full bg-black/40 border border-white/10 rounded-full pl-10 pr-4 py-2 text-xs font-medium text-white placeholder-neutral-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
@@ -257,7 +257,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
 
           <button
             onClick={onRescan}
-            title="Rescan ~/Music folder"
+            title="Rescan library"
             className="p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-400 hover:text-white transition-colors"
           >
             <FolderSync className="w-4 h-4" />
@@ -274,7 +274,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                 activeTab === "albums" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
               }`}
             >
-              Albums ({filteredAlbums.length})
+              Albums
             </button>
             <button
               onClick={() => { setActiveTab("tracks"); setSelectedPlaylistId(null); }}
@@ -282,7 +282,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                 activeTab === "tracks" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
               }`}
             >
-              Tracks ({filteredTracks.length})
+              Tracks
             </button>
             <button
               onClick={() => { setActiveTab("artists"); setSelectedPlaylistId(null); }}
@@ -290,16 +290,15 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                 activeTab === "artists" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
               }`}
             >
-              Artists ({artists.length})
+              Artists
             </button>
             <button
               onClick={() => setActiveTab("playlists")}
-              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 ${
-                activeTab === "playlists" ? "bg-primary/25 text-primary" : "text-neutral-400 hover:text-white"
+              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all ${
+                activeTab === "playlists" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
               }`}
             >
-              <ListMusic className="w-3.5 h-3.5" />
-              Playlists ({playlists.length})
+              Playlists
             </button>
           </div>
 
@@ -328,13 +327,13 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
         {selectedArtist && (
           <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-2xl px-4 py-2">
             <span className="text-xs font-semibold text-primary">
-              Filtered by: <strong>{selectedArtist}</strong>
+              Artist: <strong>{selectedArtist}</strong>
             </span>
             <button
               onClick={() => setSelectedArtist(null)}
               className="text-xs text-neutral-400 hover:text-white font-mono"
             >
-              ✕ Clear Filter
+              ✕ Clear
             </button>
           </div>
         )}
@@ -462,14 +461,14 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                     <button
                       onClick={() => setAddToPlaylistTrack(t)}
                       className="p-1 rounded-full hover:bg-white/15 text-neutral-400 hover:text-primary transition-colors"
-                      title="Add to Playlist"
+                      title="Add to playlist"
                     >
                       <ListMusic className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => onAddToQueue(t)}
                       className="p-1 rounded-full hover:bg-white/15 text-neutral-400 hover:text-white transition-colors"
-                      title="Add to Up Next Queue"
+                      title="Add to queue"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
@@ -516,7 +515,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                 {/* Actions Bar */}
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider font-mono">
-                    Smart Collections & Playlists
+                    Playlists
                   </span>
                   <div className="flex items-center gap-2">
                     <button
@@ -550,9 +549,9 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                     </div>
                     <div>
                       <h4 className="text-xs font-bold text-white group-hover:text-blue-400 transition-colors">
-                        Hi-Res Lossless Collection
+                        Hi-Res Audio
                       </h4>
-                      <p className="text-[11px] text-neutral-400">FLAC 24-bit / 96kHz Master Quality</p>
+                      <p className="text-[11px] text-neutral-400">Lossless FLAC</p>
                     </div>
                   </div>
 
@@ -570,9 +569,9 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                     </div>
                     <div>
                       <h4 className="text-xs font-bold text-white group-hover:text-primary transition-colors">
-                        Karaoke Ready
+                        Karaoke
                       </h4>
-                      <p className="text-[11px] text-neutral-400">Time-Synced Lyrics Available</p>
+                      <p className="text-[11px] text-neutral-400">Synced lyrics</p>
                     </div>
                   </div>
                 </div>
@@ -583,7 +582,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                   {playlists.length === 0 ? (
                     <div className="p-8 rounded-2xl bg-white/[0.02] border border-dashed border-white/10 text-center space-y-2">
                       <ListMusic className="w-8 h-8 text-neutral-500 mx-auto" />
-                      <p className="text-xs text-neutral-400">No playlists yet. Create or import your first .m3u playlist!</p>
+                      <p className="text-xs text-neutral-400">No playlists yet</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -705,7 +704,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
       {isCreatingPlaylist && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-neutral-900 border border-white/10 rounded-2xl p-5 w-full max-w-md space-y-4 shadow-2xl">
-            <h3 className="text-sm font-bold text-white">Create New Playlist</h3>
+            <h3 className="text-sm font-bold text-white">New Playlist</h3>
             <input
               type="text"
               placeholder="Playlist Name"
@@ -716,7 +715,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
             />
             <input
               type="text"
-              placeholder="Description (Optional)"
+              placeholder="Description (optional)"
               value={newPlaylistDesc}
               onChange={e => setNewPlaylistDesc(e.target.value)}
               className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-primary"
@@ -745,7 +744,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-neutral-900 border border-white/10 rounded-2xl p-5 w-full max-w-md space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Add Track to Playlist</h3>
+              <h3 className="text-sm font-bold text-white">Add to Playlist</h3>
               <button onClick={() => setAddToPlaylistTrack(null)} className="text-neutral-400 hover:text-white">✕</button>
             </div>
             <p className="text-xs text-neutral-400 truncate">
@@ -807,16 +806,11 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                     />
                   </div>
                   <div className="min-w-0 flex-1 space-y-1 text-left">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary font-bold border border-primary/30">
-                        Album Preview
+                    {previewAlbum.year && (
+                      <span className="text-[10px] font-mono text-neutral-400">
+                        {previewAlbum.year}
                       </span>
-                      {previewAlbum.year && (
-                        <span className="text-[10px] font-mono text-neutral-400">
-                          {previewAlbum.year}
-                        </span>
-                      )}
-                    </div>
+                    )}
                     <h2 className="text-lg md:text-xl font-black text-white truncate drop-shadow-md">
                       {previewAlbum.album}
                     </h2>
@@ -824,7 +818,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                       {previewAlbum.artist}
                     </p>
                     <p className="text-[10px] font-mono text-neutral-400">
-                      {previewAlbum.tracks.length} Songs •{" "}
+                      {previewAlbum.tracks.length} tracks •{" "}
                       {Math.round(
                         previewAlbum.tracks.reduce((acc, t) => acc + (t.duration || 0), 0) / 60
                       )}{" "}
@@ -851,7 +845,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                       setPreviewAlbum(null);
                     }}
                     className="p-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-white text-xs transition-all"
-                    title="Add all tracks to Queue"
+                    title="Add all tracks to queue"
                   >
                     <Plus className="w-4 h-4" />
                   </button>

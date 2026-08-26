@@ -164,7 +164,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         <div className="flex items-center space-x-2">
           <Activity className="w-4 h-4 text-primary" />
           <span className="text-xs uppercase tracking-wider font-semibold text-neutral-300">
-            FFT Studio Spectrum
+            Spectrum
           </span>
         </div>
 
@@ -174,7 +174,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
             className={`p-1.5 rounded-full transition-all ${
               visualizerMode === "bars" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
             }`}
-            title="Neon Spectrum Bars"
+            title="Bars"
           >
             <Radio className="w-3.5 h-3.5" />
           </button>
@@ -183,7 +183,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
             className={`p-1.5 rounded-full transition-all ${
               visualizerMode === "wave" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
             }`}
-            title="Fluid Harmonic Wave"
+            title="Wave"
           >
             <Waves className="w-3.5 h-3.5" />
           </button>
@@ -192,7 +192,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
             className={`p-1.5 rounded-full transition-all ${
               visualizerMode === "radial" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
             }`}
-            title="Radial Starburst"
+            title="Radial"
           >
             <Zap className="w-3.5 h-3.5" />
           </button>
@@ -201,7 +201,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
             className={`p-1.5 rounded-full transition-all ${
               visualizerMode === "oscilloscope" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
             }`}
-            title="Oscilloscope Beam"
+            title="Oscilloscope"
           >
             <Activity className="w-3.5 h-3.5" />
           </button>

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Sliders, X, RotateCcw, Volume2, Sparkles, Disc, Radio, Zap } from "lucide-react";
+import { motion } from "framer-motion";
+import { Sliders, X, RotateCcw, Sparkles, Radio, Zap } from "lucide-react";
 import { EQ_FREQUENCIES } from "../hooks/useAudioEngine";
 import { PRESETS, DspSettings } from "../types";
 
@@ -33,6 +33,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xl"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <motion.div
         initial={{ scale: 0.94, y: 20 }}
@@ -46,15 +47,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             <div className="w-10 h-10 rounded-2xl bg-primary/20 flex items-center justify-center text-primary border border-primary/30">
               <Sliders className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
-                DSP & Studio Audio Suite
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
-                  Web Audio 64-bit
-                </span>
-              </h2>
-              <p className="text-xs text-neutral-400">10-Band Graphic EQ, ReplayGain & Gapless Engine</p>
-            </div>
+            <h2 className="text-base font-bold text-white tracking-wide">Equalizer & DSP</h2>
           </div>
 
           <div className="flex items-center gap-2">
@@ -66,7 +59,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   activeTab === "eq" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
                 }`}
               >
-                Graphic EQ
+                Equalizer
               </button>
               <button
                 onClick={() => setActiveTab("dsp")}
@@ -74,7 +67,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   activeTab === "dsp" ? "bg-primary/30 text-primary shadow-sm" : "text-neutral-400 hover:text-white"
                 }`}
               >
-                DSP & Crossfade
+                DSP
               </button>
             </div>
 
@@ -146,10 +139,10 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           </div>
         )}
 
-        {/* Tab 2: DSP & Crossfade Settings */}
+        {/* Tab 2: DSP Settings */}
         {activeTab === "dsp" && (
           <div className="space-y-4 py-2">
-            {/* ReplayGain & EBU R128 Card */}
+            {/* ReplayGain Card */}
             <div className="p-4 rounded-2xl bg-black/40 border border-white/5 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
@@ -157,8 +150,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                     <Zap className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white">ReplayGain / EBU R128 Normalization</h3>
-                    <p className="text-[11px] text-neutral-400">Auto-match loudness across mixed FLAC & MP3 albums without volume jumps</p>
+                    <h3 className="text-sm font-bold text-white">ReplayGain</h3>
+                    <p className="text-[11px] text-neutral-400">Automatic volume normalization</p>
                   </div>
                 </div>
 
@@ -176,10 +169,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
               {dspSettings.replayGainEnabled && (
                 <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-xs font-semibold text-neutral-300">Preamp Boost / Cut:</span>
-                    <p className="text-[10px] text-neutral-500">Fine-tune master target loudness headroom</p>
-                  </div>
+                  <span className="text-xs font-semibold text-neutral-300">Preamp Gain</span>
                   <div className="flex items-center gap-3">
                     <input
                       type="range"
@@ -206,11 +196,11 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                     <Radio className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white">Track Transition Engine</h3>
+                    <h3 className="text-sm font-bold text-white">Track Transitions</h3>
                     <p className="text-[11px] text-neutral-400">
                       {dspSettings.crossfadeSeconds === 0
-                        ? "Pure Gapless Mode — Instant zero-latency live concert transitions"
-                        : `DJ Smooth Crossfade — ${dspSettings.crossfadeSeconds}s overlapping fade`}
+                        ? "Gapless playback"
+                        : `${dspSettings.crossfadeSeconds}s crossfade`}
                     </p>
                   </div>
                 </div>
@@ -240,10 +230,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               </div>
 
               <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <span className="text-xs font-semibold text-neutral-300">Crossfade Duration:</span>
-                  <p className="text-[10px] text-neutral-500">Smooth volume blending duration between tracks</p>
-                </div>
+                <span className="text-xs font-semibold text-neutral-300">Crossfade Duration</span>
                 <div className="flex items-center gap-3">
                   <input
                     type="range"
@@ -262,12 +249,12 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             </div>
 
             {/* Peak Limiter Info */}
-            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white/5 border border-white/5 text-[11px] text-neutral-400">
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white/5 border border-white/5 text-xs text-neutral-400">
               <span className="flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-primary" />
-                Soft-Knee Peak Limiter active (-0.5 dBFS headroom ceiling)
+                Soft-Knee Limiter (-0.5 dBFS)
               </span>
-              <span className="font-mono text-emerald-400">Active</span>
+              <span className="font-mono text-emerald-400 text-xs">Active</span>
             </div>
           </div>
         )}
@@ -276,7 +263,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
         <div className="flex justify-end pt-2">
           <button
             onClick={onClose}
-            className="px-6 py-2 rounded-full bg-white text-black font-bold text-sm hover:bg-neutral-200 transition-colors shadow-md"
+            className="px-6 py-2 rounded-full bg-white text-black font-bold text-sm hover:bg-neutral-200 transition-colors shadow-md cursor-pointer"
           >
             Done
           </button>

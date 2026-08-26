@@ -1,6 +1,5 @@
 import React, { useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ListMusic, Trash2, ArrowUp, ArrowDown, X, Play, Music, Info, HardDrive } from "lucide-react";
+import { ListMusic, Trash2, ArrowUp, ArrowDown, X, Play, Music } from "lucide-react";
 import { Track } from "../types";
 
 interface QueueDrawerProps {
@@ -56,7 +55,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
         <div className="flex items-center space-x-2">
           <ListMusic className="w-4 h-4 text-primary" />
           <span className="text-xs uppercase tracking-wider font-semibold text-neutral-300">
-            Up Next Queue ({queue.length})
+            Queue ({queue.length})
           </span>
         </div>
         {queue.length > 0 && (
@@ -77,7 +76,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
               Now Playing
             </span>
-            <span>{currentTrack.format} Lossless</span>
+            <span>{currentTrack.format}</span>
           </div>
 
           <div className="flex items-center space-x-3">
@@ -96,7 +95,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
             </div>
           </div>
 
-          {/* Linux Audio Inspector Metadata Badges */}
+          {/* Track Metadata */}
           <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px] font-mono text-neutral-400 bg-black/30 p-2 rounded-xl border border-white/5">
             <div>Sample: <span className="text-white">{currentTrack.sampleRate ? `${currentTrack.sampleRate} Hz` : "44.1 kHz"}</span></div>
             <div>Bitrate: <span className="text-white">{currentTrack.bitrate ? `${Math.round(currentTrack.bitrate / 1000)} kbps` : "Lossless"}</span></div>
@@ -143,7 +142,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
                   <button
                     onClick={() => onPlayTrack(t)}
                     className="p-1 rounded hover:bg-white/15 text-neutral-400 hover:text-white"
-                    title="Play Now"
+                    title="Play"
                   >
                     <Play className="w-3 h-3 fill-current" />
                   </button>
@@ -180,7 +179,6 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
           <div className="flex flex-col items-center justify-center h-44 text-center space-y-2 text-neutral-500">
             <Music className="w-6 h-6" />
             <p className="text-xs">Queue is empty</p>
-            <p className="text-[10px] text-neutral-600">Click "+" on any track to queue it next</p>
           </div>
         )}
       </div>

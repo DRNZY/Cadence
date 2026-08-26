@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Zap, Cpu, Sparkles, Monitor, CheckCircle2,
@@ -28,71 +28,42 @@ const DEFAULT_SETTINGS: AppSettings = {
 const PERF_MODES: {
   id: PerformanceMode;
   label: string;
-  subtitle: string;
+  summary: string;
   icon: React.ReactNode;
   color: string;
   badge: string;
-  details: string[];
 }[] = [
   {
     id: "quality",
     label: "Cinematic",
-    subtitle: "Max visual fidelity",
+    summary: "Full visual fidelity & dynamic glow",
     icon: <Sparkles className="w-5 h-5" />,
     color: "from-violet-500 to-purple-600",
-    badge: "~1.2 GB RAM",
-    details: [
-      "Full backdrop-filter blur (32px)",
-      "Animated ambient glow orbs",
-      "Motion animations on all components",
-      "Full GPU rasterization",
-      "Dynamic album gradient extraction",
-    ],
+    badge: "~1.2 GB",
   },
   {
     id: "balanced",
     label: "Balanced",
-    subtitle: "Default — great for most systems",
+    summary: "Balanced visuals & responsiveness",
     icon: <Monitor className="w-5 h-5" />,
     color: "from-blue-500 to-cyan-500",
-    badge: "~750 MB RAM",
-    details: [
-      "Reduced blur (18px)",
-      "CSS-only ambient glow",
-      "GPU-accelerated transforms",
-      "Lazy image decoding",
-      "Visualizer throttled to 60fps",
-    ],
+    badge: "~750 MB",
   },
   {
     id: "performance",
     label: "Performance",
-    subtitle: "Optimized for weaker hardware",
+    summary: "Reduced effects for efficiency",
     icon: <Cpu className="w-5 h-5" />,
     color: "from-emerald-500 to-green-500",
-    badge: "~450 MB RAM",
-    details: [
-      "No backdrop-filter blur",
-      "Ambient glow disabled",
-      "Static background color",
-      "Visualizer at 30fps",
-      "No Framer Motion animations",
-    ],
+    badge: "~450 MB",
   },
   {
     id: "ultra-low",
-    label: "Ultra Low RAM",
-    subtitle: "Bare minimum — audio-only focus",
+    label: "Ultra Low",
+    summary: "Minimal audio-only focus",
     icon: <Zap className="w-5 h-5" />,
     color: "from-orange-500 to-red-500",
-    badge: "~250 MB RAM",
-    details: [
-      "All visual effects off",
-      "Visualizer fully disabled",
-      "No dynamic theming",
-      "Static flat background",
-      "Minimal DOM — audio-only UI",
-    ],
+    badge: "~250 MB",
   },
 ];
 
@@ -146,7 +117,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onSettingsChange,
 }) => {
-  const [tab, setTab] = useState<"performance" | "audio" | "display">("performance");
+  const [tab, setTab] = useState<"performance" | "display" | "audio">("performance");
 
   const set = <K extends keyof AppSettings>(key: K, val: AppSettings[K]) => {
     const updated = { ...settings, [key]: val };
@@ -155,10 +126,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       localStorage.setItem("cadence_settings", JSON.stringify(updated));
     } catch {}
   };
-
-  const isQuality = settings.performanceMode === "quality";
-  const isUltraLow = settings.performanceMode === "ultra-low";
-  const isPerf = settings.performanceMode === "performance";
 
   return (
     <AnimatePresence>
@@ -188,10 +155,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary to-blue-500 flex items-center justify-center">
                   <Settings2 className="w-4 h-4 text-white" />
                 </div>
-                <div>
-                  <h2 className="text-sm font-bold text-white">Settings</h2>
-                  <p className="text-[10px] text-neutral-400 font-mono">Cadence Studio Engine</p>
-                </div>
+                <h2 className="text-sm font-bold text-white">Settings</h2>
               </div>
               <button
                 onClick={onClose}
@@ -224,10 +188,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* ─── PERFORMANCE TAB ─── */}
               {tab === "performance" && (
                 <div className="space-y-3">
-                  <p className="text-xs text-neutral-400">
-                    Choose how much GPU & RAM Cadence uses. Changes apply immediately — no restart needed.
-                  </p>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {PERF_MODES.map(mode => {
                       const active = settings.performanceMode === mode.id;
@@ -297,24 +257,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             {mode.icon}
                           </div>
 
-                          <div className="mb-2">
-                            <div className="flex items-center gap-2">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
                               <span className="text-sm font-bold text-white">{mode.label}</span>
                               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-gradient-to-r ${mode.color} text-white`}>
                                 {mode.badge}
                               </span>
                             </div>
-                            <p className="text-[11px] text-neutral-400 mt-0.5">{mode.subtitle}</p>
+                            <p className="text-xs text-neutral-400">{mode.summary}</p>
                           </div>
-
-                          <ul className="space-y-1">
-                            {mode.details.map((d, i) => (
-                              <li key={i} className="text-[10px] text-neutral-500 flex items-start gap-1.5">
-                                <span className="mt-0.5 w-1 h-1 rounded-full bg-neutral-500 shrink-0" />
-                                {d}
-                              </li>
-                            ))}
-                          </ul>
                         </button>
                       );
                     })}
@@ -322,32 +273,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   {/* Fine-grain overrides */}
                   <div className="mt-2 p-4 rounded-2xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs font-semibold text-neutral-300 mb-1">Fine-tune</p>
-                    <p className="text-[10px] text-neutral-500 mb-3">Override individual settings after choosing a preset above.</p>
+                    <p className="text-xs font-semibold text-neutral-300 mb-2">Fine-tune</p>
                     <div className="divide-y divide-white/5">
                       <Toggle
                         checked={settings.enableAmbientGlow}
                         onChange={v => set("enableAmbientGlow", v)}
                         label="Ambient Glow"
-                        description="Dynamic album-color gradient backdrop"
                       />
                       <Toggle
                         checked={settings.enableGlassBlur}
                         onChange={v => set("enableGlassBlur", v)}
                         label="Glass Blur"
-                        description="backdrop-filter on panels (GPU cost)"
                       />
                       <Toggle
                         checked={settings.visualizerEnabled}
                         onChange={v => set("visualizerEnabled", v)}
                         label="Spectrum Visualizer"
-                        description="Canvas FFT analyzer (saves ~5% CPU when off)"
                       />
                       <Toggle
                         checked={settings.dynamicTheme}
                         onChange={v => set("dynamicTheme", v)}
-                        label="Dynamic Album Theme"
-                        description="Extract colors from cover art per-track"
+                        label="Dynamic Theme"
                       />
                     </div>
                   </div>
@@ -361,31 +307,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <Toggle
                       checked={settings.enableAmbientGlow}
                       onChange={v => set("enableAmbientGlow", v)}
-                      label="Ambient Glow Backdrop"
-                      description="Color-reactive background radial gradients"
+                      label="Ambient Glow"
                     />
                     <Toggle
                       checked={settings.enableGlassBlur}
                       onChange={v => set("enableGlassBlur", v)}
-                      label="Glassmorphic Blur Panels"
-                      description="Apply backdrop-filter blur to all UI panels"
+                      label="Glass Blur"
                     />
                     <Toggle
                       checked={settings.visualizerEnabled}
                       onChange={v => set("visualizerEnabled", v)}
-                      label="Spectrum Analyzer"
-                      description="Show the FFT canvas visualizer in Studio Mix view"
+                      label="Spectrum Visualizer"
                     />
                     <Toggle
                       checked={settings.dynamicTheme}
                       onChange={v => set("dynamicTheme", v)}
-                      label="Dynamic Album Theme Colors"
-                      description="Auto-extract palette from album art on each track change"
+                      label="Dynamic Theme"
                     />
                   </div>
 
                   <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-2">
-                    <p className="text-xs font-semibold text-neutral-300">Current Performance Mode</p>
+                    <p className="text-xs font-semibold text-neutral-300">Current Mode</p>
                     <div className="flex items-center gap-3">
                       {(() => {
                         const mode = PERF_MODES.find(m => m.id === settings.performanceMode)!;
@@ -396,7 +338,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </div>
                             <div>
                               <p className="text-sm font-bold text-white">{mode.label}</p>
-                              <p className="text-[10px] text-neutral-400">{mode.badge} · {mode.subtitle}</p>
+                              <p className="text-[10px] text-neutral-400">{mode.badge} · {mode.summary}</p>
                             </div>
                           </>
                         );
@@ -406,7 +348,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={() => setTab("performance")}
                       className="text-xs text-primary hover:underline mt-1"
                     >
-                      Change performance mode →
+                      Change mode →
                     </button>
                   </div>
                 </div>
@@ -421,7 +363,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Volume2 className="w-4 h-4 text-primary shrink-0" />
                       <div>
                         <p className="text-xs font-medium text-white">PipeWire / ALSA</p>
-                        <p className="text-[10px] text-neutral-400">Linux system audio — routed via Web Audio API</p>
+                        <p className="text-[10px] text-neutral-400">System Audio Output</p>
                       </div>
                       <span className="ml-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     </div>
@@ -432,7 +374,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       checked={settings.autoScrobble}
                       onChange={v => set("autoScrobble", v)}
                       label="Last.fm Scrobbling"
-                      description="Coming soon — auto-log tracks to Last.fm"
+                      description="Coming soon"
                       disabled
                     />
                   </div>
@@ -455,13 +397,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* About */}
                   <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
                     <p className="text-xs font-semibold text-neutral-300">About</p>
-                    <p className="text-[11px] text-neutral-400">Cadence Studio Hi-Fi Engine</p>
-                    <p className="text-[10px] text-neutral-600 font-mono">v1.0.0 · Electron · React 19 · Web Audio API</p>
+                    <p className="text-xs text-neutral-400">Cadence v1.0.0</p>
                     <a
                       href="https://github.com/DRNZY/Cadence"
                       target="_blank"
                       rel="noreferrer"
-                      className="text-[10px] text-primary hover:underline font-mono"
+                      className="text-[10px] text-primary hover:underline font-mono inline-block pt-1"
                     >
                       github.com/DRNZY/Cadence
                     </a>

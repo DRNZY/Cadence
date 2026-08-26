@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Disc3, Disc, Sparkles, Gauge, Volume2, Activity } from "lucide-react";
+import { Gauge, Activity } from "lucide-react";
 import { Track, DeckMode } from "../types";
 
 interface VinylDeckProps {
@@ -161,7 +161,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
         <div className="flex items-center space-x-2">
           <span className="text-xs uppercase tracking-wider font-semibold text-neutral-400 flex items-center gap-1.5">
             <Gauge className="w-3.5 h-3.5 text-primary" />
-            Analog Turntable
+            Turntable
           </span>
           {currentTrack && (
             <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-white/10 text-white/90 border border-white/10">
@@ -178,7 +178,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               deckMode === "vinyl" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
             }`}
           >
-            Vinyl LP
+            Vinyl
           </button>
           <button
             onClick={() => onSetDeckMode("cd")}
@@ -186,7 +186,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               deckMode === "cd" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
             }`}
           >
-            Holo CD
+            CD
           </button>
           <button
             onClick={() => onSetDeckMode("minimal")}
@@ -194,7 +194,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               deckMode === "minimal" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
             }`}
           >
-            Glass Minimal
+            Minimal
           </button>
         </div>
       </div>
@@ -352,10 +352,10 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
       </div>
 
       {/* Turntable Bottom Deck Controls */}
-      <div className="w-full flex items-center justify-between z-20 mt-2 px-1">
+      <div className="w-full flex items-center justify-center z-20 mt-2 px-1">
         {/* Speed / RPM Selector */}
         <div className="flex items-center space-x-1.5 bg-black/40 px-3 py-1.5 rounded-full border border-white/10">
-          <span className="text-[11px] font-mono text-neutral-400 uppercase">RPM:</span>
+          <span className="text-[11px] font-mono text-neutral-400 uppercase">RPM</span>
           <button
             onClick={() => onSetSpeed(1.0)}
             className={`px-2 py-0.5 text-xs font-mono rounded-md font-bold transition-colors ${
@@ -380,12 +380,6 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
           >
             Slow
           </button>
-        </div>
-
-        {/* Scratch Drag Hint */}
-        <div className="text-[11px] font-medium text-neutral-400 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
-          <span>Real DJ Scratch & Slipmat Scrub</span>
         </div>
       </div>
     </div>
