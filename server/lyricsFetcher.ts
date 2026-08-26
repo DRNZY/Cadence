@@ -14,7 +14,7 @@ export interface LyricsResponse {
   lines: LyricLine[];
 }
 
-const CACHE_DIR = path.join(os.homedir(), ".cache/auradeck/lyrics");
+const CACHE_DIR = path.join(os.homedir(), ".cache/cadence/lyrics");
 if (!fs.existsSync(CACHE_DIR)) {
   try {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -78,7 +78,7 @@ export async function fetchOnlineLyrics(
     if (duration && duration > 0) params.set("duration", Math.round(duration).toString());
 
     const getRes = await fetch(`https://lrclib.net/api/get?${params.toString()}`, {
-      headers: { "User-Agent": "AuraDeck-AudioPlayer/1.0.0 (https://github.com/DRNZY/Auradeck)" }
+      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0 (https://github.com/DRNZY/Cadence)" }
     });
 
     if (getRes.ok) {
@@ -98,7 +98,7 @@ export async function fetchOnlineLyrics(
   try {
     const query = `${cleanArtist} ${cleanTitle}`.trim();
     const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(query)}`, {
-      headers: { "User-Agent": "AuraDeck-AudioPlayer/1.0.0 (https://github.com/DRNZY/Auradeck)" }
+      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0 (https://github.com/DRNZY/Cadence)" }
     });
 
     if (searchRes.ok) {

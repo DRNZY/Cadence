@@ -25,12 +25,30 @@ export interface Track {
   coverPath?: string;
   hasLyrics: boolean;
   size: number;
+  replayGain?: number; // In dB (e.g. -6.5 or +2.1)
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  description?: string;
+  trackIds: string[];
+  createdAt: number;
+  updatedAt: number;
+  coverPath?: string;
+}
+
+export interface DspSettings {
+  gaplessEnabled: boolean;
+  crossfadeSeconds: number; // 0 = pure gapless, 1-10s = smooth crossfade
+  replayGainEnabled: boolean;
+  replayGainMode: "track" | "album";
+  preampGain: number; // -6dB to +6dB
 }
 
 export type DeckMode = "vinyl" | "cd" | "minimal";
 export type VisualizerMode = "bars" | "wave" | "radial" | "oscilloscope";
 export type LayoutMode = "panoramic" | "studio" | "stage" | "browser";
-
 
 export interface EqualizerPreset {
   name: string;

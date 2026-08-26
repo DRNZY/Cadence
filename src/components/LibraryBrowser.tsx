@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Music, Disc, User, Play, Plus, Check, Mic2, Sparkles, FolderSync } from "lucide-react";
-import { Track } from "../types";
+import { Search, Music, Disc, User, Play, Plus, Check, Mic2, Sparkles, FolderSync, ListMusic, Download, Upload, Trash2, Heart, ShieldCheck, MoreVertical } from "lucide-react";
+import { Track, Playlist } from "../types";
 
 interface LibraryBrowserProps {
   tracks: Track[];
@@ -25,7 +25,122 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
   const [formatFilter, setFormatFilter] = useState<"ALL" | "FLAC" | "MP3" | "LYRICS">("ALL");
-  const [activeTab, setActiveTab] = useState<"albums" | "tracks" | "artists">("albums");
+  const [activeTab, setActiveTab] = useState<"albums" | "tracks" | "artists" | "playlists">("albums");
+
+  // Playlists State
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [newPlaylistDesc, setNewPlaylistDesc] = useState("");
+  const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<Track | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch Playlists from backend
+  const fetchPlaylists = () => {
+    fetch("/api/playlists")
+      .then(res => res.json())
+      .then(data => setPlaylists(data.playlists || []))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchPlaylists();
+  }, []);
+
+  const handleCreatePlaylist = async () => {
+    if (!newPlaylistName.trim()) return;
+    try {
+      const res = await fetch("/api/playlists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newPlaylistName, description: newPlaylistDesc })
+      });
+      const data = await res.json();
+      if (data.playlist) {
+        setPlaylists(prev => [...prev, data.playlist]);
+        setSelectedPlaylistId(data.playlist.id);
+        setIsCreatingPlaylist(false);
+        setNewPlaylistName("");
+        setNewPlaylistDesc("");
+      }
+    } catch (err) {
+      console.error("Create playlist error:", err);
+    }
+  };
+
+  const handleDeletePlaylist = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this playlist?")) return;
+    try {
+      await fetch(`/api/playlists/${id}`, { method: "DELETE" });
+      setPlaylists(prev => prev.filter(p => p.id !== id));
+      if (selectedPlaylistId === id) setSelectedPlaylistId(null);
+    } catch {}
+  };
+
+  const handleAddTrackToPlaylist = async (playlistId: string, trackId: string) => {
+    const pl = playlists.find(p => p.id === playlistId);
+    if (!pl) return;
+    if (pl.trackIds.includes(trackId)) return;
+    const updatedIds = [...pl.trackIds, trackId];
+
+    try {
+      const res = await fetch(`/api/playlists/${playlistId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackIds: updatedIds })
+      });
+      const data = await res.json();
+      if (data.playlist) {
+        setPlaylists(prev => prev.map(p => p.id === playlistId ? data.playlist : p));
+        setAddToPlaylistTrack(null);
+      }
+    } catch {}
+  };
+
+  const handleRemoveTrackFromPlaylist = async (playlistId: string, trackId: string) => {
+    const pl = playlists.find(p => p.id === playlistId);
+    if (!pl) return;
+    const updatedIds = pl.trackIds.filter(id => id !== trackId);
+
+    try {
+      const res = await fetch(`/api/playlists/${playlistId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackIds: updatedIds })
+      });
+      const data = await res.json();
+      if (data.playlist) {
+        setPlaylists(prev => prev.map(p => p.id === playlistId ? data.playlist : p));
+      }
+    } catch {}
+  };
+
+  const handleImportM3U = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const content = reader.result as string;
+      try {
+        const res = await fetch("/api/playlists/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, content })
+        });
+        const data = await res.json();
+        if (data.playlist) {
+          setPlaylists(prev => [...prev, data.playlist]);
+          setSelectedPlaylistId(data.playlist.id);
+        }
+      } catch (err) {
+        console.error("Import error:", err);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
 
   // Extract unique artists
   const artists = useMemo(() => {
@@ -54,6 +169,10 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
     }
     return Array.from(map.values()).sort((a, b) => a.artist.localeCompare(b.artist));
   }, [tracks]);
+
+  // Smart Collections
+  const hiResTracks = useMemo(() => tracks.filter(t => t.format === "FLAC"), [tracks]);
+  const karaokeTracks = useMemo(() => tracks.filter(t => t.hasLyrics), [tracks]);
 
   // Filtered tracks
   const filteredTracks = useMemo(() => {
@@ -90,6 +209,14 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
     });
   }, [albums, selectedArtist, formatFilter, searchQuery]);
 
+  const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistId);
+  const selectedPlaylistTracks = useMemo(() => {
+    if (!selectedPlaylist) return [];
+    return selectedPlaylist.trackIds
+      .map(id => tracks.find(t => t.id === id))
+      .filter((t): t is Track => Boolean(t));
+  }, [selectedPlaylist, tracks]);
+
   const formatSeconds = (sec: number) => {
     const mins = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
@@ -98,6 +225,15 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
 
   return (
     <div className="flex flex-col h-full w-full p-5 select-none relative overflow-hidden">
+      {/* Hidden File Input for M3U Import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImportM3U}
+        accept=".m3u,.m3u8"
+        className="hidden"
+      />
+
       {/* Header with Search & Tab Navigation */}
       <div className="space-y-3 pb-3 border-b border-white/5">
         <div className="flex items-center justify-between gap-3">
@@ -126,7 +262,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
           {/* Main View Tabs */}
           <div className="flex bg-black/40 p-0.5 rounded-full border border-white/10">
             <button
-              onClick={() => setActiveTab("albums")}
+              onClick={() => { setActiveTab("albums"); setSelectedPlaylistId(null); }}
               className={`px-3 py-1 text-xs font-semibold rounded-full transition-all ${
                 activeTab === "albums" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
               }`}
@@ -134,7 +270,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
               Albums ({filteredAlbums.length})
             </button>
             <button
-              onClick={() => setActiveTab("tracks")}
+              onClick={() => { setActiveTab("tracks"); setSelectedPlaylistId(null); }}
               className={`px-3 py-1 text-xs font-semibold rounded-full transition-all ${
                 activeTab === "tracks" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
               }`}
@@ -142,12 +278,21 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
               Tracks ({filteredTracks.length})
             </button>
             <button
-              onClick={() => setActiveTab("artists")}
+              onClick={() => { setActiveTab("artists"); setSelectedPlaylistId(null); }}
               className={`px-3 py-1 text-xs font-semibold rounded-full transition-all ${
                 activeTab === "artists" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
               }`}
             >
               Artists ({artists.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("playlists")}
+              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 ${
+                activeTab === "playlists" ? "bg-primary/25 text-primary" : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <ListMusic className="w-3.5 h-3.5" />
+              Playlists ({playlists.length})
             </button>
           </div>
 
@@ -202,7 +347,6 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
                   whileHover={{ y: -4, scale: 1.02 }}
                   className="group relative bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/15 rounded-2xl p-3 transition-all flex flex-col justify-between shadow-lg"
                 >
-                  {/* Album Cover with Overlay Play Button */}
                   <div className="relative aspect-square rounded-xl overflow-hidden mb-2.5 bg-black/40 shadow-inner">
                     <img
                       src={coverUrl}
@@ -227,7 +371,6 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
                     )}
                   </div>
 
-                  {/* Album & Artist Info */}
                   <div className="space-y-0.5 text-left">
                     <h3 className="text-xs font-bold text-white truncate group-hover:text-primary transition-colors">
                       {item.album}
@@ -249,7 +392,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
         {/* 2. Tracks Table View */}
         {activeTab === "tracks" && (
           <div className="space-y-1 pb-8">
-            {filteredTracks.map((t, idx) => {
+            {filteredTracks.map(t => {
               const isSelected = currentTrack?.id === t.id;
               const coverUrl = t.coverPath
                 ? `/covers?path=${encodeURIComponent(t.coverPath)}`
@@ -266,7 +409,6 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
                   }`}
                 >
                   <div className="flex items-center space-x-3 min-w-0 flex-1">
-                    {/* Thumbnail */}
                     <div className="relative w-9 h-9 rounded-lg overflow-hidden bg-black/40 shrink-0 border border-white/10">
                       <img src={coverUrl} alt="" className="w-full h-full object-cover" />
                       <button
@@ -287,6 +429,11 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
                             <Mic2 className="w-3 h-3 text-primary/80 shrink-0" />
                           </span>
                         )}
+                        {t.replayGain !== undefined && (
+                          <span title={`ReplayGain: ${t.replayGain} dB`} className="text-[9px] font-mono px-1 rounded bg-blue-500/20 text-blue-400">
+                            RG
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-neutral-400 truncate">
                         {t.artist} • {t.album}
@@ -294,12 +441,18 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
                     </div>
                   </div>
 
-                  {/* Format & Duration */}
-                  <div className="flex items-center space-x-3 shrink-0 text-[11px] font-mono text-neutral-400">
+                  <div className="flex items-center space-x-2 shrink-0 text-[11px] font-mono text-neutral-400">
                     <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[9px]">
                       {t.format}
                     </span>
                     <span>{formatSeconds(t.duration)}</span>
+                    <button
+                      onClick={() => setAddToPlaylistTrack(t)}
+                      className="p-1 rounded-full hover:bg-white/15 text-neutral-400 hover:text-primary transition-colors"
+                      title="Add to Playlist"
+                    >
+                      <ListMusic className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => onAddToQueue(t)}
                       className="p-1 rounded-full hover:bg-white/15 text-neutral-400 hover:text-white transition-colors"
@@ -341,7 +494,276 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
             ))}
           </div>
         )}
+
+        {/* 4. Playlists & Smart Collections View */}
+        {activeTab === "playlists" && (
+          <div className="space-y-5 pb-8">
+            {!selectedPlaylistId ? (
+              <>
+                {/* Actions Bar */}
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider font-mono">
+                    Smart Collections & Playlists
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/5 hover:bg-white/15 border border-white/10 text-neutral-300 flex items-center gap-1.5 transition-all"
+                    >
+                      <Upload className="w-3.5 h-3.5" /> Import M3U
+                    </button>
+                    <button
+                      onClick={() => setIsCreatingPlaylist(true)}
+                      className="px-3 py-1.5 rounded-full text-xs font-bold bg-primary text-black flex items-center gap-1.5 hover:bg-primary/90 transition-all shadow-lg"
+                    >
+                      <Plus className="w-4 h-4" /> New Playlist
+                    </button>
+                  </div>
+                </div>
+
+                {/* Smart Collections Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    onClick={() => onPlayAlbum(hiResTracks)}
+                    className="p-4 rounded-2xl bg-gradient-to-br from-blue-500/20 via-indigo-500/10 to-transparent border border-blue-500/30 hover:border-blue-500/60 transition-all cursor-pointer group space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="w-9 h-9 rounded-xl bg-blue-500/30 text-blue-400 flex items-center justify-center">
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300">
+                        {hiResTracks.length} tracks
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white group-hover:text-blue-400 transition-colors">
+                        Hi-Res Lossless Collection
+                      </h4>
+                      <p className="text-[11px] text-neutral-400">FLAC 24-bit / 96kHz Master Quality</p>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => onPlayAlbum(karaokeTracks)}
+                    className="p-4 rounded-2xl bg-gradient-to-br from-primary/20 via-purple-500/10 to-transparent border border-primary/30 hover:border-primary/60 transition-all cursor-pointer group space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="w-9 h-9 rounded-xl bg-primary/30 text-primary flex items-center justify-center">
+                        <Mic2 className="w-5 h-5" />
+                      </div>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-primary/20 text-primary">
+                        {karaokeTracks.length} tracks
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white group-hover:text-primary transition-colors">
+                        Karaoke Ready
+                      </h4>
+                      <p className="text-[11px] text-neutral-400">Time-Synced Lyrics Available</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* User Playlists List */}
+                <div className="space-y-2 pt-2">
+                  <h4 className="text-xs font-bold text-neutral-300 font-mono">Custom Playlists</h4>
+                  {playlists.length === 0 ? (
+                    <div className="p-8 rounded-2xl bg-white/[0.02] border border-dashed border-white/10 text-center space-y-2">
+                      <ListMusic className="w-8 h-8 text-neutral-500 mx-auto" />
+                      <p className="text-xs text-neutral-400">No playlists yet. Create or import your first .m3u playlist!</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {playlists.map(pl => (
+                        <div
+                          key={pl.id}
+                          onClick={() => setSelectedPlaylistId(pl.id)}
+                          className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all cursor-pointer group"
+                        >
+                          <div className="flex items-center space-x-3 min-w-0 flex-1">
+                            <div className="w-10 h-10 rounded-xl bg-neutral-800 flex items-center justify-center text-primary group-hover:scale-105 transition-transform shrink-0 border border-white/10">
+                              <ListMusic className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-xs font-bold text-white truncate group-hover:text-primary transition-colors">
+                                {pl.name}
+                              </h4>
+                              <p className="text-[10px] text-neutral-400 font-mono">
+                                {pl.trackIds.length} tracks {pl.description ? `• ${pl.description}` : ""}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-1.5">
+                            <a
+                              href={`/api/playlists/${pl.id}/export.m3u8`}
+                              download
+                              onClick={e => e.stopPropagation()}
+                              title="Export .m3u8"
+                              className="p-1.5 rounded-lg hover:bg-white/10 text-neutral-400 hover:text-white"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                            <button
+                              onClick={e => handleDeletePlaylist(pl.id, e)}
+                              title="Delete Playlist"
+                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-neutral-400 hover:text-red-400"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* Selected Playlist Detail View */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={() => setSelectedPlaylistId(null)}
+                      className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-xs font-mono text-neutral-300"
+                    >
+                      ← Back
+                    </button>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">{selectedPlaylist?.name}</h3>
+                      <p className="text-[11px] text-neutral-400 font-mono">
+                        {selectedPlaylistTracks.length} tracks • {selectedPlaylist?.description || "Custom Playlist"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onPlayAlbum(selectedPlaylistTracks)}
+                      disabled={selectedPlaylistTracks.length === 0}
+                      className="px-4 py-1.5 rounded-full bg-primary text-black font-bold text-xs flex items-center gap-1.5 hover:bg-primary/90 transition-all disabled:opacity-50"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-black" /> Play All
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  {selectedPlaylistTracks.map(t => (
+                    <div
+                      key={t.id}
+                      onDoubleClick={() => onPlayTrack(t)}
+                      className="group flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-neutral-300"
+                    >
+                      <div className="flex items-center space-x-3 min-w-0 flex-1">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-white truncate">{t.title}</p>
+                          <p className="text-[11px] text-neutral-400 truncate">{t.artist} • {t.album}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2 text-[11px] font-mono text-neutral-400">
+                        <span>{formatSeconds(t.duration)}</span>
+                        <button
+                          onClick={() => onPlayTrack(t)}
+                          className="p-1 rounded-full hover:bg-white/15 text-neutral-400 hover:text-white"
+                          title="Play"
+                        >
+                          <Play className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleRemoveTrackFromPlaylist(selectedPlaylist!.id, t.id)}
+                          className="p-1 rounded-full hover:bg-red-500/20 text-neutral-400 hover:text-red-400"
+                          title="Remove from playlist"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Modal: Create New Playlist */}
+      {isCreatingPlaylist && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-white/10 rounded-2xl p-5 w-full max-w-md space-y-4 shadow-2xl">
+            <h3 className="text-sm font-bold text-white">Create New Playlist</h3>
+            <input
+              type="text"
+              placeholder="Playlist Name"
+              value={newPlaylistName}
+              onChange={e => setNewPlaylistName(e.target.value)}
+              className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-primary"
+              autoFocus
+            />
+            <input
+              type="text"
+              placeholder="Description (Optional)"
+              value={newPlaylistDesc}
+              onChange={e => setNewPlaylistDesc(e.target.value)}
+              className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-primary"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsCreatingPlaylist(false)}
+                className="px-4 py-1.5 rounded-full text-xs font-semibold text-neutral-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreatePlaylist}
+                disabled={!newPlaylistName.trim()}
+                className="px-4 py-1.5 rounded-full text-xs font-bold bg-primary text-black disabled:opacity-50"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add Track To Playlist */}
+      {addToPlaylistTrack && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-white/10 rounded-2xl p-5 w-full max-w-md space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white">Add Track to Playlist</h3>
+              <button onClick={() => setAddToPlaylistTrack(null)} className="text-neutral-400 hover:text-white">✕</button>
+            </div>
+            <p className="text-xs text-neutral-400 truncate">
+              {addToPlaylistTrack.title} — {addToPlaylistTrack.artist}
+            </p>
+
+            <div className="space-y-1.5 max-h-56 overflow-y-auto no-scrollbar">
+              {playlists.map(pl => {
+                const alreadyIn = pl.trackIds.includes(addToPlaylistTrack.id);
+                return (
+                  <button
+                    key={pl.id}
+                    onClick={() => handleAddTrackToPlaylist(pl.id, addToPlaylistTrack.id)}
+                    disabled={alreadyIn}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl text-left border transition-all ${
+                      alreadyIn
+                        ? "bg-white/5 border-white/5 text-neutral-500 cursor-not-allowed"
+                        : "bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white"
+                    }`}
+                  >
+                    <span className="text-xs font-semibold">{pl.name}</span>
+                    <span className="text-[10px] font-mono text-neutral-400">
+                      {alreadyIn ? "✓ Added" : "+ Add"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

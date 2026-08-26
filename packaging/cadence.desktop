@@ -1,0 +1,18 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Cadence
+GenericName=Studio Music Player
+Comment=High-Fidelity Studio Linux Audio Engine with 32:9 Panoramic Turntable UI & Synced Karaoke Lyrics
+Exec=/home/darnell/Projects/cadence/cadence.sh
+Icon=/home/darnell/.local/share/icons/cadence.png
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+StartupWMClass=Cadence
+Keywords=Music;Audio;Player;FLAC;Lyrics;Vinyl;Equalizer;Turntable;
+MimeType=audio/flac;audio/mpeg;audio/wav;audio/x-wav;audio/ogg;audio/aac;audio/mp4;
+Actions=Play;
+
+[Desktop Action Play]
+Name=Launch Cadence
+Exec=/home/darnell/Projects/cadence/cadence.sh

@@ -1,11 +1,11 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, globalShortcut, ipcMain, Notification } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
 const { fork, spawn } = require("child_process");
 
 // Set Application Name
-app.name = "AuraDeck";
+app.name = "Cadence";
 
 let mainWindow = null;
 let serverProcess = null;
@@ -56,6 +56,27 @@ function startBackendServer() {
   }
 }
 
+function registerGlobalMediaKeys() {
+  const mediaKeys = [
+    { key: "MediaPlayPause", action: "play-pause" },
+    { key: "MediaNextTrack", action: "next" },
+    { key: "MediaPreviousTrack", action: "previous" },
+    { key: "MediaStop", action: "stop" }
+  ];
+
+  for (const { key, action } of mediaKeys) {
+    try {
+      globalShortcut.register(key, () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("mpris-media-key", action);
+        }
+      });
+    } catch (err) {
+      console.warn(`[AuraDeck Electron] Could not bind global shortcut ${key}:`, err);
+    }
+  }
+}
+
 async function createWindow() {
   const iconPath = path.join(__dirname, "../packaging/auradeck.png");
 
@@ -69,6 +90,7 @@ async function createWindow() {
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false // Allow local audio streaming and CORS
@@ -103,6 +125,37 @@ async function createWindow() {
   });
 }
 
+// IPC Handlers
+ipcMain.on("track-changed", (_event, track) => {
+  if (Notification.isSupported() && track && track.title) {
+    try {
+      const iconPath = path.join(__dirname, "../packaging/auradeck.png");
+      const notif = new Notification({
+        title: track.title,
+        body: `${track.artist || "Unknown Artist"} • ${track.album || "Unknown Album"}\n[${track.format || "AUDIO"}]`,
+        icon: fs.existsSync(iconPath) ? iconPath : undefined,
+        silent: true
+      });
+      notif.show();
+    } catch {}
+  }
+});
+
+ipcMain.on("window-minimize", () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+});
+
+ipcMain.on("window-maximize", () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  }
+});
+
+ipcMain.on("window-close", () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+});
+
 app.whenReady().then(async () => {
   const isServerRunning = await checkUrl(PROD_URL);
   if (!isServerRunning) {
@@ -110,12 +163,17 @@ app.whenReady().then(async () => {
   }
 
   await createWindow();
+  registerGlobalMediaKeys();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", () => {

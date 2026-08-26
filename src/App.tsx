@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Disc3, Sliders, Monitor, LayoutGrid, Sparkles, BookOpen, Music2, Maximize2, Minimize2, ListMusic, Mic2, Activity } from "lucide-react";
 import type { Track, DeckMode, VisualizerMode, LayoutMode } from "./types";
@@ -44,6 +44,16 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  const handleTrackEndRef = useRef<() => void>(() => {});
+  const handlePreviousRef = useRef<() => void>(() => {});
+  const handleNextRef = useRef<() => void>(() => {});
+
+  const audioEngine = useAudioEngine({
+    onTrackEnd: () => handleTrackEndRef.current(),
+    onPreviousTrack: () => handlePreviousRef.current(),
+    onNextTrack: () => handleNextRef.current()
+  });
+
   // Track end callback
   const handleTrackEnd = useCallback(() => {
     if (repeatMode === "one" && audioEngine.currentTrack) {
@@ -69,9 +79,40 @@ export const App: React.FC = () => {
       setCurrentIndex(nextIdx);
       audioEngine.playTrack(tracks[nextIdx]);
     }
-  }, [queue, tracks, currentIndex, isShuffle, repeatMode]);
+  }, [queue, tracks, currentIndex, isShuffle, repeatMode, audioEngine]);
 
-  const audioEngine = useAudioEngine(handleTrackEnd);
+  const handlePrevious = useCallback(() => {
+    if (audioEngine.currentTime > 3) {
+      audioEngine.seek(0);
+      return;
+    }
+    if (tracks.length > 0 && currentIndex > 0) {
+      const prevIdx = currentIndex - 1;
+      setCurrentIndex(prevIdx);
+      audioEngine.playTrack(tracks[prevIdx]);
+    }
+  }, [audioEngine, tracks, currentIndex]);
+
+  const handleNext = useCallback(() => {
+    handleTrackEnd();
+  }, [handleTrackEnd]);
+
+  handleTrackEndRef.current = handleTrackEnd;
+  handlePreviousRef.current = handlePrevious;
+  handleNextRef.current = handleNext;
+
+  // Listen to Global Linux Hardware Media Keys from Electron Main Process
+  useEffect(() => {
+    if ((window as any).electronAPI?.onMediaKey) {
+      const cleanup = (window as any).electronAPI.onMediaKey((action: string) => {
+        if (action === "play-pause") audioEngine.togglePlayPause();
+        else if (action === "next") handleNext();
+        else if (action === "previous") handlePrevious();
+        else if (action === "stop") audioEngine.seek(0);
+      });
+      return cleanup;
+    }
+  }, [audioEngine, handleNext, handlePrevious]);
 
   const fetchLibrary = useCallback(() => {
     fetch("/api/tracks")
@@ -116,21 +157,6 @@ export const App: React.FC = () => {
     setQueue(prev => [...prev, track]);
   };
 
-  const handlePrevious = () => {
-    if (audioEngine.currentTime > 3) {
-      audioEngine.seek(0);
-      return;
-    }
-    if (tracks.length > 0 && currentIndex > 0) {
-      const prevIdx = currentIndex - 1;
-      setCurrentIndex(prevIdx);
-      audioEngine.playTrack(tracks[prevIdx]);
-    }
-  };
-
-  const handleNext = () => {
-    handleTrackEnd();
-  };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -190,7 +216,7 @@ export const App: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-black tracking-wider uppercase bg-gradient-to-r from-white via-neutral-200 to-neutral-400 bg-clip-text text-transparent">
-                AuraDeck
+                Cadence
               </h1>
               <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-white/10 text-neutral-300 border border-white/10">
                 Native Standalone
@@ -563,15 +589,17 @@ export const App: React.FC = () => {
         />
       </footer>
 
-      {/* 10-Band Equalizer Modal */}
+      {/* 10-Band Equalizer & DSP Modal */}
       <AnimatePresence>
         {isEqualizerOpen && (
           <EqualizerModal
             isOpen={isEqualizerOpen}
             onClose={() => setIsEqualizerOpen(false)}
             eqGains={audioEngine.eqGains}
+            dspSettings={audioEngine.dspSettings}
             onSetGain={audioEngine.setEqGain}
             onSetAllGains={audioEngine.setAllEqGains}
+            onUpdateDspSettings={audioEngine.updateDspSettings}
           />
         )}
       </AnimatePresence>

@@ -1,8 +1,9 @@
 {
-  "name": "auradeck",
-  "productName": "AuraDeck",
+  "name": "cadence",
+  "productName": "Cadence",
   "version": "1.0.0",
-  "description": "High-Fidelity Studio Linux Audio Player & Synced Karaoke Lyrics Engine",
+  "description": "High-Fidelity Studio Audio Player & Synced Karaoke Lyrics Engine",
+  "author": "Darnell",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -10,6 +11,8 @@
     "build:client": "tsc -b && vite build",
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --outfile=dist-server/index.mjs --packages=external",
     "build": "npm run build:client && npm run build:server",
+    "build:linux": "npm run build && electron-builder --linux AppImage tar.gz",
+    "build:appimage": "npm run build && electron-builder --linux AppImage",
     "build:win": "npm run build && electron-builder --win --x64",
     "start": "electron electron/main.cjs",
     "lint": "oxlint",

@@ -13,12 +13,20 @@ const PORT = 3001;
 
 app.use(cors({
   origin: "*",
-  methods: ["GET", "HEAD", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
   allowedHeaders: ["Range", "Accept-Ranges", "Content-Type", "Origin", "X-Requested-With"]
 }));
 app.use(express.json());
 
 const MUSIC_DIR = path.resolve(process.env.MUSIC_DIR || path.join(process.env.HOME || os.homedir(), "Music"));
+const USER_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "cadence");
+const LEGACY_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "auradeck");
+const PLAYLISTS_FILE = path.join(USER_DATA_DIR, "playlists.json");
+
+// Ensure config dir exists
+if (!fs.existsSync(USER_DATA_DIR)) {
+  try { fs.mkdirSync(USER_DATA_DIR, { recursive: true }); } catch {}
+}
 
 export interface LyricLine {
   time: number;
@@ -40,6 +48,17 @@ export interface Track {
   coverPath?: string;
   hasLyrics: boolean;
   size: number;
+  replayGain?: number;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  description?: string;
+  trackIds: string[];
+  createdAt: number;
+  updatedAt: number;
+  coverPath?: string;
 }
 
 let cachedTracks: Track[] = [];
@@ -48,6 +67,34 @@ let scanCompletePromise: Promise<Track[]> | null = null;
 
 const AUDIO_EXTENSIONS = new Set([".flac", ".mp3", ".wav", ".m4a", ".ogg", ".opus", ".aac", ".wma"]);
 const IMAGE_NAMES = ["cover.jpg", "cover.png", "folder.jpg", "folder.png", "discart.jpg", "Cover.jpg", "front.jpg"];
+
+// Playlists storage helpers
+function loadPlaylists(): Playlist[] {
+  try {
+    if (fs.existsSync(PLAYLISTS_FILE)) {
+      const data = fs.readFileSync(PLAYLISTS_FILE, "utf-8");
+      return JSON.parse(data);
+    }
+    const legacyFile = path.join(LEGACY_DATA_DIR, "playlists.json");
+    if (fs.existsSync(legacyFile)) {
+      const data = fs.readFileSync(legacyFile, "utf-8");
+      const list = JSON.parse(data);
+      savePlaylists(list);
+      return list;
+    }
+  } catch (err) {
+    console.error("[Cadence Server] Error reading playlists:", err);
+  }
+  return [];
+}
+
+function savePlaylists(playlists: Playlist[]) {
+  try {
+    fs.writeFileSync(PLAYLISTS_FILE, JSON.stringify(playlists, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[AuraDeck Server] Error saving playlists:", err);
+  }
+}
 
 export function parseLrc(content: string): LyricLine[] {
   const lines = content.split(/\r?\n/);
@@ -123,6 +170,16 @@ function findLyrics(trackPath: string): { hasLyrics: boolean; path?: string } {
   return { hasLyrics: false };
 }
 
+function parseReplayGain(gainStr?: string): number | undefined {
+  if (!gainStr) return undefined;
+  const match = gainStr.match(/([-+]?\d+(\.\d+)?)/);
+  if (match) {
+    const val = parseFloat(match[1]);
+    return isNaN(val) ? undefined : val;
+  }
+  return undefined;
+}
+
 async function extractMetadata(filePath: string): Promise<Partial<Track>> {
   try {
     const { stdout } = await execFileAsync("ffprobe", [
@@ -151,6 +208,13 @@ async function extractMetadata(filePath: string): Promise<Partial<Track>> {
     const bitrate = parseInt(format.bit_rate || "0", 10);
     const sampleRate = parseInt(stream.sample_rate || "44100", 10);
 
+    const replayGain = parseReplayGain(
+      tagsLower.replaygain_track_gain ||
+      tagsLower.replaygain_album_gain ||
+      tagsLower["r128_track_gain"] ||
+      tagsLower["replaygain_gain"]
+    );
+
     return {
       title,
       artist,
@@ -160,6 +224,7 @@ async function extractMetadata(filePath: string): Promise<Partial<Track>> {
       duration: isNaN(duration) ? 0 : duration,
       bitrate,
       sampleRate,
+      replayGain
     };
   } catch (err) {
     return {};
@@ -243,7 +308,8 @@ async function scanLibrary(): Promise<Track[]> {
       filePath: fullPath,
       coverPath,
       hasLyrics,
-      size: stats.size
+      size: stats.size,
+      replayGain: meta.replayGain
     };
   });
 
@@ -283,6 +349,122 @@ app.get("/api/rescan", async (req, res) => {
   } finally {
     isScanning = false;
   }
+});
+
+// Playlists API
+app.get("/api/playlists", (_req, res) => {
+  const playlists = loadPlaylists();
+  res.json({ playlists });
+});
+
+app.post("/api/playlists", (req, res) => {
+  const { name, description, trackIds } = req.body;
+  if (!name || typeof name !== "string") {
+    return res.status(400).json({ error: "Playlist name is required" });
+  }
+  const playlists = loadPlaylists();
+  const newPlaylist: Playlist = {
+    id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    name: name.trim(),
+    description: (description || "").trim(),
+    trackIds: Array.isArray(trackIds) ? trackIds : [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  playlists.push(newPlaylist);
+  savePlaylists(playlists);
+  res.json({ playlist: newPlaylist });
+});
+
+app.put("/api/playlists/:id", (req, res) => {
+  const { id } = req.params;
+  const { name, description, trackIds } = req.body;
+  const playlists = loadPlaylists();
+  const index = playlists.findIndex(p => p.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: "Playlist not found" });
+  }
+  const existing = playlists[index];
+  const updated: Playlist = {
+    ...existing,
+    name: name !== undefined ? name.trim() : existing.name,
+    description: description !== undefined ? description.trim() : existing.description,
+    trackIds: Array.isArray(trackIds) ? trackIds : existing.trackIds,
+    updatedAt: Date.now()
+  };
+  playlists[index] = updated;
+  savePlaylists(playlists);
+  res.json({ playlist: updated });
+});
+
+app.delete("/api/playlists/:id", (req, res) => {
+  const { id } = req.params;
+  let playlists = loadPlaylists();
+  const initialLen = playlists.length;
+  playlists = playlists.filter(p => p.id !== id);
+  if (playlists.length === initialLen) {
+    return res.status(404).json({ error: "Playlist not found" });
+  }
+  savePlaylists(playlists);
+  res.json({ success: true, id });
+});
+
+// Export Playlist as M3U8
+app.get("/api/playlists/:id/export.m3u8", (req, res) => {
+  const { id } = req.params;
+  const playlists = loadPlaylists();
+  const playlist = playlists.find(p => p.id === id);
+  if (!playlist) return res.status(404).send("Playlist not found");
+
+  const lines = ["#EXTM3U", `#PLAYLIST:${playlist.name}`];
+  for (const trackId of playlist.trackIds) {
+    const track = cachedTracks.find(t => t.id === trackId);
+    if (track) {
+      lines.push(`#EXTINF:${Math.round(track.duration)},${track.artist} - ${track.title}`);
+      lines.push(track.filePath);
+    }
+  }
+
+  const m3u8Content = lines.join("\n");
+  res.setHeader("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(playlist.name)}.m3u8"`);
+  res.send(m3u8Content);
+});
+
+// Import M3U/M3U8 file
+app.post("/api/playlists/import", (req, res) => {
+  const { name, content } = req.body;
+  if (!content || typeof content !== "string") {
+    return res.status(400).json({ error: "M3U content required" });
+  }
+
+  const lines = content.split(/\r?\n/);
+  const matchedTrackIds: string[] = [];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    // Try finding by exact file path or base name
+    const found = cachedTracks.find(t => t.filePath === trimmed || path.basename(t.filePath) === path.basename(trimmed));
+    if (found && !matchedTrackIds.includes(found.id)) {
+      matchedTrackIds.push(found.id);
+    }
+  }
+
+  const playlists = loadPlaylists();
+  const playlistName = (name || "Imported Playlist").replace(/\.m3u8?$/i, "").trim();
+  const newPlaylist: Playlist = {
+    id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    name: playlistName,
+    description: `Imported with ${matchedTrackIds.length} tracks`,
+    trackIds: matchedTrackIds,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  playlists.push(newPlaylist);
+  savePlaylists(playlists);
+  res.json({ playlist: newPlaylist, matchedCount: matchedTrackIds.length });
 });
 
 app.get("/api/lyrics", async (req, res) => {
@@ -437,4 +619,3 @@ if (fs.existsSync(DIST_DIR)) {
 app.listen(PORT, () => {
   console.log(`[AuraDeck Audio Server] Running on http://localhost:${PORT}`);
 });
-
