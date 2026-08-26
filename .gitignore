@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Production build outputs
+dist/
+dist-electron/
+release/
+
+# System / logs
+*.log
+.DS_Store
+*.tmp
+*.tsbuildinfo
+.env
+.env.local

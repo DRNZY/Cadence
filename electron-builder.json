@@ -1,0 +1,50 @@
+{
+  "appId": "com.darnell.cadence",
+  "productName": "Cadence",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "package.json"
+  ],
+  "asar": true,
+  "win": {
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      },
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "public/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Cadence"
+  },
+  "linux": {
+    "target": [
+      "AppImage",
+      "tar.gz"
+    ],
+    "icon": "public/icon.png",
+    "category": "Audio",
+    "mimeTypes": [
+      "audio/flac",
+      "audio/mpeg",
+      "audio/x-wav",
+      "audio/mp4",
+      "audio/ogg",
+      "audio/opus",
+      "audio/aac"
+    ]
+  }
+}
