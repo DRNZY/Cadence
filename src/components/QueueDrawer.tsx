@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ListMusic, Trash2, ArrowUp, ArrowDown, X, Play, Music, Info, HardDrive } from "lucide-react";
 import { Track } from "../types";
@@ -22,6 +22,9 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   onClearQueue,
   onMoveQueueItem
 }) => {
+  const queueContainerRef = useRef<HTMLDivElement | null>(null);
+  const queueItemRefs = useRef<(HTMLDivElement | null)[]>([]);
+
   const formatSeconds = (sec: number) => {
     const mins = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
@@ -31,6 +34,20 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   const formatBytes = (bytes: number) => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  // Auto-scroll to active queue item
+  useEffect(() => {
+    if (!currentTrack || queue.length === 0) return;
+    const currentIdx = queue.findIndex(t => t.id === currentTrack.id || t.filePath === currentTrack.filePath);
+    if (currentIdx >= 0) {
+      const container = queueContainerRef.current;
+      const el = queueItemRefs.current[currentIdx];
+      if (container && el) {
+        const targetTop = el.offsetTop - (container.clientHeight / 2) + (el.offsetHeight / 2);
+        container.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+      }
+    }
+  }, [currentTrack, queue]);
 
   return (
     <div className="flex flex-col h-full w-full p-4 select-none relative overflow-hidden space-y-4">
@@ -87,61 +104,76 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
         </div>
       )}
 
-      {/* Queue Tracks List */}
-      <div className="flex-1 overflow-y-auto space-y-1 pr-1 no-scrollbar">
+      {/* Queue Tracks List with smooth auto-scrolling */}
+      <div
+        ref={queueContainerRef}
+        className="flex-1 overflow-y-auto space-y-1 pr-1 no-scrollbar scroll-smooth"
+      >
         {queue.length > 0 ? (
-          queue.map((t, idx) => (
-            <div
-              key={`${t.id}-${idx}`}
-              className="group flex items-center justify-between p-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-left transition-all"
-            >
-              <div className="flex items-center space-x-2.5 min-w-0 flex-1">
-                <span className="text-[10px] font-mono text-neutral-500 w-4 text-center shrink-0">
-                  {idx + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-white truncate">{t.title}</p>
-                  <p className="text-[10px] text-neutral-400 truncate">{t.artist}</p>
+          queue.map((t, idx) => {
+            const isItemPlaying = currentTrack && (t.id === currentTrack.id || t.filePath === currentTrack.filePath);
+            return (
+              <div
+                key={`${t.id}-${idx}`}
+                ref={el => {
+                  queueItemRefs.current[idx] = el;
+                }}
+                className={`group flex items-center justify-between p-2 rounded-xl border text-left transition-all ${
+                  isItemPlaying
+                    ? "bg-primary/20 border-primary/40 shadow-sm shadow-primary/20"
+                    : "bg-white/[0.02] hover:bg-white/[0.06] border-white/5"
+                }`}
+              >
+                <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                  <span className={`text-[10px] font-mono w-4 text-center shrink-0 ${isItemPlaying ? "text-primary font-bold" : "text-neutral-500"}`}>
+                    {isItemPlaying && isPlaying ? "▶" : idx + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-xs font-bold truncate ${isItemPlaying ? "text-primary" : "text-white"}`}>
+                      {t.title}
+                    </p>
+                    <p className="text-[10px] text-neutral-400 truncate">{t.artist}</p>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center space-x-1 shrink-0">
+                  <button
+                    onClick={() => onPlayTrack(t)}
+                    className="p-1 rounded hover:bg-white/15 text-neutral-400 hover:text-white"
+                    title="Play Now"
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                  </button>
+                  {idx > 0 && (
+                    <button
+                      onClick={() => onMoveQueueItem(idx, idx - 1)}
+                      className="p-1 rounded hover:bg-white/15 text-neutral-400 hover:text-white"
+                      title="Move Up"
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                  )}
+                  {idx < queue.length - 1 && (
+                    <button
+                      onClick={() => onMoveQueueItem(idx, idx + 1)}
+                      className="p-1 rounded hover:bg-white/15 text-neutral-400 hover:text-white"
+                      title="Move Down"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => onRemoveFromQueue(idx)}
+                    className="p-1 rounded hover:bg-red-500/20 text-neutral-400 hover:text-red-400"
+                    title="Remove"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center space-x-1 shrink-0">
-                <button
-                  onClick={() => onPlayTrack(t)}
-                  className="p-1 rounded hover:bg-white/15 text-neutral-400 hover:text-white"
-                  title="Play Now"
-                >
-                  <Play className="w-3 h-3 fill-current" />
-                </button>
-                {idx > 0 && (
-                  <button
-                    onClick={() => onMoveQueueItem(idx, idx - 1)}
-                    className="p-1 rounded hover:bg-white/15 text-neutral-400 hover:text-white"
-                    title="Move Up"
-                  >
-                    <ArrowUp className="w-3 h-3" />
-                  </button>
-                )}
-                {idx < queue.length - 1 && (
-                  <button
-                    onClick={() => onMoveQueueItem(idx, idx + 1)}
-                    className="p-1 rounded hover:bg-white/15 text-neutral-400 hover:text-white"
-                    title="Move Down"
-                  >
-                    <ArrowDown className="w-3 h-3" />
-                  </button>
-                )}
-                <button
-                  onClick={() => onRemoveFromQueue(idx)}
-                  className="p-1 rounded hover:bg-red-500/20 text-neutral-400 hover:text-red-400"
-                  title="Remove"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="flex flex-col items-center justify-center h-44 text-center space-y-2 text-neutral-500">
             <Music className="w-6 h-6" />

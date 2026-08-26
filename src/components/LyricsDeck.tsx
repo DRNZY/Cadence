@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic2, Music, Sparkles, Globe, RefreshCw, Search, Check, AlertCircle } from "lucide-react";
+import { Mic2, Music, Globe, RefreshCw, Search, Sparkles, ChevronDown } from "lucide-react";
 import { Track, LyricLine, LyricsState } from "../types";
 
 interface LyricsDeckProps {
@@ -25,10 +25,14 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
   const [searchTitle, setSearchTitle] = useState("");
   const [isSearchingOnline, setIsSearchingOnline] = useState(false);
 
-  const activeLineRef = useRef<HTMLDivElement | null>(null);
+  // Manual scroll lockout state
+  const [isUserInteracting, setIsUserInteracting] = useState(false);
+  const userScrollTimeoutRef = useRef<number | null>(null);
+
+  const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const fetchLyrics = (customArtist?: string, customTitle?: string) => {
+  const fetchLyrics = useCallback((customArtist?: string, customTitle?: string) => {
     if (!currentTrack) {
       setLyricsState({ synced: false, source: "none", lines: [] });
       return;
@@ -67,10 +71,14 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
         setIsLoading(false);
         setIsSearchingOnline(false);
       });
-  };
+  }, [currentTrack]);
 
   // Fetch lyrics whenever track changes
   useEffect(() => {
+    setIsUserInteracting(false);
+    if (userScrollTimeoutRef.current) {
+      window.clearTimeout(userScrollTimeoutRef.current);
+    }
     if (currentTrack) {
       setSearchArtist(currentTrack.artist || "");
       setSearchTitle(currentTrack.title || "");
@@ -78,7 +86,7 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
     } else {
       setLyricsState({ synced: false, source: "none", lines: [] });
     }
-  }, [currentTrack]);
+  }, [currentTrack, fetchLyrics]);
 
   // Find active line index based on currentTime
   let activeIndex = -1;
@@ -94,15 +102,74 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
     }
   }
 
-  // Smooth scroll active line to center
+  // Smoothly scroll active line to center
+  const scrollToActive = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const container = scrollContainerRef.current;
+    if (!container || activeIndex < 0) return;
+    const targetEl = lineRefs.current[activeIndex];
+    if (!targetEl) return;
+
+    const containerHeight = container.clientHeight;
+    const elementTop = targetEl.offsetTop;
+    const elementHeight = targetEl.offsetHeight;
+
+    // Calculate vertical position so active line is in the vertical center
+    const targetScrollTop = elementTop - (containerHeight / 2) + (elementHeight / 2);
+
+    container.scrollTo({
+      top: Math.max(0, targetScrollTop),
+      behavior
+    });
+  }, [activeIndex]);
+
+  // Trigger auto-scroll on activeIndex change if not in manual interaction
   useEffect(() => {
-    if (activeLineRef.current && scrollContainerRef.current && lyricsState.synced) {
-      activeLineRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "center"
-      });
+    if (!isUserInteracting && lyricsState.synced && activeIndex >= 0) {
+      scrollToActive("smooth");
     }
-  }, [activeIndex, lyricsState.synced]);
+  }, [activeIndex, isUserInteracting, lyricsState.synced, scrollToActive]);
+
+  // Detect user manual scroll/drag
+  const handleUserWheelOrTouch = () => {
+    setIsUserInteracting(true);
+    if (userScrollTimeoutRef.current) {
+      window.clearTimeout(userScrollTimeoutRef.current);
+    }
+    // Auto-resume after 4 seconds of idle
+    userScrollTimeoutRef.current = window.setTimeout(() => {
+      setIsUserInteracting(false);
+    }, 4000);
+  };
+
+  const handleResumeSync = () => {
+    setIsUserInteracting(false);
+    if (userScrollTimeoutRef.current) {
+      window.clearTimeout(userScrollTimeoutRef.current);
+    }
+    scrollToActive("smooth");
+  };
+
+  const handleLineClick = (line: LyricLine, idx: number) => {
+    if (lyricsState.synced) {
+      setIsUserInteracting(false);
+      if (userScrollTimeoutRef.current) {
+        window.clearTimeout(userScrollTimeoutRef.current);
+      }
+      onSeek(line.time);
+      
+      // Instantly align
+      const container = scrollContainerRef.current;
+      const targetEl = lineRefs.current[idx];
+      if (container && targetEl) {
+        const containerHeight = container.clientHeight;
+        const targetScrollTop = targetEl.offsetTop - (containerHeight / 2) + (targetEl.offsetHeight / 2);
+        container.scrollTo({
+          top: Math.max(0, targetScrollTop),
+          behavior: "smooth"
+        });
+      }
+    }
+  };
 
   const handleManualSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,11 +276,17 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Lyrics Scrollable Body */}
+      {/* Lyrics Scrollable Body with precision native scrolling & interaction listeners */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden py-12 px-2 space-y-6 relative no-scrollbar"
-        style={{ scrollBehavior: "smooth" }}
+        onWheel={handleUserWheelOrTouch}
+        onTouchStart={handleUserWheelOrTouch}
+        onPointerDown={handleUserWheelOrTouch}
+        className="flex-1 overflow-y-auto overflow-x-hidden px-2 space-y-6 relative no-scrollbar"
+        style={{
+          paddingTop: "38vh",
+          paddingBottom: "38vh"
+        }}
       >
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-neutral-400 space-y-3">
@@ -229,8 +302,10 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
             return (
               <motion.div
                 key={`${idx}-${line.time}`}
-                ref={isActive ? activeLineRef : null}
-                onClick={() => lyricsState.synced && onSeek(line.time)}
+                ref={el => {
+                  lineRefs.current[idx] = el;
+                }}
+                onClick={() => handleLineClick(line, idx)}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{
                   opacity: !lyricsState.synced
@@ -285,7 +360,27 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
         )}
       </div>
 
-      {/* Floating Gradient Mask for top and bottom scroll fades */}
+      {/* Floating "Sync to Playhead" Resume Pill */}
+      <AnimatePresence>
+        {isUserInteracting && lyricsState.synced && activeIndex >= 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30"
+          >
+            <button
+              onClick={handleResumeSync}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-white text-xs font-bold shadow-[0_4px_20px_var(--primary-glow)] hover:scale-105 active:scale-95 transition-all border border-white/20"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Sync Lyrics to Playhead</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Gradient Masks */}
       <div className="pointer-events-none absolute top-12 left-0 right-0 h-16 bg-gradient-to-b from-[#0e1017] to-transparent z-10" />
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#0e1017] to-transparent z-10" />
     </div>
