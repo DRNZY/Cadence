@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { AnimatePresence } from "framer-motion";
-import { Disc3, Sliders, Monitor } from "lucide-react";
-import type { Track, DeckMode, VisualizerMode } from "./types";
+import { AnimatePresence, motion } from "framer-motion";
+import { Disc3, Sliders, Monitor, LayoutGrid, Sparkles, BookOpen, Music2, Maximize2, Minimize2, ListMusic, Mic2, Activity } from "lucide-react";
+import type { Track, DeckMode, VisualizerMode, LayoutMode } from "./types";
 import { useAudioEngine } from "./hooks/useAudioEngine";
 import { extractColors, applyThemeColors } from "./utils/colorExtractor";
 import { LibraryBrowser } from "./components/LibraryBrowser";
@@ -18,11 +18,33 @@ export const App: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
   const [deckMode, setDeckMode] = useState<DeckMode>("vinyl");
   const [visualizerMode, setVisualizerMode] = useState<VisualizerMode>("bars");
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("studio");
+  const [rightPanelTab, setRightPanelTab] = useState<"split" | "lyrics" | "queue">("split");
   const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<"off" | "all" | "one">("off");
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Track end callback ref
+  // Auto-detect screen aspect ratio & dimensions on mount/resize
+  useEffect(() => {
+    const handleResize = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const aspect = w / (h || 1);
+      // Auto-set 32:9 for ultrawide, otherwise standard 16:9 studio
+      if (aspect >= 2.1 || w >= 2400) {
+        setLayoutMode("panoramic");
+      } else {
+        setLayoutMode("studio");
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Track end callback
   const handleTrackEnd = useCallback(() => {
     if (repeatMode === "one" && audioEngine.currentTrack) {
       audioEngine.playTrack(audioEngine.currentTrack);
@@ -110,6 +132,14 @@ export const App: React.FC = () => {
     handleTrackEnd();
   };
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement).tagName)) return;
@@ -135,6 +165,9 @@ export const App: React.FC = () => {
         audioEngine.toggleMute();
       } else if (e.key.toLowerCase() === "e") {
         setIsEqualizerOpen(prev => !prev);
+      } else if (e.key.toLowerCase() === "f" || e.key === "F11") {
+        e.preventDefault();
+        toggleFullscreen();
       }
     };
 
@@ -148,113 +181,363 @@ export const App: React.FC = () => {
       <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-primary/15 blur-3xl pointer-events-none" />
       <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
 
-      <header className="h-14 w-full px-6 flex items-center justify-between border-b border-white/5 z-20 bg-neutral-950/40 backdrop-blur-xl shrink-0">
+      {/* Top Studio TitleBar & Navigation */}
+      <header className="h-14 w-full px-5 flex items-center justify-between border-b border-white/5 z-20 bg-neutral-950/60 backdrop-blur-xl shrink-0">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary to-blue-500 flex items-center justify-center shadow-lg shadow-primary/20">
             <Disc3 className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-wider uppercase bg-gradient-to-r from-white via-neutral-200 to-neutral-400 bg-clip-text text-transparent">
-              AuraDeck
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-black tracking-wider uppercase bg-gradient-to-r from-white via-neutral-200 to-neutral-400 bg-clip-text text-transparent">
+                AuraDeck
+              </h1>
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-white/10 text-neutral-300 border border-white/10">
+                Native Standalone
+              </span>
+            </div>
             <p className="text-[10px] font-mono text-neutral-400 -mt-0.5">Studio Hi-Fi Engine</p>
           </div>
         </div>
 
-        <div className="hidden lg:flex items-center space-x-3 bg-black/40 px-4 py-1.5 rounded-full border border-white/10 text-xs font-mono">
-          <span className="flex items-center gap-1.5 text-neutral-300">
+        {/* Center: Layout Preset Selector Pills */}
+        <div className="hidden md:flex items-center space-x-1 bg-black/50 p-1 rounded-full border border-white/10 text-xs">
+          <button
+            onClick={() => setLayoutMode("studio")}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-medium transition-all ${
+              layoutMode === "studio" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+            }`}
+            title="Optimized 3-Panel Layout for standard 16:9 monitors & laptops"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-primary" />
+            <span>Studio 16:9</span>
+          </button>
+          <button
+            onClick={() => setLayoutMode("panoramic")}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-medium transition-all ${
+              layoutMode === "panoramic" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+            }`}
+            title="4-Panel Ultrawide Layout for 21:9 & 32:9 monitors"
+          >
             <Monitor className="w-3.5 h-3.5 text-primary" />
-            32:9 Ultrawide Studio
-          </span>
-          <span className="text-neutral-600">•</span>
-          <span className="text-neutral-400">
-            {tracks.length} Tracks Indexed
-          </span>
-          <span className="text-neutral-600">•</span>
-          <span className="text-emerald-400 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            CachyOS Linux ALSA/PipeWire
-          </span>
+            <span>Ultrawide 32:9</span>
+          </button>
+          <button
+            onClick={() => setLayoutMode("stage")}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-medium transition-all ${
+              layoutMode === "stage" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+            }`}
+            title="Vinyl Centerstage Focus"
+          >
+            <Music2 className="w-3.5 h-3.5 text-primary" />
+            <span>Vinyl Stage</span>
+          </button>
+          <button
+            onClick={() => setLayoutMode("browser")}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-medium transition-all ${
+              layoutMode === "browser" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+            }`}
+            title="Library Discography Focus"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-primary" />
+            <span>Library Focus</span>
+          </button>
         </div>
 
-        <div className="flex items-center space-x-2">
+        {/* Right: Audio Engine Badges & Actions */}
+        <div className="flex items-center space-x-2.5">
+          <div className="hidden lg:flex items-center space-x-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 text-xs font-mono">
+            <span className="text-neutral-400">{tracks.length} Tracks</span>
+            <span className="text-neutral-600">•</span>
+            <span className="text-emerald-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              PipeWire/ALSA
+            </span>
+          </div>
+
           <button
             onClick={() => setIsEqualizerOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-colors"
           >
             <Sliders className="w-3.5 h-3.5 text-primary" />
-            <span>10-Band EQ</span>
+            <span className="hidden sm:inline">10-Band EQ</span>
+          </button>
+
+          <button
+            onClick={toggleFullscreen}
+            className="p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-colors"
+            title="Toggle Fullscreen (F11)"
+          >
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
         </div>
       </header>
 
-      <main className="flex-1 w-full p-4 overflow-hidden z-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl">
-          <LibraryBrowser
-            tracks={tracks}
-            currentTrack={audioEngine.currentTrack}
-            isPlaying={audioEngine.isPlaying}
-            onPlayTrack={handlePlayTrack}
-            onAddToQueue={handleAddToQueue}
-            onPlayAlbum={handlePlayAlbum}
-            onRescan={fetchLibrary}
-          />
-        </div>
+      {/* Main Responsive Grid Layout */}
+      <main className="flex-1 w-full p-3 md:p-4 overflow-hidden z-10">
+        {/* 1. STUDIO 16:9 MODE (Default & Perfect for 1080p, 1440p, laptops) */}
+        {layoutMode === "studio" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 h-full w-full overflow-hidden">
+            {/* Left Column: Library Browser (33% width) */}
+            <div className="lg:col-span-4 glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+              <LibraryBrowser
+                tracks={tracks}
+                currentTrack={audioEngine.currentTrack}
+                isPlaying={audioEngine.isPlaying}
+                onPlayTrack={handlePlayTrack}
+                onAddToQueue={handleAddToQueue}
+                onPlayAlbum={handlePlayAlbum}
+                onRescan={fetchLibrary}
+              />
+            </div>
 
-        <div className="glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl">
-          <VinylDeck
-            currentTrack={audioEngine.currentTrack}
-            isPlaying={audioEngine.isPlaying}
-            currentTime={audioEngine.currentTime}
-            duration={audioEngine.duration}
-            playbackRate={audioEngine.playbackRate}
-            deckMode={deckMode}
-            onSetDeckMode={setDeckMode}
-            onSetSpeed={audioEngine.setSpeed}
-            onSeek={audioEngine.seek}
-          />
-        </div>
+            {/* Center Column: Vinyl Turntable Hero Deck (42% width) */}
+            <div className="lg:col-span-5 glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+              <VinylDeck
+                currentTrack={audioEngine.currentTrack}
+                isPlaying={audioEngine.isPlaying}
+                currentTime={audioEngine.currentTime}
+                duration={audioEngine.duration}
+                playbackRate={audioEngine.playbackRate}
+                deckMode={deckMode}
+                onSetDeckMode={setDeckMode}
+                onSetSpeed={audioEngine.setSpeed}
+                onSeek={audioEngine.seek}
+              />
+            </div>
 
-        <div className="glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl">
-          <LyricsDeck
-            currentTrack={audioEngine.currentTrack}
-            currentTime={audioEngine.currentTime}
-            onSeek={audioEngine.seek}
-          />
-        </div>
+            {/* Right Column: Dynamic Tabbed Stack (25% width) */}
+            <div className="lg:col-span-3 flex flex-col h-full gap-3 overflow-hidden min-w-0">
+              {/* Right Panel View Switcher Tabs */}
+              <div className="flex bg-black/40 p-1 rounded-2xl border border-white/10 shrink-0 justify-between">
+                <button
+                  onClick={() => setRightPanelTab("split")}
+                  className={`flex-1 py-1 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-1 ${
+                    rightPanelTab === "split" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3 text-primary" />
+                  <span>Studio Mix</span>
+                </button>
+                <button
+                  onClick={() => setRightPanelTab("lyrics")}
+                  className={`flex-1 py-1 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-1 ${
+                    rightPanelTab === "lyrics" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  <Mic2 className="w-3 h-3 text-primary" />
+                  <span>Lyrics</span>
+                </button>
+                <button
+                  onClick={() => setRightPanelTab("queue")}
+                  className={`flex-1 py-1 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-1 ${
+                    rightPanelTab === "queue" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  <ListMusic className="w-3 h-3 text-primary" />
+                  <span>Queue ({queue.length})</span>
+                </button>
+              </div>
 
-        <div className="flex flex-col gap-4 overflow-hidden">
-          <div className="glass-panel rounded-3xl overflow-hidden h-48 shrink-0 shadow-xl">
-            <SpectrumVisualizer
-              isPlaying={audioEngine.isPlaying}
-              visualizerMode={visualizerMode}
-              onSetVisualizerMode={setVisualizerMode}
-              getFrequencyData={audioEngine.getFrequencyData}
-              getTimeDomainData={audioEngine.getTimeDomainData}
-            />
+              {/* Sub-view: Split (Top Visualizer + Bottom Lyrics) */}
+              {rightPanelTab === "split" && (
+                <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+                  <div className="glass-panel rounded-3xl overflow-hidden h-40 shrink-0 shadow-xl">
+                    <SpectrumVisualizer
+                      isPlaying={audioEngine.isPlaying}
+                      visualizerMode={visualizerMode}
+                      onSetVisualizerMode={setVisualizerMode}
+                      getFrequencyData={audioEngine.getFrequencyData}
+                      getTimeDomainData={audioEngine.getTimeDomainData}
+                    />
+                  </div>
+                  <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
+                    <LyricsDeck
+                      currentTrack={audioEngine.currentTrack}
+                      currentTime={audioEngine.currentTime}
+                      onSeek={audioEngine.seek}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-view: Full Lyrics Deck */}
+              {rightPanelTab === "lyrics" && (
+                <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
+                  <LyricsDeck
+                    currentTrack={audioEngine.currentTrack}
+                    currentTime={audioEngine.currentTime}
+                    onSeek={audioEngine.seek}
+                  />
+                </div>
+              )}
+
+              {/* Sub-view: Queue & Inspector */}
+              {rightPanelTab === "queue" && (
+                <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
+                  <QueueDrawer
+                    queue={queue}
+                    currentTrack={audioEngine.currentTrack}
+                    isPlaying={audioEngine.isPlaying}
+                    onPlayTrack={handlePlayTrack}
+                    onRemoveFromQueue={idx => setQueue(prev => prev.filter((_, i) => i !== idx))}
+                    onClearQueue={() => setQueue([])}
+                    onMoveQueueItem={(from, to) => {
+                      setQueue(prev => {
+                        const copy = [...prev];
+                        const [item] = copy.splice(from, 1);
+                        copy.splice(to, 0, item);
+                        return copy;
+                      });
+                    }}
+                  />
+                </div>
+              )}
+            </div>
           </div>
+        )}
 
-          <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
-            <QueueDrawer
-              queue={queue}
-              currentTrack={audioEngine.currentTrack}
-              isPlaying={audioEngine.isPlaying}
-              onPlayTrack={handlePlayTrack}
-              onRemoveFromQueue={idx => setQueue(prev => prev.filter((_, i) => i !== idx))}
-              onClearQueue={() => setQueue([])}
-              onMoveQueueItem={(from, to) => {
-                setQueue(prev => {
-                  const copy = [...prev];
-                  const [item] = copy.splice(from, 1);
-                  copy.splice(to, 0, item);
-                  return copy;
-                });
-              }}
-            />
+        {/* 2. PANORAMIC 32:9 ULTRAWIDE MODE */}
+        {layoutMode === "panoramic" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 h-full w-full overflow-hidden">
+            <div className="glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+              <LibraryBrowser
+                tracks={tracks}
+                currentTrack={audioEngine.currentTrack}
+                isPlaying={audioEngine.isPlaying}
+                onPlayTrack={handlePlayTrack}
+                onAddToQueue={handleAddToQueue}
+                onPlayAlbum={handlePlayAlbum}
+                onRescan={fetchLibrary}
+              />
+            </div>
+
+            <div className="glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+              <VinylDeck
+                currentTrack={audioEngine.currentTrack}
+                isPlaying={audioEngine.isPlaying}
+                currentTime={audioEngine.currentTime}
+                duration={audioEngine.duration}
+                playbackRate={audioEngine.playbackRate}
+                deckMode={deckMode}
+                onSetDeckMode={setDeckMode}
+                onSetSpeed={audioEngine.setSpeed}
+                onSeek={audioEngine.seek}
+              />
+            </div>
+
+            <div className="glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+              <LyricsDeck
+                currentTrack={audioEngine.currentTrack}
+                currentTime={audioEngine.currentTime}
+                onSeek={audioEngine.seek}
+              />
+            </div>
+
+            <div className="flex flex-col gap-3.5 overflow-hidden min-w-0">
+              <div className="glass-panel rounded-3xl overflow-hidden h-44 shrink-0 shadow-xl">
+                <SpectrumVisualizer
+                  isPlaying={audioEngine.isPlaying}
+                  visualizerMode={visualizerMode}
+                  onSetVisualizerMode={setVisualizerMode}
+                  getFrequencyData={audioEngine.getFrequencyData}
+                  getTimeDomainData={audioEngine.getTimeDomainData}
+                />
+              </div>
+
+              <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
+                <QueueDrawer
+                  queue={queue}
+                  currentTrack={audioEngine.currentTrack}
+                  isPlaying={audioEngine.isPlaying}
+                  onPlayTrack={handlePlayTrack}
+                  onRemoveFromQueue={idx => setQueue(prev => prev.filter((_, i) => i !== idx))}
+                  onClearQueue={() => setQueue([])}
+                  onMoveQueueItem={(from, to) => {
+                    setQueue(prev => {
+                      const copy = [...prev];
+                      const [item] = copy.splice(from, 1);
+                      copy.splice(to, 0, item);
+                      return copy;
+                    });
+                  }}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* 3. VINYL STAGE MODE */}
+        {layoutMode === "stage" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 h-full w-full overflow-hidden">
+            <div className="lg:col-span-7 glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+              <VinylDeck
+                currentTrack={audioEngine.currentTrack}
+                isPlaying={audioEngine.isPlaying}
+                currentTime={audioEngine.currentTime}
+                duration={audioEngine.duration}
+                playbackRate={audioEngine.playbackRate}
+                deckMode={deckMode}
+                onSetDeckMode={setDeckMode}
+                onSetSpeed={audioEngine.setSpeed}
+                onSeek={audioEngine.seek}
+              />
+            </div>
+
+            <div className="lg:col-span-5 flex flex-col gap-3.5 h-full overflow-hidden min-w-0">
+              <div className="glass-panel rounded-3xl overflow-hidden h-48 shrink-0 shadow-xl">
+                <SpectrumVisualizer
+                  isPlaying={audioEngine.isPlaying}
+                  visualizerMode={visualizerMode}
+                  onSetVisualizerMode={setVisualizerMode}
+                  getFrequencyData={audioEngine.getFrequencyData}
+                  getTimeDomainData={audioEngine.getTimeDomainData}
+                />
+              </div>
+              <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
+                <LyricsDeck
+                  currentTrack={audioEngine.currentTrack}
+                  currentTime={audioEngine.currentTime}
+                  onSeek={audioEngine.seek}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 4. LIBRARY FOCUS MODE */}
+        {layoutMode === "browser" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 h-full w-full overflow-hidden">
+            <div className="lg:col-span-7 glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+              <LibraryBrowser
+                tracks={tracks}
+                currentTrack={audioEngine.currentTrack}
+                isPlaying={audioEngine.isPlaying}
+                onPlayTrack={handlePlayTrack}
+                onAddToQueue={handleAddToQueue}
+                onPlayAlbum={handlePlayAlbum}
+                onRescan={fetchLibrary}
+              />
+            </div>
+
+            <div className="lg:col-span-5 glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+              <VinylDeck
+                currentTrack={audioEngine.currentTrack}
+                isPlaying={audioEngine.isPlaying}
+                currentTime={audioEngine.currentTime}
+                duration={audioEngine.duration}
+                playbackRate={audioEngine.playbackRate}
+                deckMode={deckMode}
+                onSetDeckMode={setDeckMode}
+                onSetSpeed={audioEngine.setSpeed}
+                onSeek={audioEngine.seek}
+              />
+            </div>
+          </div>
+        )}
       </main>
 
+      {/* Persistent Bottom Hi-Fi Control Bar */}
       <footer className="w-full shrink-0 z-30 pb-2">
         <ControlBar
           currentTrack={audioEngine.currentTrack}
@@ -280,6 +563,7 @@ export const App: React.FC = () => {
         />
       </footer>
 
+      {/* 10-Band Equalizer Modal */}
       <AnimatePresence>
         {isEqualizerOpen && (
           <EqualizerModal

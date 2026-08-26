@@ -418,6 +418,21 @@ app.get("/covers", (req, res) => {
   res.send(svg);
 });
 
+// Serve production frontend assets if dist directory exists
+const currentDir = typeof __dirname !== "undefined" ? __dirname : path.dirname(new URL(import.meta.url).pathname);
+const DIST_DIR = path.resolve(process.env.DIST_DIR || path.join(currentDir, "../dist"));
+
+if (fs.existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api") || req.path.startsWith("/stream") || req.path.startsWith("/covers")) {
+      return next();
+    }
+    res.sendFile(path.join(DIST_DIR, "index.html"));
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`[AuraDeck Audio Server] Running on http://localhost:${PORT}`);
 });
+

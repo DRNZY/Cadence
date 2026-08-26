@@ -1,64 +1,50 @@
 #!/usr/bin/env bash
 set -e
 
-# Dynamically resolve project directory
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROFILE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/auradeck/profile"
-LOG_FILE="/tmp/auradeck.log"
-APP_URL="http://localhost:5173"
-API_URL="http://localhost:3001/api/tracks"
+# 1. Resolve project directory (supports symlinks and AUR /usr/lib packaging)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+PROJECT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
-mkdir -p "$PROFILE_DIR"
-
-# 1. Check if backend & frontend are responsive
-check_running() {
-  curl -s --connect-timeout 1 "$APP_URL" > /dev/null 2>&1
+# 2. Locate Electron binary (Local node_modules, system Arch/CachyOS electron, or PATH)
+find_electron() {
+  if [ -x "$PROJECT_DIR/node_modules/.bin/electron" ]; then
+    echo "$PROJECT_DIR/node_modules/.bin/electron"
+    return 0
+  fi
+  for e in electron44 electron43 electron42 electron; do
+    if command -v "$e" >/dev/null 2>&1; then
+      echo "$(command -v "$e")"
+      return 0
+    fi
+  done
+  for p in /usr/bin/electron44 /usr/bin/electron43 /usr/bin/electron42 /usr/bin/electron; do
+    if [ -x "$p" ]; then
+      echo "$p"
+      return 0
+    fi
+  done
+  return 1
 }
 
-# 2. If not running, start background dev server
-if ! check_running; then
-  echo "[AuraDeck Launcher] Starting AuraDeck Engine in background..."
-  cd "$PROJECT_DIR"
-  npm run dev > "$LOG_FILE" 2>&1 &
-  
-  # Wait for server to become responsive
-  for i in {1..30}; do
-    if check_running; then
-      break
-    fi
-    sleep 0.2
-  done
+ELECTRON_BIN="$(find_electron || true)"
+
+if [ -z "$ELECTRON_BIN" ]; then
+  echo "[!] Error: Electron not found. Please install electron ('sudo pacman -S electron' or 'npm install')." >&2
+  exit 1
 fi
 
-# 3. Launch App Window in standalone Frameless App Mode
-if command -v brave-origin >/dev/null 2>&1; then
-  exec brave-origin \
-    --app="$APP_URL" \
-    --class="auradeck" \
-    --name="auradeck" \
-    --user-data-dir="$PROFILE_DIR" \
-    --enable-features=UseOzonePlatform,VaapiVideoDecoder \
-    --ozone-platform-hint=auto \
-    --enable-gpu-rasterization \
-    --enable-zero-copy \
-    --autoplay-policy=no-user-gesture-required \
-    "$@"
-elif command -v chromium >/dev/null 2>&1; then
-  exec chromium \
-    --app="$APP_URL" \
-    --class="auradeck" \
-    --name="auradeck" \
-    --user-data-dir="$PROFILE_DIR" \
-    --autoplay-policy=no-user-gesture-required \
-    "$@"
-elif command -v google-chrome-stable >/dev/null 2>&1; then
-  exec google-chrome-stable \
-    --app="$APP_URL" \
-    --class="auradeck" \
-    --user-data-dir="$PROFILE_DIR" \
-    "$@"
-elif command -v firefox >/dev/null 2>&1; then
-  exec firefox --new-window "$APP_URL" "$@"
-else
-  exec xdg-open "$APP_URL"
-fi
+cd "$PROJECT_DIR"
+
+# 3. Launch AuraDeck Native Desktop Application
+exec "$ELECTRON_BIN" \
+  --enable-features=UseOzonePlatform,VaapiVideoDecoder \
+  --ozone-platform-hint=auto \
+  --enable-gpu-rasterization \
+  --enable-zero-copy \
+  "$PROJECT_DIR/electron/main.cjs" \
+  "$@"

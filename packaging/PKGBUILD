@@ -1,0 +1,36 @@
+# Maintainer: Darnell <darnell@example.com>
+pkgname=auradeck
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="High-Fidelity Studio Linux Audio Player & Synced Karaoke Lyrics Engine with 32:9 and 16:9 Turntable UI"
+arch=('any')
+url="https://github.com/darnell/auradeck"
+license=('MIT')
+depends=('electron' 'nodejs>=18' 'ffmpeg')
+makedepends=('npm')
+source=("$pkgname-$pkgver.tar.gz"
+        "auradeck.desktop"
+        "auradeck.png")
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    npm ci --omit=optional
+    npm run build
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+
+    # Install application files into /usr/lib/auradeck
+    install -d "$pkgdir/usr/lib/$pkgname"
+    cp -r dist dist-server electron node_modules package.json auradeck.sh "$pkgdir/usr/lib/$pkgname/"
+
+    # Install binary wrapper in /usr/bin/auradeck
+    install -d "$pkgdir/usr/bin"
+    ln -s "/usr/lib/$pkgname/auradeck.sh" "$pkgdir/usr/bin/$pkgname"
+
+    # Install Desktop Entry and Application Icons
+    install -Dm644 "$srcdir/auradeck.desktop" "$pkgdir/usr/share/applications/auradeck.desktop"
+    install -Dm644 "$srcdir/auradeck.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/auradeck.png"
+}

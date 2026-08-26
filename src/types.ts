@@ -22,6 +22,8 @@ export interface Track {
 
 export type DeckMode = "vinyl" | "cd" | "minimal";
 export type VisualizerMode = "bars" | "wave" | "radial" | "oscilloscope";
+export type LayoutMode = "panoramic" | "studio" | "stage" | "browser";
+
 
 export interface EqualizerPreset {
   name: string;

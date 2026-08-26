@@ -1,0 +1,18 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AuraDeck
+GenericName=Studio Music Player
+Comment=Studio Hi-Fi Linux Audio Engine with 32:9 Panoramic Turntable UI
+Exec=auradeck
+Icon=auradeck
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+StartupWMClass=auradeck
+Keywords=Music;Audio;Player;FLAC;Lyrics;Vinyl;Equalizer;Turntable;
+MimeType=audio/flac;audio/mpeg;audio/wav;audio/x-wav;audio/ogg;audio/aac;audio/mp4;
+Actions=Play;
+
+[Desktop Action Play]
+Name=Launch AuraDeck
+Exec=auradeck
