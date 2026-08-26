@@ -26,6 +26,13 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
   const [formatFilter, setFormatFilter] = useState<"ALL" | "FLAC" | "MP3" | "LYRICS">("ALL");
   const [activeTab, setActiveTab] = useState<"albums" | "tracks" | "artists" | "playlists">("albums");
+  const [previewAlbum, setPreviewAlbum] = useState<{
+    album: string;
+    artist: string;
+    year?: string;
+    coverPath?: string;
+    tracks: Track[];
+  } | null>(null);
 
   // Playlists State
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -338,14 +345,15 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
             {filteredAlbums.map(item => {
               const coverUrl = item.coverPath
                 ? `/covers?path=${encodeURIComponent(item.coverPath)}`
-                : `/covers`;
+                : `/covers?artist=${encodeURIComponent(item.artist)}&album=${encodeURIComponent(item.album)}`;
               const isCurrentAlbum = currentTrack?.album === item.album;
 
               return (
                 <motion.div
                   key={`${item.artist}-${item.album}`}
                   whileHover={{ y: -4, scale: 1.02 }}
-                  className="group relative bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/15 rounded-2xl p-3 transition-all flex flex-col justify-between shadow-lg"
+                  onClick={() => setPreviewAlbum(item)}
+                  className="group relative bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/20 rounded-2xl p-3 transition-all flex flex-col justify-between shadow-lg cursor-pointer"
                 >
                   <div className="relative aspect-square rounded-xl overflow-hidden mb-2.5 bg-black/40 shadow-inner">
                     <img
@@ -355,8 +363,11 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
                     />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-xs">
                       <button
-                        onClick={() => onPlayAlbum(item.tracks)}
-                        className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-transform shadow-xl"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPlayAlbum(item.tracks);
+                        }}
+                        className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 active:scale-95 transition-transform shadow-xl"
                         title="Play Album"
                       >
                         <Play className="w-5 h-5 ml-0.5 fill-black" />
@@ -364,7 +375,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
                     </div>
 
                     {isCurrentAlbum && isPlaying && (
-                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-primary/90 text-black text-[10px] font-bold font-mono uppercase tracking-wider flex items-center gap-1 shadow-md">
+                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-primary text-black text-[10px] font-bold font-mono uppercase tracking-wider flex items-center gap-1 shadow-md">
                         <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
                         Now Playing
                       </div>
@@ -764,6 +775,153 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal: Album Preview & Song Selector */}
+      <AnimatePresence>
+        {previewAlbum && (
+          <div
+            onClick={() => setPreviewAlbum(null)}
+            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xl flex items-center justify-center p-4 md:p-8"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#0e1017]/95 border border-white/15 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl shadow-black/90 relative"
+            >
+              {/* Header Hero */}
+              <div className="p-6 pb-4 border-b border-white/10 bg-gradient-to-b from-white/[0.04] to-transparent flex flex-col md:flex-row gap-5 items-start md:items-center justify-between shrink-0">
+                <div className="flex items-center gap-4 min-w-0 flex-1">
+                  <div className="w-24 h-24 rounded-2xl overflow-hidden bg-black/60 shrink-0 border border-white/15 shadow-2xl relative">
+                    <img
+                      src={
+                        previewAlbum.coverPath
+                          ? `/covers?path=${encodeURIComponent(previewAlbum.coverPath)}`
+                          : `/covers?artist=${encodeURIComponent(previewAlbum.artist)}&album=${encodeURIComponent(previewAlbum.album)}`
+                      }
+                      alt={previewAlbum.album}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1 text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary font-bold border border-primary/30">
+                        Album Preview
+                      </span>
+                      {previewAlbum.year && (
+                        <span className="text-[10px] font-mono text-neutral-400">
+                          {previewAlbum.year}
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="text-lg md:text-xl font-black text-white truncate drop-shadow-md">
+                      {previewAlbum.album}
+                    </h2>
+                    <p className="text-xs font-medium text-neutral-300 truncate">
+                      {previewAlbum.artist}
+                    </p>
+                    <p className="text-[10px] font-mono text-neutral-400">
+                      {previewAlbum.tracks.length} Songs •{" "}
+                      {Math.round(
+                        previewAlbum.tracks.reduce((acc, t) => acc + (t.duration || 0), 0) / 60
+                      )}{" "}
+                      min
+                    </p>
+                  </div>
+                </div>
+
+                {/* Quick Action Controls */}
+                <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                  <button
+                    onClick={() => {
+                      onPlayAlbum(previewAlbum.tracks);
+                      setPreviewAlbum(null);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary hover:bg-primary/90 text-white text-xs font-bold shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Play All</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      previewAlbum.tracks.forEach(t => onAddToQueue(t));
+                      setPreviewAlbum(null);
+                    }}
+                    className="p-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-white text-xs transition-all"
+                    title="Add all tracks to Queue"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setPreviewAlbum(null)}
+                    className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition-all text-xs"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* Tracklist table */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-1.5 no-scrollbar">
+                {previewAlbum.tracks.map((track, idx) => {
+                  const isCurrent = currentTrack?.id === track.id;
+                  return (
+                    <div
+                      key={track.id}
+                      onClick={() => onPlayTrack(track)}
+                      className={`group flex items-center justify-between p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                        isCurrent
+                          ? "bg-primary/20 border-primary/40 shadow-sm shadow-primary/20"
+                          : "bg-white/[0.02] hover:bg-white/[0.07] border-white/5 hover:border-white/15"
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3 min-w-0 flex-1">
+                        <span
+                          className={`text-xs font-mono w-6 text-center shrink-0 ${
+                            isCurrent ? "text-primary font-bold" : "text-neutral-500 group-hover:text-white"
+                          }`}
+                        >
+                          {isCurrent && isPlaying ? "▶" : String(track.trackNumber || idx + 1).padStart(2, "0")}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-bold truncate ${isCurrent ? "text-primary" : "text-white"}`}>
+                            {track.title}
+                          </p>
+                          <p className="text-[10px] text-neutral-400 truncate">
+                            {track.artist}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-3 shrink-0">
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-neutral-400 border border-white/5">
+                          {track.format}
+                        </span>
+                        <span className="text-xs font-mono text-neutral-400 w-10 text-right">
+                          {Math.floor(track.duration / 60)}:
+                          {String(Math.floor(track.duration % 60)).padStart(2, "0")}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddToQueue(track);
+                          }}
+                          className="p-1 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Add to queue"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

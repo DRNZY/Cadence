@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Disc3, Disc, Sparkles, Gauge, Volume2 } from "lucide-react";
+import { Disc3, Disc, Sparkles, Gauge, Volume2, Activity } from "lucide-react";
 import { Track, DeckMode } from "../types";
 
 interface VinylDeckProps {
@@ -13,6 +13,9 @@ interface VinylDeckProps {
   onSetDeckMode: (mode: DeckMode) => void;
   onSetSpeed: (rate: number) => void;
   onSeek: (time: number) => void;
+  onStartScratch?: () => void;
+  onScratch?: (velocityDegPerSec: number, deltaAngle: number) => void;
+  onEndScratch?: (spinUpMs?: number) => void;
 }
 
 export const VinylDeck: React.FC<VinylDeckProps> = ({
@@ -24,14 +27,24 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
   deckMode,
   onSetDeckMode,
   onSetSpeed,
-  onSeek
+  onSeek,
+  onStartScratch,
+  onScratch,
+  onEndScratch
 }) => {
   const [rotationAngle, setRotationAngle] = useState(0);
   const [isScratching, setIsScratching] = useState(false);
+  const [scratchRpmDisplay, setScratchRpmDisplay] = useState<number>(0);
+  
   const lastTimeRef = useRef<number>(performance.now());
   const scratchStartAngleRef = useRef<number>(0);
   const scratchCenterRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const deckRef = useRef<HTMLDivElement>(null);
+  
+  // Scratch physics tracking
+  const lastMoveTimeRef = useRef<number>(performance.now());
+  const lastAngleRef = useRef<number>(0);
+  const smoothVelocityRef = useRef<number>(0);
 
   // Smooth continuous rotation preserving angle on pause
   useEffect(() => {
@@ -42,7 +55,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
       lastTimeRef.current = now;
 
       if (isPlaying && !isScratching) {
-        // 33.3 RPM is approx 200 deg/sec at 1.0x speed
+        // 33.3 RPM is 200 deg/sec at 1.0x speed
         const speedMultiplier = playbackRate;
         const degPerSec = 200 * speedMultiplier;
         setRotationAngle(prev => (prev + degPerSec * delta) % 360);
@@ -56,15 +69,17 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
     return () => cancelAnimationFrame(animId);
   }, [isPlaying, isScratching, playbackRate]);
 
-  // Tone arm angle: 0deg = rested on cradle, 20deg to 38deg across the vinyl record surface
+  // Tone arm angle: 0deg = rested on cradle, 21deg to 37deg across the record
   const progressRatio = duration > 0 ? currentTime / duration : 0;
   const toneArmAngle = isPlaying ? 21 + progressRatio * 16 : 0;
 
   const coverUrl = currentTrack?.coverPath
     ? `/covers?path=${encodeURIComponent(currentTrack.coverPath)}`
+    : currentTrack
+    ? `/covers?artist=${encodeURIComponent(currentTrack.artist)}&album=${encodeURIComponent(currentTrack.album)}&title=${encodeURIComponent(currentTrack.title)}`
     : `/covers`;
 
-  // Handle vinyl scratch / touch rotation
+  // Real-time DJ Vinyl Scratch handlers
   const handlePointerDown = (e: React.PointerEvent) => {
     if (!deckRef.current) return;
     const rect = deckRef.current.getBoundingClientRect();
@@ -74,21 +89,47 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
 
     const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
     scratchStartAngleRef.current = angle - rotationAngle;
+    lastAngleRef.current = angle;
+    lastMoveTimeRef.current = performance.now();
+    smoothVelocityRef.current = 0;
+
     setIsScratching(true);
+    setScratchRpmDisplay(0);
+    onStartScratch?.();
+
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isScratching) return;
+    const now = performance.now();
+    const dt = Math.max(0.005, (now - lastMoveTimeRef.current) / 1000);
+    lastMoveTimeRef.current = now;
+
     const { x, y } = scratchCenterRef.current;
     const currentPointerAngle = Math.atan2(e.clientY - y, e.clientX - x) * (180 / Math.PI);
-    const newAngle = currentPointerAngle - scratchStartAngleRef.current;
-    const delta = newAngle - rotationAngle;
-    setRotationAngle(newAngle);
+    
+    // Calculate shortest angular difference to prevent 360-degree flip glitch
+    let delta = currentPointerAngle - lastAngleRef.current;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    lastAngleRef.current = currentPointerAngle;
 
-    // Scrub audio slightly based on rotation delta
-    if (duration > 0 && Math.abs(delta) > 1) {
-      const scrubTime = currentTime + (delta / 360) * 2;
+    const instVelocity = delta / dt; // deg/sec
+    smoothVelocityRef.current = smoothVelocityRef.current * 0.35 + instVelocity * 0.65;
+
+    // Convert deg/sec to RPM (360 deg/sec = 60 RPM => RPM = degPerSec / 6)
+    const currentRpm = Math.round(smoothVelocityRef.current / 6);
+    setScratchRpmDisplay(currentRpm);
+
+    const newRotAngle = rotationAngle + delta;
+    setRotationAngle(newRotAngle);
+
+    // Call Real-time Audio Scratch Modulator
+    if (onScratch) {
+      onScratch(smoothVelocityRef.current, delta);
+    } else if (duration > 0 && Math.abs(delta) > 1) {
+      const scrubTime = currentTime + (delta / 360) * 1.8;
       onSeek(Math.max(0, Math.min(scrubTime, duration)));
     }
   };
@@ -96,6 +137,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
   const handlePointerUp = (e: React.PointerEvent) => {
     if (isScratching) {
       setIsScratching(false);
+      setScratchRpmDisplay(0);
+      onEndScratch?.(220);
     }
   };
 
@@ -153,6 +196,27 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
         onPointerCancel={handlePointerUp}
         className="relative w-full aspect-square max-w-[360px] flex items-center justify-center cursor-grab active:cursor-grabbing my-auto"
       >
+        {/* Real-time DJ Scratch HUD Indicator */}
+        <AnimatePresence>
+          {isScratching && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.85, y: -10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.85, y: -10 }}
+              className="absolute -top-6 z-40 px-3.5 py-1 rounded-full bg-primary/95 text-white text-[11px] font-mono font-black tracking-wider flex items-center gap-1.5 shadow-2xl shadow-primary/50 border border-white/20 backdrop-blur-md"
+            >
+              <Activity className="w-3.5 h-3.5 animate-pulse" />
+              <span>
+                {scratchRpmDisplay === 0
+                  ? "HOLD 0 RPM"
+                  : scratchRpmDisplay > 0
+                  ? `SCRATCH +${scratchRpmDisplay} RPM`
+                  : `SCRATCH ${scratchRpmDisplay} RPM`}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Turntable Outer Chassis Plate */}
         <div className="absolute inset-0 rounded-full bg-gradient-to-b from-neutral-900 via-neutral-950 to-black p-3 shadow-2xl border border-white/10">
           <div className="w-full h-full rounded-full bg-neutral-950/80 border border-white/5 flex items-center justify-center relative overflow-hidden">
@@ -162,7 +226,10 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
             {/* Mode 1: Spinning Vinyl Record */}
             {deckMode === "vinyl" && (
               <div
-                style={{ transform: `rotate(${rotationAngle}deg)` }}
+                style={{
+                  transform: `rotate(${rotationAngle}deg)`,
+                  transition: isScratching ? "none" : "transform 0.05s linear"
+                }}
                 className="w-[90%] h-[90%] rounded-full bg-[#0a0a0d] shadow-2xl relative flex items-center justify-center vinyl-grooves overflow-hidden border border-neutral-800"
               >
                 {/* Conic Light Reflection Sheen */}
@@ -190,7 +257,10 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
             {/* Mode 2: Holographic CD Jewel Disc */}
             {deckMode === "cd" && (
               <div
-                style={{ transform: `rotate(${rotationAngle}deg)` }}
+                style={{
+                  transform: `rotate(${rotationAngle}deg)`,
+                  transition: isScratching ? "none" : "transform 0.05s linear"
+                }}
                 className="w-[90%] h-[90%] rounded-full bg-gradient-to-tr from-neutral-700 via-neutral-300 to-neutral-600 shadow-2xl relative flex items-center justify-center overflow-hidden border border-neutral-400"
               >
                 {/* Holographic Prismatic Rainbow Sheen */}
@@ -239,7 +309,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
           <div
             className="absolute top-2 right-4 w-28 h-64 pointer-events-none z-30 origin-top-right transition-transform duration-700 ease-out"
             style={{
-              transform: `rotate(${toneArmAngle}deg)`,
+              transform: `rotate(${isScratching ? toneArmAngle + (smoothVelocityRef.current / 300) : toneArmAngle}deg)`,
               transformOrigin: "85% 15%"
             }}
           >
@@ -294,7 +364,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = ({
         {/* Scratch Drag Hint */}
         <div className="text-[11px] font-medium text-neutral-400 flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
-          <span>Interactive Vinyl Scratch</span>
+          <span>Real DJ Scratch & Slipmat Scrub</span>
         </div>
       </div>
     </div>

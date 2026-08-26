@@ -26,6 +26,10 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
   const compressorRef = useRef<DynamicsCompressorNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const isNodesConnectedRef = useRef<boolean>(false);
+  const scratchNoiseGainRef = useRef<GainNode | null>(null);
+  const scratchFilterRef = useRef<BiquadFilterNode | null>(null);
+  const wasPlayingBeforeScratchRef = useRef<boolean>(false);
+  const scratchAnimFrameRef = useRef<number | null>(null);
 
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -400,6 +404,154 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     setDspSettings(prev => ({ ...prev, ...newSettings }));
   }, []);
 
+  // Setup Vinyl Scratch Noise Graph
+  const initScratchSynth = useCallback(() => {
+    if (!audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    if (scratchNoiseGainRef.current) return;
+
+    try {
+      // 1-second pink noise buffer for realistic vinyl needle friction
+      const bufferSize = ctx.sampleRate;
+      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.12;
+        b6 = white * 0.115926;
+      }
+
+      const whiteNoise = ctx.createBufferSource();
+      whiteNoise.buffer = noiseBuffer;
+      whiteNoise.loop = true;
+
+      // Bandpass filter centered at needle scratch friction frequency
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = 2200;
+      filter.Q.value = 3.5;
+      scratchFilterRef.current = filter;
+
+      const gain = ctx.createGain();
+      gain.gain.value = 0.0;
+      scratchNoiseGainRef.current = gain;
+
+      whiteNoise.connect(filter);
+      filter.connect(gain);
+      if (gainNodeRef.current) {
+        gain.connect(gainNodeRef.current);
+      } else {
+        gain.connect(ctx.destination);
+      }
+      whiteNoise.start();
+    } catch (e) {
+      console.warn("Scratch synth init notice:", e);
+    }
+  }, []);
+
+  const startScratch = useCallback(() => {
+    initAudioNodes();
+    initScratchSynth();
+    if (scratchAnimFrameRef.current) {
+      cancelAnimationFrame(scratchAnimFrameRef.current);
+    }
+    wasPlayingBeforeScratchRef.current = isPlaying;
+  }, [initAudioNodes, initScratchSynth, isPlaying]);
+
+  const scratch = useCallback((velocityDegPerSec: number, deltaAngle: number) => {
+    if (!audioRef.current || !audioCtxRef.current) return;
+    const audio = audioRef.current;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    const absVel = Math.abs(velocityDegPerSec);
+    const speedRatio = velocityDegPerSec / 200; // 200 deg/sec is standard 33.3 RPM playback speed
+
+    // Modulate scratch noise level and pitch
+    if (scratchNoiseGainRef.current && scratchFilterRef.current) {
+      const frictionVolume = Math.min(0.35, (absVel / 600) * 0.35);
+      scratchNoiseGainRef.current.gain.cancelScheduledValues(now);
+      scratchNoiseGainRef.current.gain.linearRampToValueAtTime(frictionVolume, now + 0.02);
+
+      // Modulate filter frequency based on scratch speed and direction
+      const targetFreq = Math.max(600, Math.min(5000, 1600 + absVel * 3.5));
+      scratchFilterRef.current.frequency.cancelScheduledValues(now);
+      scratchFilterRef.current.frequency.linearRampToValueAtTime(targetFreq, now + 0.02);
+    }
+
+    if (velocityDegPerSec >= 0) {
+      // Forward scratch / scrub
+      const clampedRate = Math.min(3.5, Math.max(0.0625, speedRatio));
+      try {
+        audio.playbackRate = clampedRate;
+        if (absVel > 15 && audio.paused && wasPlayingBeforeScratchRef.current) {
+          audio.play().catch(() => {});
+        }
+      } catch {}
+    } else {
+      // Reverse scratch scrub
+      try {
+        if (!audio.paused) {
+          audio.playbackRate = 0.0625;
+        }
+        // Scrub back by delta angle
+        const scrubDeltaSec = (deltaAngle / 360) * 1.5;
+        if (audio.duration && audio.duration > 0) {
+          audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + scrubDeltaSec));
+        }
+      } catch {}
+    }
+  }, []);
+
+  const endScratch = useCallback((spinUpMs: number = 220) => {
+    if (!audioRef.current || !audioCtxRef.current) return;
+    const audio = audioRef.current;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    // Fade out friction noise immediately
+    if (scratchNoiseGainRef.current) {
+      scratchNoiseGainRef.current.gain.cancelScheduledValues(now);
+      scratchNoiseGainRef.current.gain.linearRampToValueAtTime(0, now + 0.05);
+    }
+
+    // Realistic turntable motor spin-up inertia curve back to target speed
+    const targetSpeed = playbackRate;
+    const startTime = performance.now();
+    const startRate = audio.playbackRate || 0.1;
+
+    const animateSpinUp = (currTime: number) => {
+      const elapsed = currTime - startTime;
+      const progress = Math.min(1, elapsed / spinUpMs);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      const currentRate = startRate + (targetSpeed - startRate) * ease;
+
+      try {
+        audio.playbackRate = Math.max(0.0625, Math.min(3.0, currentRate));
+      } catch {}
+
+      if (progress < 1) {
+        scratchAnimFrameRef.current = requestAnimationFrame(animateSpinUp);
+      } else {
+        try {
+          audio.playbackRate = targetSpeed;
+        } catch {}
+        if (wasPlayingBeforeScratchRef.current && audio.paused) {
+          audio.play().catch(() => {});
+        }
+      }
+    };
+
+    scratchAnimFrameRef.current = requestAnimationFrame(animateSpinUp);
+  }, [playbackRate]);
+
   // Register HTML5 MediaSession MPRIS Action Handlers
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
@@ -483,6 +635,9 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     setEqGain,
     setAllEqGains,
     updateDspSettings,
+    startScratch,
+    scratch,
+    endScratch,
     getFrequencyData,
     getTimeDomainData
   };

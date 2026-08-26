@@ -132,8 +132,11 @@ export const App: React.FC = () => {
   }, [fetchLibrary]);
 
   useEffect(() => {
-    if (audioEngine.currentTrack?.coverPath) {
-      const coverUrl = `/covers?path=${encodeURIComponent(audioEngine.currentTrack.coverPath)}`;
+    if (audioEngine.currentTrack) {
+      const t = audioEngine.currentTrack;
+      const coverUrl = t.coverPath
+        ? `/covers?path=${encodeURIComponent(t.coverPath)}`
+        : `/covers?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&title=${encodeURIComponent(t.title)}`;
       extractColors(coverUrl).then(colors => {
         applyThemeColors(colors);
       });
@@ -202,10 +205,28 @@ export const App: React.FC = () => {
   }, [audioEngine, handleNext, handlePrevious]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#08090e] text-white relative overflow-hidden select-none">
-      <div className="absolute inset-0 ambient-glow opacity-50 pointer-events-none z-0" />
-      <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-primary/15 blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
+    <div
+      className="flex flex-col h-screen w-screen text-white relative overflow-hidden select-none"
+      style={{
+        background: "var(--theme-bg-gradient, #08090e)",
+        transition: "background 1.2s cubic-bezier(0.4, 0, 0.2, 1)"
+      }}
+    >
+      {/* Dynamic Animated Ambient Liquid Mesh Backdrop */}
+      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+        <div
+          className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full opacity-40 blur-[130px] transition-all duration-1000"
+          style={{ background: "var(--primary, #c084fc)" }}
+        />
+        <div
+          className="absolute -bottom-40 -right-40 w-[650px] h-[650px] rounded-full opacity-35 blur-[140px] transition-all duration-1000"
+          style={{ background: "var(--secondary-glow, #3b82f6)" }}
+        />
+        <div
+          className="absolute top-1/3 right-1/4 w-[400px] h-[400px] rounded-full opacity-20 blur-[110px] transition-all duration-1000"
+          style={{ background: "var(--primary-glow, #a855f7)" }}
+        />
+      </div>
 
       {/* Top Studio TitleBar & Navigation */}
       <header className="h-14 w-full px-5 flex items-center justify-between border-b border-white/5 z-20 bg-neutral-950/60 backdrop-blur-xl shrink-0">
@@ -329,6 +350,9 @@ export const App: React.FC = () => {
                 onSetDeckMode={setDeckMode}
                 onSetSpeed={audioEngine.setSpeed}
                 onSeek={audioEngine.seek}
+                onStartScratch={audioEngine.startScratch}
+                onScratch={audioEngine.scratch}
+                onEndScratch={audioEngine.endScratch}
               />
             </div>
 
@@ -449,6 +473,9 @@ export const App: React.FC = () => {
                 onSetDeckMode={setDeckMode}
                 onSetSpeed={audioEngine.setSpeed}
                 onSeek={audioEngine.seek}
+                onStartScratch={audioEngine.startScratch}
+                onScratch={audioEngine.scratch}
+                onEndScratch={audioEngine.endScratch}
               />
             </div>
 
@@ -507,6 +534,9 @@ export const App: React.FC = () => {
                 onSetDeckMode={setDeckMode}
                 onSetSpeed={audioEngine.setSpeed}
                 onSeek={audioEngine.seek}
+                onStartScratch={audioEngine.startScratch}
+                onScratch={audioEngine.scratch}
+                onEndScratch={audioEngine.endScratch}
               />
             </div>
 
@@ -557,6 +587,9 @@ export const App: React.FC = () => {
                 onSetDeckMode={setDeckMode}
                 onSetSpeed={audioEngine.setSpeed}
                 onSeek={audioEngine.seek}
+                onStartScratch={audioEngine.startScratch}
+                onScratch={audioEngine.scratch}
+                onEndScratch={audioEngine.endScratch}
               />
             </div>
           </div>

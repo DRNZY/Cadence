@@ -5,6 +5,7 @@ import path from "path";
 import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import crypto from "crypto";
 import { getLyricsForTrack } from "./lyricsFetcher.ts";
 
 const execFileAsync = promisify(execFile);
@@ -21,11 +22,15 @@ app.use(express.json());
 const MUSIC_DIR = path.resolve(process.env.MUSIC_DIR || path.join(process.env.HOME || os.homedir(), "Music"));
 const USER_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "cadence");
 const LEGACY_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "auradeck");
+const COVER_CACHE_DIR = path.join(os.homedir(), ".cache", "cadence", "covers");
 const PLAYLISTS_FILE = path.join(USER_DATA_DIR, "playlists.json");
 
-// Ensure config dir exists
+// Ensure config and cache dirs exist
 if (!fs.existsSync(USER_DATA_DIR)) {
   try { fs.mkdirSync(USER_DATA_DIR, { recursive: true }); } catch {}
+}
+if (!fs.existsSync(COVER_CACHE_DIR)) {
+  try { fs.mkdirSync(COVER_CACHE_DIR, { recursive: true }); } catch {}
 }
 
 export interface LyricLine {
@@ -132,7 +137,85 @@ export function parseLrc(content: string): LyricLine[] {
   return result.sort((a, b) => a.time - b.time);
 }
 
-function findCoverArt(trackPath: string): string | undefined {
+function findCachedCover(artist?: string, album?: string, title?: string): string | undefined {
+  if (!artist && !album && !title) return undefined;
+  const cleanArtist = (artist || "").replace(/feat\..*|ft\..*|\(.*?\)|\[.*?\]/gi, "").trim();
+  const cleanAlbum = (album || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
+  const cleanTitle = (title || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
+
+  const safeKey = `${cleanArtist}_${cleanAlbum || cleanTitle}`.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+  const cacheFile = path.join(COVER_CACHE_DIR, `${safeKey}.jpg`);
+  if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 500) {
+    return cacheFile;
+  }
+  return undefined;
+}
+
+export async function fetchOnlineAlbumCover(artist?: string, album?: string, title?: string): Promise<string | null> {
+  const cleanArtist = (artist || "").replace(/feat\..*|ft\..*|\(.*?\)|\[.*?\]/gi, "").trim();
+  const cleanAlbum = (album || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
+  const cleanTitle = (title || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
+
+  const query = `${cleanArtist} ${cleanAlbum || cleanTitle}`.trim();
+  if (!query || query.length < 2) return null;
+
+  const safeKey = `${cleanArtist}_${cleanAlbum || cleanTitle}`.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+  const cacheFile = path.join(COVER_CACHE_DIR, `${safeKey}.jpg`);
+  if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 500) {
+    return cacheFile;
+  }
+
+  try {
+    // 1. Query Apple iTunes Search API (returns 1000x1000 ultra high-res art)
+    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=3`;
+    const itunesRes = await fetch(itunesUrl, {
+      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (itunesRes.ok) {
+      const data: any = await itunesRes.json();
+      if (data.results && data.results.length > 0) {
+        const match = data.results[0];
+        if (match.artworkUrl100) {
+          const highResUrl = match.artworkUrl100.replace("100x100bb.jpg", "1000x1000bb.jpg");
+          const imgRes = await fetch(highResUrl, { signal: AbortSignal.timeout(7000) });
+          if (imgRes.ok) {
+            const buffer = Buffer.from(await imgRes.arrayBuffer());
+            fs.writeFileSync(cacheFile, buffer);
+            return cacheFile;
+          }
+        }
+      }
+    }
+
+    // 2. Query Deezer API as high-res fallback
+    const deezerUrl = `https://api.deezer.com/search/album?q=${encodeURIComponent(query)}&limit=1`;
+    const deezerRes = await fetch(deezerUrl, {
+      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (deezerRes.ok) {
+      const dData: any = await deezerRes.json();
+      if (dData.data && dData.data.length > 0) {
+        const coverUrl = dData.data[0].cover_xl || dData.data[0].cover_big;
+        if (coverUrl) {
+          const imgRes = await fetch(coverUrl, { signal: AbortSignal.timeout(7000) });
+          if (imgRes.ok) {
+            const buffer = Buffer.from(await imgRes.arrayBuffer());
+            fs.writeFileSync(cacheFile, buffer);
+            return cacheFile;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Network timeout or offline
+  }
+  return null;
+}
+
+function findCoverArt(trackPath: string, artist?: string, album?: string, title?: string): string | undefined {
   const dir = path.dirname(trackPath);
   
   for (const img of IMAGE_NAMES) {
@@ -155,6 +238,10 @@ function findCoverArt(trackPath: string): string | undefined {
     const candidate = path.join(parentDir, img);
     if (fs.existsSync(candidate)) return candidate;
   }
+
+  // Check cache
+  const cached = findCachedCover(artist, album, title);
+  if (cached) return cached;
 
   return undefined;
 }
@@ -275,9 +362,6 @@ async function scanLibrary(): Promise<Track[]> {
     const ext = path.extname(fullPath).toLowerCase();
     const stats = await fs.promises.stat(fullPath);
     const meta = await extractMetadata(fullPath);
-    const { hasLyrics } = findLyrics(fullPath);
-    const coverPath = findCoverArt(fullPath);
-
     const rel = path.relative(MUSIC_DIR, fullPath);
     const parts = rel.split(path.sep);
 
@@ -293,6 +377,8 @@ async function scanLibrary(): Promise<Track[]> {
     }
 
     const cleanedTitle = fallbackTitle.replace(/^(\d{1,2}[.\s\-_]+)+/, "").trim() || fallbackTitle;
+    const coverPath = findCoverArt(fullPath, meta.artist || fallbackArtist, meta.album || fallbackAlbum, meta.title || cleanedTitle);
+    const { hasLyrics } = findLyrics(fullPath);
 
     return {
       id: Buffer.from(fullPath).toString("base64url"),
@@ -557,20 +643,38 @@ app.get("/stream", (req, res) => {
   }
 });
 
-app.get("/covers", (req, res) => {
+app.get("/covers", async (req, res) => {
   const coverPath = req.query.path as string;
+  const artist = req.query.artist as string;
+  const album = req.query.album as string;
+  const title = req.query.title as string;
+
+  const mimeTypes: Record<string, string> = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp"
+  };
+
+  // 1. Direct local file
   if (coverPath && fs.existsSync(coverPath)) {
     const ext = path.extname(coverPath).toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      ".jpg": "image/jpeg",
-      ".jpeg": "image/jpeg",
-      ".png": "image/png",
-      ".webp": "image/webp"
-    };
     res.setHeader("Content-Type", mimeTypes[ext] || "image/jpeg");
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "public, max-age=86400");
     return fs.createReadStream(coverPath).pipe(res);
+  }
+
+  // 2. Cached or online auto-fetched cover
+  if (artist || album || title) {
+    const cachedOrOnline = await fetchOnlineAlbumCover(artist, album, title);
+    if (cachedOrOnline && fs.existsSync(cachedOrOnline)) {
+      const ext = path.extname(cachedOrOnline).toLowerCase();
+      res.setHeader("Content-Type", mimeTypes[ext] || "image/jpeg");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      return fs.createReadStream(cachedOrOnline).pipe(res);
+    }
   }
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
