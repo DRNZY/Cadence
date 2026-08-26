@@ -5,6 +5,7 @@ import path from "path";
 import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { getLyricsForTrack } from "./lyricsFetcher.ts";
 
 const execFileAsync = promisify(execFile);
 const app = express();
@@ -284,29 +285,30 @@ app.get("/api/rescan", async (req, res) => {
   }
 });
 
-app.get("/api/lyrics", (req, res) => {
+app.get("/api/lyrics", async (req, res) => {
   const filePath = req.query.path as string;
-  if (!filePath || !fs.existsSync(filePath)) {
-    return res.status(404).json({ error: "File not found" });
-  }
-
-  const { path: lyricsPath } = findLyrics(filePath);
-  if (!lyricsPath || !fs.existsSync(lyricsPath)) {
-    return res.json({ synced: false, lines: [] });
-  }
+  const title = (req.query.title as string) || "";
+  const artist = (req.query.artist as string) || "";
+  const album = (req.query.album as string) || "";
+  const duration = parseFloat(req.query.duration as string) || 0;
 
   try {
-    const content = fs.readFileSync(lyricsPath, "utf-8");
-    if (lyricsPath.endsWith(".lrc")) {
-      const parsed = parseLrc(content);
-      return res.json({ synced: true, lines: parsed });
-    } else {
-      const rawLines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
-      return res.json({
-        synced: false,
-        lines: rawLines.map((t, idx) => ({ time: idx * 4, text: t }))
-      });
-    }
+    const result = await getLyricsForTrack(filePath, artist, title, album, duration);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, synced: false, lines: [] });
+  }
+});
+
+app.get("/api/lyrics/online", async (req, res) => {
+  const title = (req.query.title as string) || "";
+  const artist = (req.query.artist as string) || "";
+  const album = (req.query.album as string) || "";
+  const duration = parseFloat(req.query.duration as string) || 0;
+
+  try {
+    const result = await getLyricsForTrack("", artist, title, album, duration);
+    res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

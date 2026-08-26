@@ -3,6 +3,13 @@ export interface LyricLine {
   text: string;
 }
 
+export interface LyricsState {
+  synced: boolean;
+  source: "local" | "online" | "cache" | "none";
+  provider?: string;
+  lines: LyricLine[];
+}
+
 export interface Track {
   id: string;
   title: string;
