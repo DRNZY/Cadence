@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const http = require("http");
 const { fork, spawn } = require("child_process");
 
 // Set Application Name
@@ -19,51 +20,39 @@ app.commandLine.appendSwitch("enable-gpu-rasterization");
 app.commandLine.appendSwitch("enable-zero-copy");
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
+function checkUrl(url) {
+  return new Promise((resolve) => {
+    const req = http.get(url, (res) => {
+      resolve(res.statusCode >= 200 && res.statusCode < 400);
+    });
+    req.on("error", () => resolve(false));
+    req.setTimeout(800, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
 function startBackendServer() {
   const projectRoot = path.resolve(__dirname, "..");
+  const serverMjs = path.join(projectRoot, "dist-server/index.mjs");
   const serverTs = path.join(projectRoot, "server/index.ts");
-  const serverJs = path.join(projectRoot, "server/index.js");
 
-  // In production / packaged app, run server/index.js or index.ts via tsx
-  if (fs.existsSync(serverJs)) {
-    serverProcess = fork(serverJs, [], {
+  if (fs.existsSync(serverMjs)) {
+    serverProcess = fork(serverMjs, [], {
       cwd: projectRoot,
       env: { ...process.env, PORT: SERVER_PORT.toString(), NODE_ENV: "production" },
       stdio: "inherit"
     });
   } else if (fs.existsSync(serverTs)) {
     const tsxBin = path.join(projectRoot, "node_modules/.bin/tsx");
-    if (fs.existsSync(tsxBin)) {
-      serverProcess = spawn(tsxBin, [serverTs], {
-        cwd: projectRoot,
-        env: { ...process.env, PORT: SERVER_PORT.toString() },
-        stdio: "inherit"
-      });
-    } else {
-      serverProcess = spawn("npx", ["tsx", serverTs], {
-        cwd: projectRoot,
-        env: { ...process.env, PORT: SERVER_PORT.toString() },
-        stdio: "inherit"
-      });
-    }
-  }
-}
-
-async function checkUrl(url) {
-  try {
-    const http = require("http");
-    return await new Promise((resolve) => {
-      const req = http.get(url, (res) => {
-        resolve(res.statusCode >= 200 && res.statusCode < 400);
-      });
-      req.on("error", () => resolve(false));
-      req.setTimeout(1000, () => {
-        req.destroy();
-        resolve(false);
-      });
+    const cmd = fs.existsSync(tsxBin) ? tsxBin : "npx";
+    const args = fs.existsSync(tsxBin) ? [serverTs] : ["tsx", serverTs];
+    serverProcess = spawn(cmd, args, {
+      cwd: projectRoot,
+      env: { ...process.env, PORT: SERVER_PORT.toString() },
+      stdio: "inherit"
     });
-  } catch {
-    return false;
   }
 }
 
@@ -86,18 +75,18 @@ async function createWindow() {
     }
   });
 
-  // Determine URL: dev server (5173) or production (3001)
+  // Determine target URL
   let targetUrl = PROD_URL;
   const isDevRunning = await checkUrl(DEV_URL);
   if (isDevRunning) {
     targetUrl = DEV_URL;
   } else {
-    // Wait for backend on 3001 to respond
-    for (let i = 0; i < 30; i++) {
+    // Wait for production backend to respond
+    for (let i = 0; i < 40; i++) {
       if (await checkUrl(PROD_URL)) {
         break;
       }
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 150));
     }
   }
 
@@ -115,7 +104,6 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  // Check if backend already running, else start it
   const isServerRunning = await checkUrl(PROD_URL);
   if (!isServerRunning) {
     startBackendServer();

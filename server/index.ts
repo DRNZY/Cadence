@@ -424,11 +424,11 @@ const DIST_DIR = path.resolve(process.env.DIST_DIR || path.join(currentDir, "../
 
 if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
-  app.get("*", (req, res, next) => {
-    if (req.path.startsWith("/api") || req.path.startsWith("/stream") || req.path.startsWith("/covers")) {
-      return next();
+  app.use((req, res, next) => {
+    if (req.method === "GET" && !req.path.startsWith("/api") && !req.path.startsWith("/stream") && !req.path.startsWith("/covers")) {
+      return res.sendFile(path.join(DIST_DIR, "index.html"));
     }
-    res.sendFile(path.join(DIST_DIR, "index.html"));
+    next();
   });
 }
 
