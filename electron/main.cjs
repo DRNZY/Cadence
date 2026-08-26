@@ -78,7 +78,7 @@ function registerGlobalMediaKeys() {
 }
 
 async function createWindow() {
-  const iconPath = path.join(__dirname, "../packaging/auradeck.png");
+  const iconPath = path.join(__dirname, "../packaging/cadence.png");
 
   mainWindow = new BrowserWindow({
     width: 1600,
@@ -86,7 +86,7 @@ async function createWindow() {
     minWidth: 1024,
     minHeight: 650,
     backgroundColor: "#08090e",
-    title: "AuraDeck — Studio Hi-Fi Linux Audio Engine",
+    title: "Cadence — Studio Hi-Fi Linux Audio Engine",
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     autoHideMenuBar: true,
     webPreferences: {
@@ -112,8 +112,16 @@ async function createWindow() {
     }
   }
 
-  console.log(`[AuraDeck Electron] Loading UI from: ${targetUrl}`);
+  console.log(`[Cadence Electron] Loading UI from: ${targetUrl}`);
   mainWindow.loadURL(targetUrl);
+
+  mainWindow.webContents.on("did-fail-load", () => {
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.loadURL(targetUrl);
+      }
+    }, 250);
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -129,7 +137,7 @@ async function createWindow() {
 ipcMain.on("track-changed", (_event, track) => {
   if (Notification.isSupported() && track && track.title) {
     try {
-      const iconPath = path.join(__dirname, "../packaging/auradeck.png");
+      const iconPath = path.join(__dirname, "../packaging/cadence.png");
       const notif = new Notification({
         title: track.title,
         body: `${track.artist || "Unknown Artist"} • ${track.album || "Unknown Album"}\n[${track.format || "AUDIO"}]`,
