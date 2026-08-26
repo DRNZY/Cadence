@@ -1,26 +1,29 @@
-# Maintainer: Darnell <darnell@example.com>
+# Maintainer: DRNZY <darnell.dijksteel@gmail.com>
 pkgname=auradeck
 pkgver=1.0.0
 pkgrel=1
 pkgdesc="High-Fidelity Studio Linux Audio Player & Synced Karaoke Lyrics Engine with 32:9 and 16:9 Turntable UI"
 arch=('any')
-url="https://github.com/darnell/auradeck"
+url="https://github.com/DRNZY/Auradeck"
 license=('MIT')
 depends=('electron' 'nodejs>=18' 'ffmpeg')
 makedepends=('npm')
-source=("$pkgname-$pkgver.tar.gz"
+options=('!strip')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/DRNZY/Auradeck/archive/refs/tags/v$pkgver.tar.gz"
         "auradeck.desktop"
         "auradeck.png")
-sha256sums=('SKIP' 'SKIP' 'SKIP')
+sha256sums=('16783afa54045662504e152f057951bd15de1c7e8c2bbce8d7ada7bf48fa367e'
+            '04ffaf999ee839555583607c3d2717ec1f2159a80241a813307040dc5b95d5d4'
+            'afb1a794cf689b7a2772009b9ad3c837ed1d05d5b919b2a9307d00a6f65949c7')
 
 build() {
-    cd "$srcdir/$pkgname-$pkgver"
-    npm ci --omit=optional
+    cd "Auradeck-$pkgver"
+    npm ci
     npm run build
 }
 
 package() {
-    cd "$srcdir/$pkgname-$pkgver"
+    cd "Auradeck-$pkgver"
 
     # Install application files into /usr/lib/auradeck
     install -d "$pkgdir/usr/lib/$pkgname"

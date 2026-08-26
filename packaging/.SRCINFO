@@ -2,18 +2,19 @@ pkgbase = auradeck
 	pkgdesc = High-Fidelity Studio Linux Audio Player & Synced Karaoke Lyrics Engine with 32:9 and 16:9 Turntable UI
 	pkgver = 1.0.0
 	pkgrel = 1
-	url = https://github.com/darnell/auradeck
+	url = https://github.com/DRNZY/Auradeck
 	arch = any
 	license = MIT
 	makedepends = npm
 	depends = electron
 	depends = nodejs>=18
 	depends = ffmpeg
-	source = auradeck-1.0.0.tar.gz
+	options = !strip
+	source = auradeck-1.0.0.tar.gz::https://github.com/DRNZY/Auradeck/archive/refs/tags/v1.0.0.tar.gz
 	source = auradeck.desktop
 	source = auradeck.png
-	sha256sums = SKIP
-	sha256sums = SKIP
-	sha256sums = SKIP
+	sha256sums = 16783afa54045662504e152f057951bd15de1c7e8c2bbce8d7ada7bf48fa367e
+	sha256sums = 04ffaf999ee839555583607c3d2717ec1f2159a80241a813307040dc5b95d5d4
+	sha256sums = afb1a794cf689b7a2772009b9ad3c837ed1d05d5b919b2a9307d00a6f65949c7
 
 pkgname = auradeck
