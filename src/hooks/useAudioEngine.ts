@@ -287,12 +287,17 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
       audioRef.current.src = streamUrl;
       audioRef.current.playbackRate = playbackRate;
       audioRef.current.volume = isMuted ? 0 : volume;
+      audioRef.current.load();
 
       try {
+        if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+          await audioCtxRef.current.resume();
+        }
         await audioRef.current.play();
         setIsPlaying(true);
-      } catch (err) {
-        console.error("Playback error:", err);
+        console.log("[Cadence AudioEngine] Playback started successfully for:", track.title);
+      } catch (err: any) {
+        console.error("[Cadence AudioEngine] Playback error:", err.message || err);
         setIsPlaying(false);
       }
     }
@@ -327,20 +332,71 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     }
   }, [initAudioNodes, playbackRate, isMuted, volume, isPlaying, dspSettings.crossfadeSeconds]);
 
+  const playPromiseRef = useRef<Promise<void> | null>(null);
+
+  const play = useCallback(async () => {
+    if (!audioRef.current) return;
+    initAudioNodes();
+    if (audioCtxRef.current?.state === "suspended") {
+      await audioCtxRef.current.resume().catch(() => {});
+    }
+    try {
+      const p = audioRef.current.play();
+      playPromiseRef.current = p;
+      await p;
+      setIsPlaying(true);
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        console.error("[Cadence AudioEngine] play error:", e);
+      }
+    } finally {
+      playPromiseRef.current = null;
+    }
+  }, [initAudioNodes]);
+
+  const pause = useCallback(async () => {
+    if (!audioRef.current) return;
+    if (playPromiseRef.current) {
+      try {
+        await playPromiseRef.current;
+      } catch {}
+    }
+    audioRef.current.pause();
+    setIsPlaying(false);
+  }, []);
+
   const togglePlayPause = useCallback(async () => {
     if (!audioRef.current) return;
     initAudioNodes();
 
-    if (audioCtxRef.current?.state === "suspended") {
-      await audioCtxRef.current.resume();
-    }
-
     if (isPlaying) {
+      if (playPromiseRef.current) {
+        try {
+          await playPromiseRef.current;
+        } catch {}
+      }
       audioRef.current.pause();
+      setIsPlaying(false);
     } else {
-      audioRef.current.play().catch(console.error);
+      if (audioCtxRef.current?.state === "suspended") {
+        await audioCtxRef.current.resume().catch(() => {});
+      }
+      try {
+        const p = audioRef.current.play();
+        playPromiseRef.current = p;
+        await p;
+        setIsPlaying(true);
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          console.error("[Cadence AudioEngine] Play error:", err);
+        }
+      } finally {
+        playPromiseRef.current = null;
+      }
     }
   }, [isPlaying, initAudioNodes]);
+
+  const togglePlay = togglePlayPause;
 
   const seek = useCallback((timeInSeconds: number) => {
     if (!audioRef.current) return;
@@ -624,16 +680,22 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     isMuted,
     playbackRate,
     eqGains,
+    equalizerGains: eqGains,
     dspSettings,
     isLoading,
     playTrack,
+    play,
+    pause,
+    togglePlay,
     togglePlayPause,
     seek,
     setVolume: setAudioVolume,
     toggleMute,
     setSpeed,
     setEqGain,
+    setEqualizerGain: setEqGain,
     setAllEqGains,
+    applyPreset: setAllEqGains,
     updateDspSettings,
     startScratch,
     scratch,

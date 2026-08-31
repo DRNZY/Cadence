@@ -1,9 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Zap, Cpu, Sparkles, Monitor, CheckCircle2,
-  Volume2, RefreshCw, HardDrive, Settings2
+  Volume2, RefreshCw, HardDrive, Settings2, Radio,
+  User, Lock, Layout, Palette, LayoutGrid, Check, AlertCircle,
+  Sliders, LogOut, Disc, AlignLeft, ArrowDown, ArrowUp
 } from "lucide-react";
+import { THEME_PRESETS, buildCustomGradient, applyThemeColors, getDefaultColors } from "../utils/colorExtractor";
+import { PlayerBarPosition, LibraryPosition, SidebarPosition } from "../types";
 
 export type PerformanceMode = "quality" | "balanced" | "performance" | "ultra-low";
 
@@ -14,6 +18,15 @@ export interface AppSettings {
   visualizerEnabled: boolean;
   dynamicTheme: boolean;
   autoScrobble: boolean;
+  themePreset: string;
+  accentColor: string;
+  customGradientStart: string;
+  customGradientEnd: string;
+  customGradientAngle: number;
+  glowIntensity: number;
+  playerBarPosition: PlayerBarPosition;
+  libraryPosition: LibraryPosition;
+  sidebarPosition: SidebarPosition;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -23,6 +36,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   visualizerEnabled: true,
   dynamicTheme: true,
   autoScrobble: false,
+  themePreset: "graphite",
+  accentColor: "#38bdf8",
+  customGradientStart: "#0f172a",
+  customGradientEnd: "#020617",
+  customGradientAngle: 145,
+  glowIntensity: 0.7,
+  playerBarPosition: "bottom",
+  libraryPosition: "left",
+  sidebarPosition: "right"
 };
 
 const PERF_MODES: {
@@ -37,32 +59,32 @@ const PERF_MODES: {
     id: "quality",
     label: "Cinematic",
     summary: "Full visual fidelity & dynamic glow",
-    icon: <Sparkles className="w-5 h-5" />,
-    color: "from-violet-500 to-purple-600",
+    icon: <Sparkles className="w-4 h-4" />,
+    color: "from-blue-500 to-indigo-600",
     badge: "~1.2 GB",
   },
   {
     id: "balanced",
     label: "Balanced",
     summary: "Balanced visuals & responsiveness",
-    icon: <Monitor className="w-5 h-5" />,
-    color: "from-blue-500 to-cyan-500",
+    icon: <Monitor className="w-4 h-4" />,
+    color: "from-cyan-500 to-blue-500",
     badge: "~750 MB",
   },
   {
     id: "performance",
     label: "Performance",
     summary: "Reduced effects for efficiency",
-    icon: <Cpu className="w-5 h-5" />,
-    color: "from-emerald-500 to-green-500",
+    icon: <Cpu className="w-4 h-4" />,
+    color: "from-emerald-500 to-teal-500",
     badge: "~450 MB",
   },
   {
     id: "ultra-low",
     label: "Ultra Low",
     summary: "Minimal audio-only focus",
-    icon: <Zap className="w-5 h-5" />,
-    color: "from-orange-500 to-red-500",
+    icon: <Zap className="w-4 h-4" />,
+    color: "from-amber-500 to-orange-500",
     badge: "~250 MB",
   },
 ];
@@ -83,13 +105,13 @@ function Toggle({
   return (
     <div className={`flex items-center justify-between gap-4 py-3 ${disabled ? "opacity-40 pointer-events-none" : ""}`}>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-white">{label}</p>
+        <p className="text-xs font-semibold text-white">{label}</p>
         {description && <p className="text-[11px] text-neutral-400 mt-0.5">{description}</p>}
       </div>
       <button
         onClick={() => onChange(!checked)}
         className={`shrink-0 relative w-10 h-6 rounded-full transition-all duration-200 ${
-          checked ? "bg-primary" : "bg-neutral-700"
+          checked ? "bg-primary" : "bg-neutral-800"
         }`}
         role="switch"
         aria-checked={checked}
@@ -117,13 +139,163 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onSettingsChange,
 }) => {
-  const [tab, setTab] = useState<"performance" | "display" | "audio">("performance");
+  const [tab, setTab] = useState<"layout" | "theme" | "performance" | "audio" | "lastfm">("layout");
+
+  // Last.fm State
+  const [lastFmConfig, setLastFmConfig] = useState<{
+    enabled: boolean;
+    username: string | null;
+    hasSession: boolean;
+    apiKey?: string;
+  }>({
+    enabled: false,
+    username: null,
+    hasSession: false,
+  });
+
+  const [usernameInput, setUsernameInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [customApiKey, setCustomApiKey] = useState("");
+  const [customApiSecret, setCustomApiSecret] = useState("");
+  const [showAdvancedLastFm, setShowAdvancedLastFm] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+
+  const fetchLastFmConfig = useCallback(() => {
+    fetch("/api/lastfm/config")
+      .then(r => r.json())
+      .then(data => {
+        setLastFmConfig({
+          enabled: Boolean(data.enabled),
+          username: data.username || null,
+          hasSession: Boolean(data.hasSession),
+          apiKey: data.apiKey || "",
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchLastFmConfig();
+    }
+  }, [isOpen, fetchLastFmConfig]);
 
   const set = <K extends keyof AppSettings>(key: K, val: AppSettings[K]) => {
     const updated = { ...settings, [key]: val };
     onSettingsChange(updated);
     try {
       localStorage.setItem("cadence_settings", JSON.stringify(updated));
+    } catch {}
+  };
+
+  const handleApplyThemePreset = (presetId: string) => {
+    const preset = THEME_PRESETS.find(p => p.id === presetId);
+    if (!preset) return;
+
+    const updated: AppSettings = {
+      ...settings,
+      themePreset: preset.id,
+      dynamicTheme: false,
+      accentColor: preset.accent,
+      customGradientStart: preset.startColor,
+      customGradientEnd: preset.endColor,
+      customGradientAngle: preset.angle
+    };
+
+    onSettingsChange(updated);
+    try {
+      localStorage.setItem("cadence_settings", JSON.stringify(updated));
+    } catch {}
+
+    const customTheme = buildCustomGradient(preset.startColor, preset.endColor, preset.angle, preset.accent);
+    applyThemeColors(customTheme);
+  };
+
+  const handleCustomThemeChange = (key: "accentColor" | "customGradientStart" | "customGradientEnd" | "customGradientAngle", val: any) => {
+    const updated: AppSettings = {
+      ...settings,
+      themePreset: "custom",
+      dynamicTheme: false,
+      [key]: val
+    };
+
+    onSettingsChange(updated);
+    try {
+      localStorage.setItem("cadence_settings", JSON.stringify(updated));
+    } catch {}
+
+    const customTheme = buildCustomGradient(
+      key === "customGradientStart" ? val : updated.customGradientStart,
+      key === "customGradientEnd" ? val : updated.customGradientEnd,
+      key === "customGradientAngle" ? val : updated.customGradientAngle,
+      key === "accentColor" ? val : updated.accentColor
+    );
+    applyThemeColors(customTheme);
+  };
+
+  const handleLastFmToggle = async (enabled: boolean) => {
+    try {
+      const res = await fetch("/api/lastfm/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLastFmConfig(prev => ({ ...prev, enabled }));
+        set("autoScrobble", enabled);
+      }
+    } catch {}
+  };
+
+  const handleLastFmConnect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!usernameInput.trim() || !passwordInput.trim()) {
+      setAuthError("Please enter your Last.fm username and password.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthSuccess(null);
+
+    try {
+      const res = await fetch("/api/lastfm/auth/mobile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: usernameInput.trim(),
+          password: passwordInput.trim(),
+          apiKey: customApiKey.trim() || undefined,
+          apiSecret: customApiSecret.trim() || undefined
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAuthSuccess(`Successfully connected as @${data.username}!`);
+        setPasswordInput("");
+        fetchLastFmConfig();
+        set("autoScrobble", true);
+      } else {
+        setAuthError(data.error || "Failed to authenticate with Last.fm");
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "Network error connecting to Last.fm");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLastFmDisconnect = async () => {
+    try {
+      await fetch("/api/lastfm/disconnect", { method: "POST" });
+      fetchLastFmConfig();
+      set("autoScrobble", false);
+      setAuthSuccess(null);
+      setAuthError(null);
     } catch {}
   };
 
@@ -138,46 +310,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           onClick={e => { if (e.target === e.currentTarget) onClose(); }}
         >
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-md" />
 
           {/* Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.94, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            transition={{ type: "spring", stiffness: 420, damping: 30 }}
             className="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-3xl border border-white/10 overflow-hidden shadow-2xl"
-            style={{ background: "rgba(13, 14, 20, 0.95)" }}
+            style={{ background: "rgba(10, 11, 16, 0.96)" }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary to-blue-500 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
                   <Settings2 className="w-4 h-4 text-white" />
                 </div>
-                <h2 className="text-sm font-bold text-white">Settings</h2>
+                <h2 className="text-sm font-bold text-white tracking-tight">Studio Settings</h2>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl hover:bg-white/10 text-neutral-400 hover:text-white transition-colors"
+                className="p-2 rounded-xl hover:bg-white/10 text-neutral-400 hover:text-white transition-colors active:scale-95"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Tab Bar */}
-            <div className="flex gap-1 px-6 pt-4 shrink-0">
-              {(["performance", "display", "audio"] as const).map(t => (
+            {/* Tab Bar with Apple Spring Pills */}
+            <div className="flex gap-1.5 px-6 pt-4 shrink-0 overflow-x-auto no-scrollbar">
+              {([
+                { id: "layout", label: "Layout & Ergonomics", icon: <Layout className="w-3.5 h-3.5" /> },
+                { id: "theme", label: "Colors & Themes", icon: <Palette className="w-3.5 h-3.5" /> },
+                { id: "performance", label: "Performance", icon: <Cpu className="w-3.5 h-3.5" /> },
+                { id: "audio", label: "Audio & Library", icon: <Volume2 className="w-3.5 h-3.5" /> },
+                { id: "lastfm", label: "Last.fm", icon: <Radio className="w-3.5 h-3.5" /> }
+              ] as const).map(t => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`px-4 py-1.5 rounded-full text-xs font-semibold capitalize transition-all ${
-                    tab === t
-                      ? "bg-white/15 text-white border border-white/20"
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold capitalize transition-all shrink-0 flex items-center gap-1.5 active:scale-95 ${
+                    tab === t.id
+                      ? "bg-white/20 text-white border border-white/20 shadow-sm"
                       : "text-neutral-400 hover:text-white"
                   }`}
                 >
-                  {t}
+                  {t.icon}
+                  <span>{t.label}</span>
                 </button>
               ))}
             </div>
@@ -185,7 +364,192 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 no-scrollbar">
 
-              {/* ─── PERFORMANCE TAB ─── */}
+              {/* ─── 1. LAYOUT & ERGONOMICS TAB ─── */}
+              {tab === "layout" && (
+                <div className="space-y-4">
+                  {/* Player Bar Position */}
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold text-white">Player Bar Position</p>
+                      <p className="text-[11px] text-neutral-400">Position the audio control bar to suit your screen layout.</p>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2.5">
+                      {([
+                        { id: "bottom", label: "Bottom Dock", icon: <ArrowDown className="w-3.5 h-3.5" /> },
+                        { id: "top", label: "Top Header", icon: <ArrowUp className="w-3.5 h-3.5" /> },
+                        { id: "left", label: "Left Sidebar", icon: <AlignLeft className="w-3.5 h-3.5" /> },
+                      ] as const).map(pos => {
+                        const active = settings.playerBarPosition === pos.id;
+                        return (
+                          <button
+                            key={pos.id}
+                            onClick={() => set("playerBarPosition", pos.id)}
+                            className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-medium ${
+                              active
+                                ? "bg-white/15 border-white/30 text-white shadow-sm"
+                                : "bg-black/30 border-white/5 text-neutral-400 hover:text-white hover:border-white/15"
+                            }`}
+                          >
+                            {pos.icon}
+                            <span>{pos.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Panel Arrangements */}
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
+                    <p className="text-xs font-semibold text-white">Panel Placement</p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[11px] text-neutral-400 mb-1.5">Music Library</p>
+                        <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+                          <button
+                            onClick={() => set("libraryPosition", "left")}
+                            className={`flex-1 py-1 text-xs rounded-lg font-medium transition-all ${
+                              settings.libraryPosition === "left" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
+                            }`}
+                          >
+                            Left
+                          </button>
+                          <button
+                            onClick={() => set("libraryPosition", "right")}
+                            className={`flex-1 py-1 text-xs rounded-lg font-medium transition-all ${
+                              settings.libraryPosition === "right" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
+                            }`}
+                          >
+                            Right
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-[11px] text-neutral-400 mb-1.5">Lyrics & Visualizer Stack</p>
+                        <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+                          <button
+                            onClick={() => set("sidebarPosition", "right")}
+                            className={`flex-1 py-1 text-xs rounded-lg font-medium transition-all ${
+                              settings.sidebarPosition === "right" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
+                            }`}
+                          >
+                            Right
+                          </button>
+                          <button
+                            onClick={() => set("sidebarPosition", "left")}
+                            className={`flex-1 py-1 text-xs rounded-lg font-medium transition-all ${
+                              settings.sidebarPosition === "left" ? "bg-white/20 text-white" : "text-neutral-400 hover:text-white"
+                            }`}
+                          >
+                            Left
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ─── 2. THEMES & COLORS TAB ─── */}
+              {tab === "theme" && (
+                <div className="space-y-4">
+                  {/* Dynamic Album Art Theme Switch */}
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+                    <Toggle
+                      checked={settings.dynamicTheme}
+                      onChange={v => {
+                        set("dynamicTheme", v);
+                        if (!v) handleApplyThemePreset(settings.themePreset || "graphite");
+                      }}
+                      label="Dynamic Album Art Glow"
+                      description="Extracts dominant ambient hues from current playing album cover."
+                    />
+                  </div>
+
+                  {/* Preset Palettes */}
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
+                    <p className="text-xs font-semibold text-white">Curated Themes</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {THEME_PRESETS.map(preset => {
+                        const active = !settings.dynamicTheme && settings.themePreset === preset.id;
+                        return (
+                          <button
+                            key={preset.id}
+                            onClick={() => handleApplyThemePreset(preset.id)}
+                            className={`p-3 rounded-xl border flex flex-col items-start gap-2 transition-all relative overflow-hidden text-left ${
+                              active
+                                ? "border-white/40 bg-white/15 shadow-sm"
+                                : "border-white/5 bg-black/40 hover:border-white/20 hover:bg-white/5"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm"
+                                style={{ backgroundColor: preset.accent }}
+                              />
+                              <span className="text-xs font-bold text-white">{preset.name}</span>
+                            </div>
+                            <div
+                              className="w-full h-3 rounded-md border border-white/10"
+                              style={{ background: `linear-gradient(${preset.angle}deg, ${preset.startColor}, ${preset.endColor})` }}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Custom Dual Gradient & Accent Customizer */}
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3.5">
+                    <p className="text-xs font-semibold text-white">Custom Gradient & Accent</p>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[11px] text-neutral-400 block mb-1">Accent Color</label>
+                        <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10">
+                          <input
+                            type="color"
+                            value={settings.accentColor}
+                            onChange={e => handleCustomThemeChange("accentColor", e.target.value)}
+                            className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0"
+                          />
+                          <span className="text-xs font-mono text-white">{settings.accentColor}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] text-neutral-400 block mb-1">Gradient Start</label>
+                        <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10">
+                          <input
+                            type="color"
+                            value={settings.customGradientStart}
+                            onChange={e => handleCustomThemeChange("customGradientStart", e.target.value)}
+                            className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0"
+                          />
+                          <span className="text-xs font-mono text-white">{settings.customGradientStart}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] text-neutral-400 block mb-1">Gradient End</label>
+                        <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10">
+                          <input
+                            type="color"
+                            value={settings.customGradientEnd}
+                            onChange={e => handleCustomThemeChange("customGradientEnd", e.target.value)}
+                            className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0"
+                          />
+                          <span className="text-xs font-mono text-white">{settings.customGradientEnd}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ─── 3. PERFORMANCE TAB ─── */}
               {tab === "performance" && (
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -196,24 +560,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           key={mode.id}
                           onClick={() => {
                             set("performanceMode", mode.id);
-                            // Auto-apply related toggles
-                            if (mode.id === "quality") {
+                            if (mode.id === "quality" || mode.id === "balanced") {
                               onSettingsChange({
                                 ...settings,
-                                performanceMode: "quality",
+                                performanceMode: mode.id,
                                 enableAmbientGlow: true,
                                 enableGlassBlur: true,
                                 visualizerEnabled: true,
-                                dynamicTheme: true,
-                              });
-                            } else if (mode.id === "balanced") {
-                              onSettingsChange({
-                                ...settings,
-                                performanceMode: "balanced",
-                                enableAmbientGlow: true,
-                                enableGlassBlur: true,
-                                visualizerEnabled: true,
-                                dynamicTheme: true,
                               });
                             } else if (mode.id === "performance") {
                               onSettingsChange({
@@ -222,7 +575,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 enableAmbientGlow: false,
                                 enableGlassBlur: false,
                                 visualizerEnabled: true,
-                                dynamicTheme: false,
                               });
                             } else if (mode.id === "ultra-low") {
                               onSettingsChange({
@@ -231,14 +583,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 enableAmbientGlow: false,
                                 enableGlassBlur: false,
                                 visualizerEnabled: false,
-                                dynamicTheme: false,
                               });
                             }
-                            try {
-                              localStorage.setItem("cadence_settings", JSON.stringify({
-                                ...settings, performanceMode: mode.id
-                              }));
-                            } catch {}
                           }}
                           className={`text-left p-4 rounded-2xl border transition-all relative overflow-hidden ${
                             active
@@ -246,115 +592,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               : "border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/15"
                           }`}
                         >
-                          {/* Active indicator */}
                           {active && (
                             <div className="absolute top-3 right-3">
                               <CheckCircle2 className="w-4 h-4 text-primary" />
                             </div>
                           )}
 
-                          <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${mode.color} flex items-center justify-center mb-3 text-white`}>
+                          <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${mode.color} flex items-center justify-center mb-3 text-white`}>
                             {mode.icon}
                           </div>
 
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="text-sm font-bold text-white">{mode.label}</span>
+                              <span className="text-xs font-bold text-white">{mode.label}</span>
                               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-gradient-to-r ${mode.color} text-white`}>
                                 {mode.badge}
                               </span>
                             </div>
-                            <p className="text-xs text-neutral-400">{mode.summary}</p>
+                            <p className="text-[11px] text-neutral-400">{mode.summary}</p>
                           </div>
                         </button>
                       );
                     })}
                   </div>
 
-                  {/* Fine-grain overrides */}
-                  <div className="mt-2 p-4 rounded-2xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs font-semibold text-neutral-300 mb-2">Fine-tune</p>
-                    <div className="divide-y divide-white/5">
-                      <Toggle
-                        checked={settings.enableAmbientGlow}
-                        onChange={v => set("enableAmbientGlow", v)}
-                        label="Ambient Glow"
-                      />
-                      <Toggle
-                        checked={settings.enableGlassBlur}
-                        onChange={v => set("enableGlassBlur", v)}
-                        label="Glass Blur"
-                      />
-                      <Toggle
-                        checked={settings.visualizerEnabled}
-                        onChange={v => set("visualizerEnabled", v)}
-                        label="Spectrum Visualizer"
-                      />
-                      <Toggle
-                        checked={settings.dynamicTheme}
-                        onChange={v => set("dynamicTheme", v)}
-                        label="Dynamic Theme"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ─── DISPLAY TAB ─── */}
-              {tab === "display" && (
-                <div className="space-y-3">
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 divide-y divide-white/5">
+                  <div className="mt-2 p-4 rounded-2xl bg-white/[0.03] border border-white/5 divide-y divide-white/5">
                     <Toggle
                       checked={settings.enableAmbientGlow}
                       onChange={v => set("enableAmbientGlow", v)}
-                      label="Ambient Glow"
+                      label="Ambient Aura Glow"
                     />
                     <Toggle
                       checked={settings.enableGlassBlur}
                       onChange={v => set("enableGlassBlur", v)}
-                      label="Glass Blur"
+                      label="Hardware Frosted Glass Blur"
                     />
                     <Toggle
                       checked={settings.visualizerEnabled}
                       onChange={v => set("visualizerEnabled", v)}
-                      label="Spectrum Visualizer"
+                      label="128-Band FFT Spectrum Visualizer"
                     />
-                    <Toggle
-                      checked={settings.dynamicTheme}
-                      onChange={v => set("dynamicTheme", v)}
-                      label="Dynamic Theme"
-                    />
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-2">
-                    <p className="text-xs font-semibold text-neutral-300">Current Mode</p>
-                    <div className="flex items-center gap-3">
-                      {(() => {
-                        const mode = PERF_MODES.find(m => m.id === settings.performanceMode)!;
-                        return (
-                          <>
-                            <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${mode.color} flex items-center justify-center text-white`}>
-                              {mode.icon}
-                            </div>
-                            <div>
-                              <p className="text-sm font-bold text-white">{mode.label}</p>
-                              <p className="text-[10px] text-neutral-400">{mode.badge} · {mode.summary}</p>
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <button
-                      onClick={() => setTab("performance")}
-                      className="text-xs text-primary hover:underline mt-1"
-                    >
-                      Change mode →
-                    </button>
                   </div>
                 </div>
               )}
 
-              {/* ─── AUDIO TAB ─── */}
+              {/* ─── 4. AUDIO TAB ─── */}
               {tab === "audio" && (
                 <div className="space-y-3">
                   <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
@@ -362,51 +644,144 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="flex items-center gap-3 p-3 rounded-xl bg-black/30 border border-white/5">
                       <Volume2 className="w-4 h-4 text-primary shrink-0" />
                       <div>
-                        <p className="text-xs font-medium text-white">PipeWire / ALSA</p>
-                        <p className="text-[10px] text-neutral-400">System Audio Output</p>
+                        <p className="text-xs font-medium text-white">PipeWire / ALSA Hi-Res</p>
+                        <p className="text-[10px] text-neutral-400">Lossless 24-bit / 96kHz Output Engine</p>
                       </div>
                       <span className="ml-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     </div>
                   </div>
 
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 divide-y divide-white/5">
-                    <Toggle
-                      checked={settings.autoScrobble}
-                      onChange={v => set("autoScrobble", v)}
-                      label="Last.fm Scrobbling"
-                      description="Coming soon"
-                      disabled
-                    />
-                  </div>
-
                   <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs font-semibold text-neutral-300 mb-2">Library</p>
+                    <p className="text-xs font-semibold text-neutral-300 mb-2">Music Library</p>
                     <div className="flex items-center gap-2 text-[11px] text-neutral-400">
                       <HardDrive className="w-3.5 h-3.5" />
-                      <span>Music directory: <code className="text-white font-mono">~/Music</code></span>
+                      <span>Local directory: <code className="text-white font-mono">~/Music</code></span>
                     </div>
                     <button
                       onClick={() => window.location.reload()}
-                      className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-colors"
+                      className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-colors active:scale-95"
                     >
                       <RefreshCw className="w-3 h-3" />
                       Rescan Library
                     </button>
                   </div>
+                </div>
+              )}
 
-                  {/* About */}
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                    <p className="text-xs font-semibold text-neutral-300">About</p>
-                    <p className="text-xs text-neutral-400">Cadence v1.0.0</p>
-                    <a
-                      href="https://github.com/DRNZY/Cadence"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[10px] text-primary hover:underline font-mono inline-block pt-1"
-                    >
-                      github.com/DRNZY/Cadence
-                    </a>
+              {/* ─── 5. LAST.FM TAB ─── */}
+              {tab === "lastfm" && (
+                <div className="space-y-4">
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-red-950/40 via-neutral-900/60 to-black/80 border border-red-500/20 relative overflow-hidden">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-red-600 flex items-center justify-center shadow-lg text-white font-bold text-sm font-mono">
+                          as
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-xs font-bold text-white">Last.fm Scrobbler</h3>
+                            {lastFmConfig.hasSession && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                Connected
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-neutral-400 mt-0.5">
+                            {lastFmConfig.hasSession
+                              ? `Logged in as @${lastFmConfig.username}`
+                              : "Automatically sync your Cadence listening history & Now Playing status."}
+                          </p>
+                        </div>
+                      </div>
+
+                      {lastFmConfig.hasSession && (
+                        <button
+                          onClick={handleLastFmDisconnect}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-neutral-300 hover:text-red-400 border border-white/10 text-xs font-medium transition-colors"
+                          title="Disconnect Account"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Disconnect</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {lastFmConfig.hasSession && (
+                      <div className="mt-4 pt-4 border-t border-white/10">
+                        <Toggle
+                          checked={lastFmConfig.enabled}
+                          onChange={handleLastFmToggle}
+                          label="Live Scrobbling & Now Playing"
+                          description="Sends Now Playing updates and scrobbles tracks played over 50% (max 4 mins)."
+                        />
+                      </div>
+                    )}
                   </div>
+
+                  {!lastFmConfig.hasSession && (
+                    <form onSubmit={handleLastFmConnect} className="p-5 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3.5">
+                      <p className="text-xs font-semibold text-neutral-300">Account Credentials</p>
+
+                      {authError && (
+                        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>{authError}</span>
+                        </div>
+                      )}
+
+                      {authSuccess && (
+                        <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
+                          <Check className="w-4 h-4 shrink-0" />
+                          <span>{authSuccess}</span>
+                        </div>
+                      )}
+
+                      <div className="space-y-2.5">
+                        <div className="relative">
+                          <User className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3" />
+                          <input
+                            type="text"
+                            placeholder="Last.fm Username"
+                            value={usernameInput}
+                            onChange={e => setUsernameInput(e.target.value)}
+                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-red-500/60 transition-colors"
+                            required
+                          />
+                        </div>
+
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3" />
+                          <input
+                            type="password"
+                            placeholder="Password"
+                            value={passwordInput}
+                            onChange={e => setPasswordInput(e.target.value)}
+                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-red-500/60 transition-colors"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={authLoading}
+                        className="w-full py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 active:scale-[0.99] text-white text-xs font-semibold shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {authLoading ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Authenticating with Last.fm...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Radio className="w-3.5 h-3.5" />
+                            <span>Connect with Last.fm</span>
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  )}
                 </div>
               )}
             </div>

@@ -10,7 +10,7 @@ while [ -h "$SOURCE" ]; do
 done
 PROJECT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
-# 2. Locate Electron binary (Local node_modules, system Arch/CachyOS electron, or PATH)
+# 2. Locate Electron binary
 find_electron() {
   if [ -x "$PROJECT_DIR/node_modules/.bin/electron" ]; then
     echo "$PROJECT_DIR/node_modules/.bin/electron"
@@ -40,14 +40,7 @@ fi
 
 cd "$PROJECT_DIR"
 
-# 3. Launch Cadence Native Desktop Application with memory capping
+# 3. Launch Cadence Native Desktop Application cleanly
 exec "$ELECTRON_BIN" \
-  --js-flags="--max-old-space-size=160 --expose-gc" \
-  --renderer-process-limit=1 \
-  --disable-features=SpareRendererForSitePerProcess,LocalNetworkAccessChecks \
-  --enable-features=UseOzonePlatform,VaapiVideoDecoder \
-  --ozone-platform-hint=auto \
-  --enable-gpu-rasterization \
-  --enable-zero-copy \
   "$PROJECT_DIR/electron/main.cjs" \
   "$@"

@@ -2,7 +2,7 @@ const { app, BrowserWindow, shell, globalShortcut, ipcMain, Notification } = req
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
-const { fork, spawn } = require("child_process");
+const { spawn } = require("child_process");
 
 // Set Application Name
 app.name = "Cadence";
@@ -13,14 +13,25 @@ const SERVER_PORT = 3001;
 const DEV_URL = "http://localhost:5173";
 const PROD_URL = `http://localhost:${SERVER_PORT}`;
 
-// High-Efficiency V8 & GPU switches for minimal RAM & CPU footprint
-app.commandLine.appendSwitch("js-flags", "--max-old-space-size=160 --expose-gc");
-app.commandLine.appendSwitch("renderer-process-limit", "1");
-app.commandLine.appendSwitch("disable-features", "SpareRendererForSitePerProcess,LocalNetworkAccessChecks");
-app.commandLine.appendSwitch("enable-features", "UseOzonePlatform,VaapiVideoDecoder");
-app.commandLine.appendSwitch("ozone-platform-hint", "auto");
-app.commandLine.appendSwitch("enable-gpu-rasterization");
-app.commandLine.appendSwitch("enable-zero-copy");
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, commandLine) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+
+      const playIdx = commandLine.findIndex(arg => arg === "--play" || arg === "-p");
+      if (playIdx !== -1 && commandLine[playIdx + 1]) {
+        mainWindow.webContents.send("play-command", { query: commandLine[playIdx + 1] });
+      }
+    }
+  });
+}
+
+// Clean Linux flags for Wayland & X11 compatibility
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 function checkUrl(url) {
@@ -42,8 +53,7 @@ function startBackendServer() {
   const serverTs = path.join(projectRoot, "server/index.ts");
 
   if (fs.existsSync(serverMjs)) {
-    // Launch lightweight system node process with 64MB memory cap instead of full Electron
-    serverProcess = spawn("node", ["--max-old-space-size=64", serverMjs], {
+    serverProcess = spawn("node", [serverMjs], {
       cwd: projectRoot,
       env: { ...process.env, PORT: SERVER_PORT.toString(), NODE_ENV: "production" },
       stdio: "inherit"
@@ -76,7 +86,7 @@ function registerGlobalMediaKeys() {
         }
       });
     } catch (err) {
-      console.warn(`[AuraDeck Electron] Could not bind global shortcut ${key}:`, err);
+      console.warn(`[Cadence Electron] Could not bind global shortcut ${key}:`, err);
     }
   }
 }
@@ -89,18 +99,24 @@ async function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 650,
+    frame: false,
+    titleBarStyle: "hidden",
     backgroundColor: "#08090e",
     title: "Cadence — Studio Hi-Fi Linux Audio Engine",
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     autoHideMenuBar: true,
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false, // Allow local audio streaming and CORS
-      spellcheck: false, // Disables background spellcheck dictionary RAM
-      backgroundThrottling: true
+      webSecurity: false
     }
+  });
+
+  // Forward renderer console to terminal
+  mainWindow.webContents.on("console-message", (_event, level, message) => {
+    console.log(`[Renderer Console] ${message}`);
   });
 
   // Determine target URL
@@ -120,6 +136,17 @@ async function createWindow() {
 
   console.log(`[Cadence Electron] Loading UI from: ${targetUrl}`);
   mainWindow.loadURL(targetUrl);
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    const playIdx = process.argv.findIndex(arg => arg === "--play" || arg === "-p");
+    if (playIdx !== -1 && process.argv[playIdx + 1]) {
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("play-command", { query: process.argv[playIdx + 1] });
+        }
+      }, 600);
+    }
+  });
 
   mainWindow.webContents.on("did-fail-load", () => {
     setTimeout(() => {
@@ -176,8 +203,8 @@ app.whenReady().then(async () => {
     startBackendServer();
   }
 
-  await createWindow();
   registerGlobalMediaKeys();
+  await createWindow();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -188,23 +215,14 @@ app.whenReady().then(async () => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
+  if (serverProcess) {
+    serverProcess.kill();
+    serverProcess = null;
+  }
 });
 
 app.on("window-all-closed", () => {
-  if (serverProcess) {
-    try {
-      serverProcess.kill("SIGTERM");
-    } catch {}
-  }
   if (process.platform !== "darwin") {
     app.quit();
-  }
-});
-
-app.on("before-quit", () => {
-  if (serverProcess) {
-    try {
-      serverProcess.kill("SIGTERM");
-    } catch {}
   }
 });

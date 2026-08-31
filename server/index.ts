@@ -7,6 +7,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import crypto from "crypto";
 import { getLyricsForTrack } from "./lyricsFetcher.ts";
+import { lastFmRouter } from "./lastfm.ts";
 
 const execFileAsync = promisify(execFile);
 const app = express();
@@ -18,6 +19,7 @@ app.use(cors({
   allowedHeaders: ["Range", "Accept-Ranges", "Content-Type", "Origin", "X-Requested-With"]
 }));
 app.use(express.json());
+app.use("/api/lastfm", lastFmRouter);
 
 const MUSIC_DIR = path.resolve(process.env.MUSIC_DIR || path.join(process.env.HOME || os.homedir(), "Music"));
 const USER_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "cadence");
@@ -710,6 +712,102 @@ app.get("/covers", async (req, res) => {
   res.setHeader("Content-Type", "image/svg+xml");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.send(svg);
+});
+
+// Remote Control SSE Engine & Playback Bridge
+const ctlClients: Array<(data: string) => void> = [];
+let currentPlaybackState: any = { status: "stopped", currentTrack: null, currentTime: 0, duration: 0, lastUpdated: Date.now() };
+
+app.get("/api/ctl/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.flushHeaders();
+
+  const send = (data: string) => {
+    res.write(`data: ${data}\n\n`);
+  };
+
+  ctlClients.push(send);
+  send(JSON.stringify({ type: "init", state: currentPlaybackState }));
+
+  const keepAlive = setInterval(() => {
+    res.write(": keep-alive\n\n");
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    const idx = ctlClients.indexOf(send);
+    if (idx !== -1) ctlClients.splice(idx, 1);
+  });
+});
+
+app.post("/api/ctl/playback", (req, res) => {
+  const body = req.body || {};
+  let track = body.track;
+
+  if (!track && body.trackId) {
+    track = cachedTracks.find(t => t.id === body.trackId);
+  }
+
+  if (!track && body.query) {
+    const q = (body.query || "").toLowerCase().trim();
+    const tokens = q.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w: string) => w.length > 1);
+
+    // Exact / Substring match
+    track = cachedTracks.find(t =>
+      t.title.toLowerCase().includes(q) ||
+      t.artist.toLowerCase().includes(q) ||
+      t.album.toLowerCase().includes(q) ||
+      t.filePath.toLowerCase().includes(q)
+    );
+
+    // Multi-token fuzzy match
+    if (!track && tokens.length > 0) {
+      let bestScore = 0;
+      for (const t of cachedTracks) {
+        const text = `${t.title} ${t.artist} ${t.album} ${t.filePath}`.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+        let score = 0;
+        for (const tok of tokens) {
+          if (text.includes(tok)) score += 1;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          track = t;
+        }
+      }
+    }
+  }
+
+  if (track && body.action === "play") {
+    currentPlaybackState = {
+      ...currentPlaybackState,
+      status: "playing",
+      currentTrack: track,
+      lastUpdated: Date.now()
+    };
+  }
+
+  const payload = { type: "playback-command", ...body, track, trackId: track ? track.id : body.trackId, timestamp: Date.now() };
+  const payloadStr = JSON.stringify(payload);
+
+  for (const client of ctlClients) {
+    try {
+      client(payloadStr);
+    } catch {}
+  }
+
+  res.json({ success: true, clientsNotified: ctlClients.length, track, command: body });
+});
+
+app.post("/api/ctl/state", (req, res) => {
+  currentPlaybackState = { ...req.body, lastUpdated: Date.now() };
+  res.json({ success: true });
+});
+
+app.get("/api/ctl/state", (_req, res) => {
+  res.json(currentPlaybackState);
 });
 
 // Serve production frontend assets if dist directory exists

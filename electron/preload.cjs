@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("mpris-media-key", handler);
     return () => ipcRenderer.removeListener("mpris-media-key", handler);
   },
+  onPlayCommand: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on("play-command", handler);
+    return () => ipcRenderer.removeListener("play-command", handler);
+  },
   sendTrackChange: (trackInfo) => {
     ipcRenderer.send("track-changed", trackInfo);
   },

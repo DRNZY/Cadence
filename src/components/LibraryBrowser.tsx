@@ -149,19 +149,21 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
     e.target.value = "";
   };
 
+  const safeTracks = Array.isArray(tracks) ? tracks : [];
+
   // Extract unique artists
   const artists = useMemo(() => {
     const map = new Map<string, number>();
-    for (const t of tracks) {
+    for (const t of safeTracks) {
       map.set(t.artist, (map.get(t.artist) || 0) + 1);
     }
     return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
-  }, [tracks]);
+  }, [safeTracks]);
 
   // Group tracks by album
   const albums = useMemo(() => {
     const map = new Map<string, { album: string; artist: string; year?: string; coverPath?: string; tracks: Track[] }>();
-    for (const t of tracks) {
+    for (const t of safeTracks) {
       const key = `${t.artist} - ${t.album}`;
       if (!map.has(key)) {
         map.set(key, {
@@ -175,15 +177,15 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
       map.get(key)!.tracks.push(t);
     }
     return Array.from(map.values()).sort((a, b) => a.artist.localeCompare(b.artist));
-  }, [tracks]);
+  }, [safeTracks]);
 
   // Smart Collections
-  const hiResTracks = useMemo(() => tracks.filter(t => t.format === "FLAC"), [tracks]);
-  const karaokeTracks = useMemo(() => tracks.filter(t => t.hasLyrics), [tracks]);
+  const hiResTracks = useMemo(() => safeTracks.filter(t => t.format === "FLAC"), [safeTracks]);
+  const karaokeTracks = useMemo(() => safeTracks.filter(t => t.hasLyrics), [safeTracks]);
 
   // Filtered tracks
   const filteredTracks = useMemo(() => {
-    return tracks.filter(t => {
+    return safeTracks.filter(t => {
       if (selectedArtist && t.artist !== selectedArtist) return false;
       if (formatFilter === "FLAC" && t.format !== "FLAC") return false;
       if (formatFilter === "MP3" && t.format !== "MP3") return false;
@@ -197,7 +199,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
         t.album.toLowerCase().includes(q)
       );
     });
-  }, [tracks, selectedArtist, formatFilter, searchQuery]);
+  }, [safeTracks, selectedArtist, formatFilter, searchQuery]);
 
   // Filtered albums
   const filteredAlbums = useMemo(() => {
@@ -218,11 +220,11 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
 
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistId);
   const selectedPlaylistTracks = useMemo(() => {
-    if (!selectedPlaylist) return [];
+    if (!selectedPlaylist || !Array.isArray(selectedPlaylist.trackIds)) return [];
     return selectedPlaylist.trackIds
-      .map(id => tracks.find(t => t.id === id))
+      .map(id => safeTracks.find(t => t.id === id))
       .filter((t): t is Track => Boolean(t));
-  }, [selectedPlaylist, tracks]);
+  }, [selectedPlaylist, safeTracks]);
 
   const formatSeconds = (sec: number) => {
     const mins = Math.floor(sec / 60);

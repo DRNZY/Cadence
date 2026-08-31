@@ -12,6 +12,8 @@ dist
 dist-server
 dist-electron
 dist-ssr
+release
+out
 *.tsbuildinfo
 *.tar.gz
 *.zip

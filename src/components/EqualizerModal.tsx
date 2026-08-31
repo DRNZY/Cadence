@@ -7,25 +7,42 @@ import { PRESETS, DspSettings } from "../types";
 interface EqualizerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  eqGains: number[];
-  dspSettings: DspSettings;
+  gains?: number[];
+  eqGains?: number[];
+  dspSettings?: DspSettings;
   onSetGain: (bandIndex: number, gain: number) => void;
-  onSetAllGains: (gains: number[]) => void;
-  onUpdateDspSettings: (settings: Partial<DspSettings>) => void;
+  onApplyPreset?: (gains: number[]) => void;
+  onSetAllGains?: (gains: number[]) => void;
+  onUpdateDspSettings?: (settings: Partial<DspSettings>) => void;
 }
 
 export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   isOpen,
   onClose,
+  gains,
   eqGains,
   dspSettings,
   onSetGain,
+  onApplyPreset,
   onSetAllGains,
   onUpdateDspSettings
 }) => {
   const [activeTab, setActiveTab] = useState<"eq" | "dsp">("eq");
 
   if (!isOpen) return null;
+
+  const currentGains = Array.isArray(gains) ? gains : Array.isArray(eqGains) ? eqGains : new Array(10).fill(0);
+  const applyPresetHandler = onApplyPreset || onSetAllGains || (() => {});
+  const safeDsp: DspSettings = dspSettings || {
+    spatial3D: false,
+    bassBoost: false,
+    compressor: false,
+    limiter: false,
+    tubeWarmth: false,
+    mono: false,
+    stereoWidth: 100
+  };
+  const updateDspHandler = onUpdateDspSettings || (() => {});
 
   return (
     <motion.div
@@ -88,14 +105,14 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               {PRESETS.map(p => (
                 <button
                   key={p.name}
-                  onClick={() => onSetAllGains(p.gains)}
+                  onClick={() => applyPresetHandler(p.gains)}
                   className="px-3 py-1.5 rounded-full text-xs font-semibold bg-white/5 hover:bg-white/15 border border-white/5 hover:border-white/20 text-neutral-300 hover:text-white transition-all shrink-0"
                 >
                   {p.name}
                 </button>
               ))}
               <button
-                onClick={() => onSetAllGains(new Array(10).fill(0))}
+                onClick={() => applyPresetHandler(new Array(10).fill(0))}
                 className="px-3 py-1.5 rounded-full text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 flex items-center gap-1 shrink-0 ml-auto"
               >
                 <RotateCcw className="w-3 h-3" /> Flat
@@ -104,7 +121,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
             <div className="grid grid-cols-10 gap-2.5 py-4 px-3 bg-black/40 rounded-2xl border border-white/5 items-center">
               {EQ_FREQUENCIES.map((freq, idx) => {
-                const gain = eqGains[idx] || 0;
+                const gain = currentGains[idx] ?? 0;
                 const label = freq >= 1000 ? `${freq / 1000}k` : `${freq}`;
 
                 return (
@@ -129,7 +146,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                       />
                     </div>
 
-                    <span className="text-[11px] font-mono font-bold text-neutral-300">
+                    <span className="text-[10px] font-mono text-neutral-300 font-bold uppercase">
                       {label}
                     </span>
                   </div>
@@ -139,135 +156,105 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           </div>
         )}
 
-        {/* Tab 2: DSP Settings */}
+        {/* Tab 2: WebAudio DSP Sound Stage */}
         {activeTab === "dsp" && (
-          <div className="space-y-4 py-2">
-            {/* ReplayGain Card */}
-            <div className="p-4 rounded-2xl bg-black/40 border border-white/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
-                    <Zap className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white">ReplayGain</h3>
-                    <p className="text-[11px] text-neutral-400">Automatic volume normalization</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => onUpdateDspSettings({ replayGainEnabled: !dspSettings.replayGainEnabled })}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    dspSettings.replayGainEnabled
-                      ? "bg-primary text-black"
-                      : "bg-white/10 text-neutral-400 hover:text-white"
-                  }`}
-                >
-                  {dspSettings.replayGainEnabled ? "ENABLED" : "DISABLED"}
-                </button>
-              </div>
-
-              {dspSettings.replayGainEnabled && (
-                <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-neutral-300">Preamp Gain</span>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min="-6"
-                      max="6"
-                      step="0.5"
-                      value={dspSettings.preampGain}
-                      onChange={e => onUpdateDspSettings({ preampGain: parseFloat(e.target.value) })}
-                      className="w-28 accent-primary bg-neutral-800 rounded-lg cursor-pointer"
-                    />
-                    <span className="text-xs font-mono font-bold text-primary w-10 text-right">
-                      {dspSettings.preampGain > 0 ? `+${dspSettings.preampGain}` : dspSettings.preampGain} dB
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Gapless & Crossfade Card */}
-            <div className="p-4 rounded-2xl bg-black/40 border border-white/5 space-y-3">
-              <div className="flex items-center justify-between">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Spatial 3D Audio */}
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white">Spatial 3D Audio</h3>
+                    <p className="text-[11px] text-neutral-400">Head-related binaural soundstage</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={safeDsp.spatial3D}
+                  onChange={e => updateDspHandler({ spatial3D: e.target.checked })}
+                  className="w-4 h-4 accent-primary rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Dynamic Bass Boost */}
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
                     <Radio className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white">Track Transitions</h3>
-                    <p className="text-[11px] text-neutral-400">
-                      {dspSettings.crossfadeSeconds === 0
-                        ? "Gapless playback"
-                        : `${dspSettings.crossfadeSeconds}s crossfade`}
-                    </p>
+                    <h3 className="text-xs font-bold text-white">Dynamic Bass Boost</h3>
+                    <p className="text-[11px] text-neutral-400">Harmonic low-end sub bass</p>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => onUpdateDspSettings({ crossfadeSeconds: 0 })}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                      dspSettings.crossfadeSeconds === 0
-                        ? "bg-purple-500 text-white"
-                        : "bg-white/10 text-neutral-400 hover:text-white"
-                    }`}
-                  >
-                    Gapless (0s)
-                  </button>
-                  <button
-                    onClick={() => onUpdateDspSettings({ crossfadeSeconds: 3 })}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                      dspSettings.crossfadeSeconds === 3
-                        ? "bg-purple-500 text-white"
-                        : "bg-white/10 text-neutral-400 hover:text-white"
-                    }`}
-                  >
-                    3s Mix
-                  </button>
-                </div>
+                <input
+                  type="checkbox"
+                  checked={safeDsp.bassBoost}
+                  onChange={e => updateDspHandler({ bassBoost: e.target.checked })}
+                  className="w-4 h-4 accent-primary rounded cursor-pointer"
+                />
               </div>
 
-              <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                <span className="text-xs font-semibold text-neutral-300">Crossfade Duration</span>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min="0"
-                    max="10"
-                    step="0.5"
-                    value={dspSettings.crossfadeSeconds}
-                    onChange={e => onUpdateDspSettings({ crossfadeSeconds: parseFloat(e.target.value) })}
-                    className="w-32 accent-purple-500 bg-neutral-800 rounded-lg cursor-pointer"
-                  />
-                  <span className="text-xs font-mono font-bold text-purple-400 w-10 text-right">
-                    {dspSettings.crossfadeSeconds === 0 ? "Off" : `${dspSettings.crossfadeSeconds}s`}
-                  </span>
+              {/* Tube Warmth Saturation */}
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white">Tube Warmth</h3>
+                    <p className="text-[11px] text-neutral-400">Analog harmonics & vinyl body</p>
+                  </div>
                 </div>
+                <input
+                  type="checkbox"
+                  checked={safeDsp.tubeWarmth}
+                  onChange={e => updateDspHandler({ tubeWarmth: e.target.checked })}
+                  className="w-4 h-4 accent-primary rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Studio Mastering Limiter */}
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <Sliders className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white">Mastering Limiter</h3>
+                    <p className="text-[11px] text-neutral-400">Prevents digital clipping & distortion</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={safeDsp.limiter}
+                  onChange={e => updateDspHandler({ limiter: e.target.checked })}
+                  className="w-4 h-4 accent-primary rounded cursor-pointer"
+                />
               </div>
             </div>
 
-            {/* Peak Limiter Info */}
-            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white/5 border border-white/5 text-xs text-neutral-400">
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-primary" />
-                Soft-Knee Limiter (-0.5 dBFS)
-              </span>
-              <span className="font-mono text-emerald-400 text-xs">Active</span>
+            {/* Stereo Width Slider */}
+            <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-bold text-white">Stereo Field Expansion</span>
+                <span className="font-mono text-primary font-bold">{safeDsp.stereoWidth}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="200"
+                step="5"
+                value={safeDsp.stereoWidth}
+                onChange={e => updateDspHandler({ stereoWidth: parseInt(e.target.value) })}
+                className="w-full accent-primary bg-neutral-800 rounded-lg cursor-pointer"
+              />
             </div>
           </div>
         )}
-
-        {/* Footer */}
-        <div className="flex justify-end pt-2">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 rounded-full bg-white text-black font-bold text-sm hover:bg-neutral-200 transition-colors shadow-md cursor-pointer"
-          >
-            Done
-          </button>
-        </div>
       </motion.div>
     </motion.div>
   );

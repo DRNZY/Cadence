@@ -46,9 +46,22 @@ export interface DspSettings {
   preampGain: number; // -6dB to +6dB
 }
 
-export type DeckMode = "vinyl" | "cd" | "minimal";
+export type DeckMode = "cover" | "vinyl" | "cd" | "minimal";
 export type VisualizerMode = "bars" | "wave" | "radial" | "oscilloscope";
 export type LayoutMode = "panoramic" | "studio" | "stage" | "browser";
+export type PlayerBarPosition = "bottom" | "top" | "left";
+export type LibraryPosition = "left" | "right";
+export type SidebarPosition = "right" | "left";
+
+export interface ThemeConfig {
+  accentColor: string;
+  bgMode: "dynamic" | "custom" | "obsidian" | "graphite" | "sunset" | "nordic" | "emerald";
+  customGradientStart: string;
+  customGradientEnd: string;
+  customGradientAngle: number;
+  glowIntensity: number; // 0.0 to 1.0
+  glassBlur: number; // 0 to 40 px
+}
 
 export interface EqualizerPreset {
   name: string;

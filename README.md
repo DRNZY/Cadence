@@ -1,57 +1,51 @@
-# 🎧 AuraDeck — Studio Hi-Fi Audio Engine
+# Cadence 🎵
 
-A high-fidelity standalone music player and real-time synchronized karaoke lyrics engine for **Windows** and **Linux** (CachyOS / Arch / Ubuntu / Fedora / Pop!_OS) with an adaptive **Studio 16:9** and **32:9 Super Ultrawide Panoramic** turntable UI, combining Apple physical design (liquid materials, dynamic spring physics, depth-of-field focus) with high-end DSP studio engineering.
+> A beautiful, local-first studio music player for Linux & Windows — Apple glass meets Material 3.
 
----
-
-## ⚡ Quick Download & Install
-
-### 🪟 Windows
-- **[Download Windows Installer (.exe)](https://github.com/DRNZY/Auradeck/releases/download/v1.1.0/AuraDeck-Setup-1.1.0.exe)** — Standard NSIS setup with Desktop & Start Menu shortcuts.
-- **[Download Windows Portable (.exe)](https://github.com/DRNZY/Auradeck/releases/download/v1.1.0/AuraDeck-Portable-1.1.0.exe)** — Standalone single executable (zero installation required).
-
-### 📦 Arch Linux / CachyOS / Manjaro
-```bash
-sudo pacman -U https://github.com/DRNZY/Auradeck/releases/download/v1.1.0/auradeck-1.0.0-1-any.pkg.tar.zst
-```
-
-### 🛠️ Build & Install from Source via Makepkg
-```bash
-git clone https://github.com/DRNZY/Auradeck.git
-cd Auradeck/packaging
-makepkg -si
-```
-
-### 🚀 Portable Archive (Any Linux Distro)
-Download [`auradeck.tar.gz`](https://github.com/DRNZY/Auradeck/releases/download/v1.1.0/auradeck.tar.gz) from [Releases](https://github.com/DRNZY/Auradeck/releases/tag/v1.1.0), extract, and run `./auradeck.sh`.
+![Cadence](public/icon.png)
 
 ---
 
 ## ✨ Features
 
-- **100% Standalone Desktop App:** Runs via native Electron with hardware-accelerated rendering and in-process backend management — zero external browser dependency.
-- **🎤 Online Synced Karaoke Lyrics (LRCLIB):** Automatic cloud lookup for millisecond-accurate synchronized lyrics with active line scaling, ambient text glow, depth-of-field blur, and click-to-seek.
-- **Adaptive Responsive Layouts:**
-  - **🎛️ Studio 16:9 Mode:** 3-column layout (`[Library (33%)]` | `[Vinyl Turntable (42%)]` | `[Lyrics & Visualizer/Queue (25%)]`) tailored for 1080p, 1440p, 4K monitors and laptops.
-  - **🌟 Ultrawide 32:9 Mode:** 4-column panoramic studio for super ultrawide and multi-monitor setups.
-  - **🎵 Vinyl Stage Mode:** Hero centerpiece turntable with dual FFT spectrum visualizers.
-  - **📚 Library Focus Mode:** Expanded discography album card grid.
-- **Analog Turntable Vinyl Deck:** Photorealistic spinning vinyl record with micro-grooves, dynamic tone-arm tracking, 33/45 RPM speed selector, Holo CD & Glass Minimal modes, and interactive vinyl scratching.
-- **128-Band FFT Spectrum Visualizer:** Real-time Web Audio API frequency visualizer with 4 switchable modes (*Neon Bars, Harmonic Waves, Radial Starburst, CRT Oscilloscope*) + Up Next queue.
-- **10-Band Graphic Equalizer:** High-fidelity parametric DSP chain with 8 studio presets (*Flat, Bass Boost, Vinyl Warmth, Vocal Clarity, Electronic, Hip-Hop 808, Acoustic, Club Punch*).
-- **Format Support:** FLAC (Lossless 24-bit / 96kHz), MP3, WAV, M4A, OGG, OPUS, AAC.
+- **Apple Glass Meets Material 3 Design:** Frosted glassmorphic panels, dynamic ambient OKLab color palettes, refined typography, and macOS-style traffic lights.
+- **Physics-Based Spinning Turntable Deck:** Real-time exponential angular velocity easing, ambient floor glow, and embedded album art disc labels.
+- **64-Band Exponential FFT Visualizer:** Responsive audio frequency spectrum analyzer tuned across the human hearing range.
+- **Native Local Audio Streaming Engine:** Custom `cadence://` protocol with HTTP partial-content range requests for instantaneous seek operations.
+- **Format Support:** FLAC (Lossless 24-bit / 96kHz), WAV, MP3, M4A, OGG, OPUS, AAC, ALAC, AIFF.
+- **D-Bus MPRIS2 & Hardware Media Keys:** Full system integration for media controls, lock screen player widgets, and hardware media keys.
+- **Fast Recursive Scanner:** Instant metadata and cover art extraction via `music-metadata`.
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## 🚀 Quick Start
 
-| Shortcut | Action |
-| :--- | :--- |
-| **`Space`** | Play / Pause |
-| **`→` / `←`** | Next Track / Previous Track |
-| **`Shift + →` / `Shift + ←`** | Seek 10s Forward / Backward |
-| **`↑` / `↓`** | Master Volume Up / Down |
-| **`M`** | Toggle Mute |
-| **`E`** | Open / Close 10-Band Equalizer |
-| **`F` / `F11`** | Toggle Fullscreen |
-| **Media Keys** | System Play/Pause, Next, Previous |
+### Development
+```bash
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run dev
+```
+
+### Production Build
+```bash
+# Build for Linux (AppImage & tar.gz)
+npm run build:linux
+
+# Build for Windows (Portable & NSIS installer)
+npm run build:win
+```
+
+---
+
+## 📦 Releases
+
+- **Linux:** `release/Cadence-1.0.0.AppImage`
+- **Windows:** `release/Cadence-1.0.0.exe` / `release/Cadence-Setup-1.0.0.exe`
+
+---
+
+## 📄 License
+MIT © [Darnell](https://github.com/DRNZY)

@@ -6,6 +6,85 @@ export interface ExtractedColors {
   bgGradient: string;
 }
 
+export interface PresetTheme {
+  id: string;
+  name: string;
+  accent: string;
+  startColor: string;
+  endColor: string;
+  angle: number;
+  bgGradient: string;
+}
+
+export const THEME_PRESETS: PresetTheme[] = [
+  {
+    id: "obsidian",
+    name: "Obsidian OLED",
+    accent: "#ffffff",
+    startColor: "#050507",
+    endColor: "#000000",
+    angle: 180,
+    bgGradient: "radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.04) 0%, transparent 60%), #050508"
+  },
+  {
+    id: "graphite",
+    name: "Space Titanium",
+    accent: "#38bdf8",
+    startColor: "#0f172a",
+    endColor: "#020617",
+    angle: 145,
+    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(56, 189, 248, 0.12) 0%, transparent 65%), radial-gradient(ellipse 60% 50% at 80% 100%, rgba(14, 165, 233, 0.08) 0%, transparent 70%), #07090e"
+  },
+  {
+    id: "emerald",
+    name: "Emerald Hi-Fi",
+    accent: "#10b981",
+    startColor: "#064e3b",
+    endColor: "#022c22",
+    angle: 135,
+    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(16, 185, 129, 0.14) 0%, transparent 65%), radial-gradient(ellipse 60% 50% at 80% 100%, rgba(5, 150, 105, 0.08) 0%, transparent 70%), #040807"
+  },
+  {
+    id: "amber",
+    name: "Amber Vinyl",
+    accent: "#f59e0b",
+    startColor: "#451a03",
+    endColor: "#1c0d02",
+    angle: 145,
+    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(245, 158, 11, 0.14) 0%, transparent 65%), radial-gradient(ellipse 60% 50% at 80% 100%, rgba(217, 119, 6, 0.08) 0%, transparent 70%), #0a0604"
+  },
+  {
+    id: "nordic",
+    name: "Nordic Slate",
+    accent: "#94a3b8",
+    startColor: "#1e293b",
+    endColor: "#0f172a",
+    angle: 160,
+    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(148, 163, 184, 0.12) 0%, transparent 65%), #090d14"
+  },
+  {
+    id: "crimson",
+    name: "Crimson Velvet",
+    accent: "#f43f5e",
+    startColor: "#4c0519",
+    endColor: "#1f020a",
+    angle: 140,
+    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(244, 63, 94, 0.14) 0%, transparent 65%), #080305"
+  }
+];
+
+export function buildCustomGradient(startColor: string, endColor: string, angle: number = 135, accentColor: string = "#ffffff"): ExtractedColors {
+  return {
+    primary: accentColor,
+    glow: `${accentColor}40`,
+    secondary: `${startColor}30`,
+    tertiary: `${endColor}20`,
+    bgGradient: `radial-gradient(ellipse 85% 65% at 20% 0%, ${startColor}33 0%, transparent 65%),
+                 radial-gradient(ellipse 75% 55% at 80% 100%, ${endColor}26 0%, transparent 70%),
+                 #05060a`
+  };
+}
+
 // Extract dominant & accent colors from an image using off-screen canvas
 export function extractColors(imgSrc: string): Promise<ExtractedColors> {
   return new Promise((resolve) => {
@@ -42,7 +121,7 @@ export function extractColors(imgSrc: string): Promise<ExtractedColors> {
 
           // Skip extremely dark or pure white pixels
           const brightness = (pr * 299 + pg * 587 + pb * 114) / 1000;
-          if (brightness < 20 || brightness > 240) continue;
+          if (brightness < 25 || brightness > 235) continue;
 
           r += pr;
           g += pg;
@@ -54,8 +133,7 @@ export function extractColors(imgSrc: string): Promise<ExtractedColors> {
           const min = Math.min(pr, pg, pb);
           const saturation = max === 0 ? 0 : (max - min) / max;
 
-          if (saturation > maxSaturation && brightness > 40 && brightness < 215) {
-            // Demote previous max to secondary
+          if (saturation > maxSaturation && brightness > 40 && brightness < 210) {
             secondSaturation = maxSaturation;
             secondaryR = vibrantR;
             secondaryG = vibrantG;
@@ -85,19 +163,18 @@ export function extractColors(imgSrc: string): Promise<ExtractedColors> {
         const pG = vibrantG > 0 ? vibrantG : avgG;
         const pB = vibrantB > 0 ? vibrantB : avgB;
 
-        const sR = secondaryR > 0 ? secondaryR : Math.round((avgR + 50) % 255);
+        const sR = secondaryR > 0 ? secondaryR : Math.round((avgR + 40) % 255);
         const sG = secondaryG > 0 ? secondaryG : Math.round((avgG + 30) % 255);
-        const sB = secondaryB > 0 ? secondaryB : Math.round((avgB + 80) % 255);
+        const sB = secondaryB > 0 ? secondaryB : Math.round((avgB + 60) % 255);
 
         const primary = `rgb(${pR}, ${pG}, ${pB})`;
-        const glow = `rgba(${pR}, ${pG}, ${pB}, 0.45)`;
+        const glow = `rgba(${pR}, ${pG}, ${pB}, 0.35)`;
         const secondary = `rgb(${sR}, ${sG}, ${sB})`;
-        const tertiary = `rgb(${Math.round(pR * 0.25)}, ${Math.round(pG * 0.25)}, ${Math.round(pB * 0.25)})`;
+        const tertiary = `rgb(${Math.round(pR * 0.2)}, ${Math.round(pG * 0.2)}, ${Math.round(pB * 0.2)})`;
 
-        const bgGradient = `radial-gradient(ellipse 80% 60% at 15% -10%, rgba(${pR}, ${pG}, ${pB}, 0.22) 0%, transparent 70%),
-                            radial-gradient(ellipse 70% 50% at 85% 110%, rgba(${sR}, ${sG}, ${sB}, 0.18) 0%, transparent 65%),
-                            radial-gradient(ellipse 60% 40% at 50% 50%, rgba(${Math.round(avgR * 0.3)}, ${Math.round(avgG * 0.3)}, ${Math.round(avgB * 0.3)}, 0.15) 0%, transparent 80%),
-                            #08090e`;
+        const bgGradient = `radial-gradient(ellipse 80% 60% at 20% 0%, rgba(${pR}, ${pG}, ${pB}, 0.18) 0%, transparent 65%),
+                            radial-gradient(ellipse 70% 50% at 80% 100%, rgba(${sR}, ${sG}, ${sB}, 0.14) 0%, transparent 70%),
+                            #06070b`;
 
         resolve({ primary, glow, secondary, tertiary, bgGradient });
       } catch (err) {
@@ -111,15 +188,13 @@ export function extractColors(imgSrc: string): Promise<ExtractedColors> {
   });
 }
 
-function getDefaultColors(): ExtractedColors {
+export function getDefaultColors(): ExtractedColors {
   return {
-    primary: "#c084fc",
-    glow: "rgba(192, 132, 252, 0.4)",
-    secondary: "rgba(59, 130, 246, 0.3)",
-    tertiary: "rgba(18, 16, 38, 0.8)",
-    bgGradient: `radial-gradient(ellipse 80% 60% at 15% -10%, rgba(192, 132, 252, 0.18) 0%, transparent 70%),
-                 radial-gradient(ellipse 70% 50% at 85% 110%, rgba(59, 130, 246, 0.15) 0%, transparent 65%),
-                 #08090e`
+    primary: "#ffffff",
+    glow: "rgba(255, 255, 255, 0.25)",
+    secondary: "rgba(56, 189, 248, 0.15)",
+    tertiary: "rgba(15, 23, 42, 0.6)",
+    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(255, 255, 255, 0.05) 0%, transparent 65%), #06070b"
   };
 }
 
