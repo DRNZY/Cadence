@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   Disc3, Sliders, Monitor, LayoutGrid, Sparkles, BookOpen,
   Music2, Maximize2, Minimize2, ListMusic, Mic2, Settings2,
-  Minus, Square, X, Palette, Volume2
+  Minus, Square, X, Palette
 } from "lucide-react";
 import type { Track, DeckMode, VisualizerMode, LayoutMode } from "./types";
 import { useAudioEngine } from "./hooks/useAudioEngine";
@@ -501,10 +500,10 @@ export const App: React.FC = () => {
         {/* Top Header Bar */}
         <header
           className="h-12 w-full px-4 flex items-center justify-between border-b border-white/5 z-20 bg-neutral-950/70 backdrop-blur-xl shrink-0 select-none"
-          style={{ WebkitAppRegion: "drag" as any }}
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
           {/* Logo & Brand */}
-          <div className="flex items-center space-x-2.5" style={{ WebkitAppRegion: "no-drag" as any }}>
+          <div className="flex items-center space-x-2.5" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
             <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center shadow-md">
               <Disc3 className="w-4 h-4 text-white" />
             </div>
@@ -514,7 +513,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* Center: Apple Segmented Layout Switcher */}
-          <div className="flex bg-black/40 p-1 rounded-full border border-white/10 backdrop-blur-md" style={{ WebkitAppRegion: "no-drag" as any }}>
+          <div className="flex bg-black/40 p-1 rounded-full border border-white/10 backdrop-blur-md" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
             {([
               { id: "studio", label: "Studio", icon: <LayoutGrid className="w-3.5 h-3.5" /> },
               { id: "panoramic", label: "Ultrawide", icon: <Monitor className="w-3.5 h-3.5" /> },
@@ -538,7 +537,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* Right Status Badges & Action Controls */}
-          <div className="flex items-center space-x-2" style={{ WebkitAppRegion: "no-drag" as any }}>
+          <div className="flex items-center space-x-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
             {lastFm.status.enabled && lastFm.status.hasSession && (
               <div
                 className="hidden sm:flex items-center gap-1.5 bg-red-950/40 px-2.5 py-1 rounded-full border border-red-500/20 text-xs font-mono text-red-300"

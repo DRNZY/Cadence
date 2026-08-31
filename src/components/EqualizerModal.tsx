@@ -34,6 +34,11 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   const currentGains = Array.isArray(gains) ? gains : Array.isArray(eqGains) ? eqGains : new Array(10).fill(0);
   const applyPresetHandler = onApplyPreset || onSetAllGains || (() => {});
   const safeDsp: DspSettings = dspSettings || {
+    gaplessEnabled: true,
+    crossfadeSeconds: 0,
+    replayGainEnabled: true,
+    replayGainMode: "track",
+    preampGain: 0,
     spatial3D: false,
     bassBoost: false,
     compressor: false,

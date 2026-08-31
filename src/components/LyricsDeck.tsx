@@ -322,10 +322,11 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
               <p className="text-sm font-semibold text-neutral-300">No synced lyrics</p>
               <button
                 onClick={() => setIsSearchOpen(true)}
+                disabled={isSearchingOnline}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-xs font-semibold hover:bg-primary/30 transition-all"
               >
                 <Search className="w-3.5 h-3.5" />
-                <span>Search Lyrics</span>
+                <span>{isSearchingOnline ? "Searching..." : "Search Lyrics"}</span>
               </button>
             </div>
           </div>

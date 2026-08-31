@@ -73,7 +73,7 @@ export const THEME_PRESETS: PresetTheme[] = [
   }
 ];
 
-export function buildCustomGradient(startColor: string, endColor: string, angle: number = 135, accentColor: string = "#ffffff"): ExtractedColors {
+export function buildCustomGradient(startColor: string, endColor: string, _angle: number = 135, accentColor: string = "#ffffff"): ExtractedColors {
   return {
     primary: accentColor,
     glow: `${accentColor}40`,

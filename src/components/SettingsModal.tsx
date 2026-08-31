@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Zap, Cpu, Sparkles, Monitor, CheckCircle2,
   Volume2, RefreshCw, HardDrive, Settings2, Radio,
-  User, Lock, Layout, Palette, LayoutGrid, Check, AlertCircle,
-  Sliders, LogOut, Disc, AlignLeft, ArrowDown, ArrowUp
+  User, Lock, Layout, Palette, Check, AlertCircle,
+  LogOut, AlignLeft, ArrowDown, ArrowUp
 } from "lucide-react";
-import { THEME_PRESETS, buildCustomGradient, applyThemeColors, getDefaultColors } from "../utils/colorExtractor";
+import { THEME_PRESETS, buildCustomGradient, applyThemeColors } from "../utils/colorExtractor";
 import { PlayerBarPosition, LibraryPosition, SidebarPosition } from "../types";
 
 export type PerformanceMode = "quality" | "balanced" | "performance" | "ultra-low";
@@ -155,9 +155,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
-  const [customApiKey, setCustomApiKey] = useState("");
-  const [customApiSecret, setCustomApiSecret] = useState("");
-  const [showAdvancedLastFm, setShowAdvancedLastFm] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
@@ -267,9 +264,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: usernameInput.trim(),
-          password: passwordInput.trim(),
-          apiKey: customApiKey.trim() || undefined,
-          apiSecret: customApiSecret.trim() || undefined
+          password: passwordInput.trim()
         })
       });
 

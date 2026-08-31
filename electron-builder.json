@@ -2,7 +2,7 @@
   "appId": "com.darnell.cadence",
   "productName": "Cadence",
   "directories": {
-    "output": "dist-electron"
+    "output": "release"
   },
   "files": [
     "dist/**/*",
@@ -14,8 +14,10 @@
   "linux": {
     "target": [
       "AppImage",
-      "tar.gz"
+      "tar.gz",
+      "deb"
     ],
+    "maintainer": "Darnell <darnell.dijksteel@gmail.com>",
     "icon": "packaging/cadence.png",
     "category": "Audio",
     "mimeTypes": [
@@ -27,5 +29,19 @@
       "audio/opus",
       "audio/aac"
     ]
+  },
+  "win": {
+    "target": [
+      "nsis",
+      "zip"
+    ],
+    "icon": "public/icon.ico"
+  },
+  "mac": {
+    "target": [
+      "zip"
+    ],
+    "icon": "packaging/cadence.png",
+    "category": "public.app-category.music"
   }
 }

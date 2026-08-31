@@ -44,6 +44,13 @@ export interface DspSettings {
   replayGainEnabled: boolean;
   replayGainMode: "track" | "album";
   preampGain: number; // -6dB to +6dB
+  spatial3D?: boolean;
+  bassBoost?: boolean;
+  compressor?: boolean;
+  limiter?: boolean;
+  tubeWarmth?: boolean;
+  mono?: boolean;
+  stereoWidth?: number;
 }
 
 export type DeckMode = "cover" | "vinyl" | "cd" | "minimal";

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Disc3, Disc, Sparkles, Image as ImageIcon, Heart, Music } from "lucide-react";
+import { Disc3, Disc, Sparkles, Image as ImageIcon, Heart } from "lucide-react";
 import { Track, DeckMode } from "../types";
 
 interface VinylDeckProps {
@@ -161,7 +161,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     }
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
+  const handlePointerUp = (_e: React.PointerEvent) => {
     if (isScratchingRef.current) {
       isScratchingRef.current = false;
       setIsScratching(false);
