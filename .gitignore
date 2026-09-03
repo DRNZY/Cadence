@@ -29,3 +29,5 @@ out
 *.njsproj
 *.sln
 *.sw?
+archive/
+cli/test_soulseek*.py

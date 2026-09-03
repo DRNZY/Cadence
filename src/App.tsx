@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Disc3, Sliders, Monitor, LayoutGrid, Sparkles, BookOpen,
   Music2, Maximize2, Minimize2, ListMusic, Mic2, Settings2,
-  Minus, Square, X, Palette
+  Minus, Square, X, Palette, Moon
 } from "lucide-react";
 import type { Track, DeckMode, VisualizerMode, LayoutMode } from "./types";
 import { useAudioEngine } from "./hooks/useAudioEngine";
 import { useLastFmScrobbler } from "./hooks/useLastFmScrobbler";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { extractColors, applyThemeColors, THEME_PRESETS, buildCustomGradient } from "./utils/colorExtractor";
 import { LibraryBrowser } from "./components/LibraryBrowser";
 import { VinylDeck } from "./components/VinylDeck";
@@ -16,6 +17,7 @@ import { QueueDrawer } from "./components/QueueDrawer";
 import { ControlBar } from "./components/ControlBar";
 import { EqualizerModal } from "./components/EqualizerModal";
 import { SettingsModal, loadSettings } from "./components/SettingsModal";
+import { SleepTimerModal } from "./components/SleepTimerModal";
 import type { AppSettings } from "./components/SettingsModal";
 
 function findBestTrackMatch(all: Track[], query: string): Track | null {
@@ -67,6 +69,8 @@ export const App: React.FC = () => {
   const [repeatMode, setRepeatMode] = useState<"off" | "all" | "one">("off");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
+  const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
+  const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null);
 
   // Auto-detect screen aspect ratio & dimensions on mount/resize
   useEffect(() => {
@@ -103,6 +107,26 @@ export const App: React.FC = () => {
     audioEngine.currentTime,
     audioEngine.duration
   );
+
+  // Sleep timer countdown ticker
+  useEffect(() => {
+    if (sleepTimerRemaining === null) return;
+    if (sleepTimerRemaining <= 0) {
+      audioEngine.pause();
+      setSleepTimerRemaining(null);
+      return;
+    }
+    const interval = setInterval(() => {
+      setSleepTimerRemaining(prev => {
+        if (prev === null || prev <= 1) {
+          audioEngine.pause();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [sleepTimerRemaining, audioEngine]);
 
   const tracksRef = useRef<Track[]>([]);
   tracksRef.current = tracks;
@@ -304,33 +328,22 @@ export const App: React.FC = () => {
     }
   };
 
-  // Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
-
-      if (e.code === "Space") {
-        e.preventDefault();
-        audioEngine.togglePlay();
-      } else if (e.code === "ArrowRight") {
-        if (e.shiftKey) handleNext();
-        else audioEngine.seek(audioEngine.currentTime + 5);
-      } else if (e.code === "ArrowLeft") {
-        if (e.shiftKey) handlePrevious();
-        else audioEngine.seek(audioEngine.currentTime - 5);
-      } else if (e.key.toLowerCase() === "m") {
-        audioEngine.toggleMute();
-      } else if (e.key.toLowerCase() === "e") {
-        setIsEqualizerOpen(prev => !prev);
-      } else if (e.key.toLowerCase() === "f" || e.key === "F11") {
-        e.preventDefault();
-        toggleFullscreen();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [audioEngine, handleNext, handlePrevious]);
+  // Global Keyboard Shortcuts
+  useKeyboardShortcuts({
+    onTogglePlayPause: () => audioEngine.togglePlay(),
+    onSeekRelative: (delta) => audioEngine.seek(audioEngine.currentTime + delta),
+    onAdjustVolume: (delta) => audioEngine.setVolume(audioEngine.volume + delta),
+    onToggleMute: () => audioEngine.toggleMute(),
+    onToggleLyrics: () => setRightPanelTab(prev => (prev === "lyrics" ? "split" : "lyrics")),
+    onToggleQueue: () => setRightPanelTab(prev => (prev === "queue" ? "split" : "queue")),
+    onToggleFullscreen: () => toggleFullscreen(),
+    onCloseModals: () => {
+      setIsEqualizerOpen(false);
+      setIsSettingsOpen(false);
+      setIsSleepTimerOpen(false);
+    },
+    enabled: true,
+  });
 
   // Render Left Column Content
   const renderLibraryPanel = () => (
@@ -573,6 +586,26 @@ export const App: React.FC = () => {
             >
               <Sliders className="w-3.5 h-3.5 text-white" />
               <span className="hidden sm:inline">EQ</span>
+            </button>
+
+            {/* Sleep Timer Button */}
+            <button
+              onClick={() => setIsSleepTimerOpen(true)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors active:scale-95 ${
+                sleepTimerRemaining !== null
+                  ? "bg-indigo-600/30 border-indigo-500/50 text-indigo-300"
+                  : "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-300 hover:text-white"
+              }`}
+              title="Sleep Timer"
+            >
+              <Moon className="w-3.5 h-3.5" />
+              {sleepTimerRemaining !== null ? (
+                <span className="font-mono text-[10px]">
+                  {Math.floor(sleepTimerRemaining / 60)}m
+                </span>
+              ) : (
+                <span className="hidden sm:inline">Timer</span>
+              )}
             </button>
 
             <button
@@ -831,6 +864,15 @@ export const App: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSettingsChange={setSettings}
+      />
+
+      {/* Sleep Timer Modal */}
+      <SleepTimerModal
+        isOpen={isSleepTimerOpen}
+        onClose={() => setIsSleepTimerOpen(false)}
+        timerRemaining={sleepTimerRemaining}
+        onStartTimer={(mins) => setSleepTimerRemaining(mins * 60)}
+        onCancelTimer={() => setSleepTimerRemaining(null)}
       />
     </div>
   );

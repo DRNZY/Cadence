@@ -14,7 +14,13 @@ const app = express();
 const PORT = 3001;
 
 app.use(cors({
-  origin: "*",
+  origin: (origin, callback) => {
+    if (!origin || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:") || origin.startsWith("file://") || origin.startsWith("vscode-webview://")) {
+      callback(null, true);
+    } else {
+      callback(new Error("Blocked by Cadence CORS policy"));
+    }
+  },
   methods: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
   allowedHeaders: ["Range", "Accept-Ranges", "Content-Type", "Origin", "X-Requested-With"]
 }));
@@ -26,6 +32,25 @@ const USER_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "ca
 const LEGACY_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "auradeck");
 const COVER_CACHE_DIR = path.join(os.homedir(), ".cache", "cadence", "covers");
 const PLAYLISTS_FILE = path.join(USER_DATA_DIR, "playlists.json");
+
+// Path boundary checker for audio and cover streaming
+export function isPathAllowed(targetPath: string): boolean {
+  if (!targetPath || typeof targetPath !== "string") return false;
+  try {
+    const resolved = path.resolve(targetPath);
+    const allowedDirs = [
+      MUSIC_DIR,
+      COVER_CACHE_DIR,
+      USER_DATA_DIR,
+      LEGACY_DATA_DIR,
+      path.join(os.homedir(), "Music"),
+      path.join(os.homedir(), "Downloads"),
+    ];
+    return allowedDirs.some(dir => resolved === dir || resolved.startsWith(dir + path.sep));
+  } catch {
+    return false;
+  }
+}
 
 // Ensure config and cache dirs exist
 if (!fs.existsSync(USER_DATA_DIR)) {
@@ -596,8 +621,8 @@ app.options("/stream", (req, res) => {
 
 app.get("/stream", (req, res) => {
   const filePath = req.query.path as string;
-  if (!filePath || !fs.existsSync(filePath)) {
-    return res.status(404).send("File not found");
+  if (!filePath || !isPathAllowed(filePath) || !fs.existsSync(filePath)) {
+    return res.status(404).send("File not found or access denied");
   }
 
   const stat = fs.statSync(filePath);
@@ -665,7 +690,7 @@ app.get("/covers", async (req, res) => {
   };
 
   // 1. Direct local file
-  if (coverPath && fs.existsSync(coverPath)) {
+  if (coverPath && isPathAllowed(coverPath) && fs.existsSync(coverPath)) {
     const ext = path.extname(coverPath).toLowerCase();
     res.setHeader("Content-Type", mimeTypes[ext] || "image/jpeg");
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -824,6 +849,6 @@ if (fs.existsSync(DIST_DIR)) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`[AuraDeck Audio Server] Running on http://localhost:${PORT}`);
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`[Cadence Audio Server] Running on http://127.0.0.1:${PORT}`);
 });
