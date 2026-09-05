@@ -47,26 +47,27 @@ function checkUrl(url) {
   });
 }
 
-function startBackendServer() {
+const { pathToFileURL } = require("url");
+
+async function startBackendServer() {
   const projectRoot = path.resolve(__dirname, "..");
   const serverMjs = path.join(projectRoot, "dist-server/index.mjs");
   const serverTs = path.join(projectRoot, "server/index.ts");
 
-  // Use Electron's embedded Node runtime for self-contained execution (supports app.asar)
-  const nodeRuntime = process.execPath;
-
   if (fs.existsSync(serverMjs)) {
-    serverProcess = spawn(nodeRuntime, [serverMjs], {
-      cwd: projectRoot,
-      env: { 
-        ...process.env, 
-        ELECTRON_RUN_AS_NODE: "1", 
-        PORT: SERVER_PORT.toString(), 
-        NODE_ENV: "production" 
-      },
-      stdio: "inherit"
-    });
-  } else if (fs.existsSync(serverTs)) {
+    try {
+      // Direct in-process execution via Electron's embedded Node runtime (100% asar-safe, zero spawn overhead)
+      process.env.PORT = SERVER_PORT.toString();
+      process.env.NODE_ENV = "production";
+      await import(pathToFileURL(serverMjs).href);
+      console.log("[Cadence Electron] In-process audio server initialized");
+      return;
+    } catch (err) {
+      console.error("[Cadence Electron] In-process server import failed:", err);
+    }
+  }
+
+  if (fs.existsSync(serverTs)) {
     const tsxBin = path.join(projectRoot, "node_modules/.bin/tsx");
     const cmd = fs.existsSync(tsxBin) ? tsxBin : "npx";
     const args = fs.existsSync(tsxBin) ? [serverTs] : ["tsx", serverTs];
@@ -212,7 +213,7 @@ ipcMain.on("window-close", () => {
 app.whenReady().then(async () => {
   const isServerRunning = await checkUrl(PROD_URL);
   if (!isServerRunning) {
-    startBackendServer();
+    await startBackendServer();
   }
 
   registerGlobalMediaKeys();
