@@ -30,9 +30,21 @@ app.use("/api/lastfm", lastFmRouter);
 const MUSIC_DIR = path.resolve(process.env.MUSIC_DIR || path.join(process.env.HOME || os.homedir(), "Music"));
 const USER_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "cadence");
 const LEGACY_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "auradeck");
-const COVER_CACHE_DIR = path.join(os.homedir(), ".cache", "cadence", "covers");
+const CADENCE_CACHE_DIR = path.join(os.homedir(), ".cache", "cadence");
+const COVER_CACHE_DIR = path.join(CADENCE_CACHE_DIR, "covers");
+const LIBRARY_CACHE_FILE = path.join(CADENCE_CACHE_DIR, "library_cache.json");
 const PLAYLISTS_FILE = path.join(USER_DATA_DIR, "playlists.json");
 const SETTINGS_FILE = path.join(USER_DATA_DIR, "settings.json");
+
+export function atomicWriteFileSync(filePath: string, data: string) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const tempPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 7)}`;
+  fs.writeFileSync(tempPath, data, "utf-8");
+  fs.renameSync(tempPath, filePath);
+}
 
 // Path boundary checker for audio and cover streaming
 export function isPathAllowed(targetPath: string): boolean {
@@ -41,6 +53,7 @@ export function isPathAllowed(targetPath: string): boolean {
     const resolved = path.resolve(targetPath);
     const allowedDirs = [
       MUSIC_DIR,
+      CADENCE_CACHE_DIR,
       COVER_CACHE_DIR,
       USER_DATA_DIR,
       LEGACY_DATA_DIR,
@@ -56,6 +69,9 @@ export function isPathAllowed(targetPath: string): boolean {
 // Ensure config and cache dirs exist
 if (!fs.existsSync(USER_DATA_DIR)) {
   try { fs.mkdirSync(USER_DATA_DIR, { recursive: true }); } catch {}
+}
+if (!fs.existsSync(CADENCE_CACHE_DIR)) {
+  try { fs.mkdirSync(CADENCE_CACHE_DIR, { recursive: true }); } catch {}
 }
 if (!fs.existsSync(COVER_CACHE_DIR)) {
   try { fs.mkdirSync(COVER_CACHE_DIR, { recursive: true }); } catch {}
@@ -123,7 +139,7 @@ function loadPlaylists(): Playlist[] {
 
 function savePlaylists(playlists: Playlist[]) {
   try {
-    fs.writeFileSync(PLAYLISTS_FILE, JSON.stringify(playlists, null, 2), "utf-8");
+    atomicWriteFileSync(PLAYLISTS_FILE, JSON.stringify(playlists, null, 2));
   } catch (err) {
     console.error("[Cadence Server] Error saving playlists:", err);
   }
@@ -385,6 +401,32 @@ async function mapConcurrent<T, R>(items: T[], concurrency: number, fn: (item: T
   return results;
 }
 
+interface CachedTrackRecord {
+  mtimeMs: number;
+  size: number;
+  track: Track;
+}
+
+function loadLibraryCache(): Record<string, CachedTrackRecord> {
+  try {
+    if (fs.existsSync(LIBRARY_CACHE_FILE)) {
+      const data = fs.readFileSync(LIBRARY_CACHE_FILE, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.error("[Cadence Server] Error loading library cache:", err);
+  }
+  return {};
+}
+
+function saveLibraryCache(cache: Record<string, CachedTrackRecord>) {
+  try {
+    atomicWriteFileSync(LIBRARY_CACHE_FILE, JSON.stringify(cache));
+  } catch (err) {
+    console.error("[Cadence Server] Error saving library cache:", err);
+  }
+}
+
 async function scanLibrary(): Promise<Track[]> {
   if (!fs.existsSync(MUSIC_DIR)) return [];
   const audioFilePaths: string[] = [];
@@ -406,12 +448,27 @@ async function scanLibrary(): Promise<Track[]> {
     }
   }
 
+  const startTime = Date.now();
   await walk(MUSIC_DIR);
-  console.log(`[Cadence Server] Discovered ${audioFilePaths.length} audio files. Parsing metadata...`);
+  console.log(`[Cadence Server] Discovered ${audioFilePaths.length} audio files. Checking cache...`);
 
-  const tracks = await mapConcurrent(audioFilePaths, 12, async (fullPath) => {
-    const ext = path.extname(fullPath).toLowerCase();
+  const diskCache = loadLibraryCache();
+  const nextCache: Record<string, CachedTrackRecord> = {};
+  let cacheHits = 0;
+  let cacheMisses = 0;
+
+  const tracks = await mapConcurrent(audioFilePaths, 16, async (fullPath) => {
     const stats = await fs.promises.stat(fullPath);
+    const cached = diskCache[fullPath];
+
+    if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size && cached.track) {
+      cacheHits++;
+      nextCache[fullPath] = cached;
+      return cached.track;
+    }
+
+    cacheMisses++;
+    const ext = path.extname(fullPath).toLowerCase();
     const meta = await extractMetadata(fullPath);
     const rel = path.relative(MUSIC_DIR, fullPath);
     const parts = rel.split(path.sep);
@@ -431,7 +488,7 @@ async function scanLibrary(): Promise<Track[]> {
     const coverPath = findCoverArt(fullPath, meta.artist || fallbackArtist, meta.album || fallbackAlbum, meta.title || cleanedTitle);
     const { hasLyrics } = findLyrics(fullPath);
 
-    return {
+    const track: Track = {
       id: Buffer.from(fullPath).toString("base64url"),
       title: meta.title || cleanedTitle,
       artist: meta.artist || fallbackArtist,
@@ -448,7 +505,18 @@ async function scanLibrary(): Promise<Track[]> {
       size: stats.size,
       replayGain: meta.replayGain
     };
+
+    nextCache[fullPath] = {
+      mtimeMs: stats.mtimeMs,
+      size: stats.size,
+      track
+    };
+
+    return track;
   });
+
+  saveLibraryCache(nextCache);
+  console.log(`[Cadence Server] Library scan complete in ${Date.now() - startTime}ms (${cacheHits} cache hits, ${cacheMisses} parsed).`);
 
   return tracks.sort((a, b) => {
     if (a.artist !== b.artist) return a.artist.localeCompare(b.artist);
@@ -625,7 +693,7 @@ app.post("/api/settings", (req, res) => {
     if (!fs.existsSync(USER_DATA_DIR)) {
       fs.mkdirSync(USER_DATA_DIR, { recursive: true });
     }
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(req.body, null, 2), "utf-8");
+    atomicWriteFileSync(SETTINGS_FILE, JSON.stringify(req.body, null, 2));
     res.json({ success: true });
   } catch (err) {
     console.error("[Cadence Server] Error saving settings:", err);

@@ -90,7 +90,7 @@ interface WidgetCardItemProps {
   visibleWidgets: WidgetId[];
 }
 
-const WidgetCardItem: React.FC<WidgetCardItemProps> = ({
+const WidgetCardItem = React.memo<WidgetCardItemProps>(({
   widgetId,
   isMinimized,
   isOnlyVisible,
@@ -363,7 +363,33 @@ const WidgetCardItem: React.FC<WidgetCardItemProps> = ({
       )}
     </Reorder.Item>
   );
-};
+}, (prev, next) => {
+  if (next.widgetId === "lyrics") {
+    return (
+      prev.widgetId === next.widgetId &&
+      prev.isMinimized === next.isMinimized &&
+      prev.isOnlyVisible === next.isOnlyVisible &&
+      prev.shouldLyricsCompact === next.shouldLyricsCompact &&
+      prev.hasSyncedLyrics === next.hasSyncedLyrics &&
+      prev.hasAnyLyrics === next.hasAnyLyrics &&
+      prev.currentTrack?.id === next.currentTrack?.id &&
+      prev.currentTime === next.currentTime &&
+      prev.visibleWidgets === next.visibleWidgets
+    );
+  }
+
+  return (
+    prev.widgetId === next.widgetId &&
+    prev.isMinimized === next.isMinimized &&
+    prev.isOnlyVisible === next.isOnlyVisible &&
+    prev.isPlaying === next.isPlaying &&
+    prev.visualizerMode === next.visualizerMode &&
+    prev.accentColor === next.accentColor &&
+    prev.currentTrack?.id === next.currentTrack?.id &&
+    prev.queue === next.queue &&
+    prev.visibleWidgets === next.visibleWidgets
+  );
+});
 
 export const WidgetContainer: React.FC<WidgetContainerProps> = ({
   currentTrack,

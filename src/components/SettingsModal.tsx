@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Zap, Cpu, Sparkles, Monitor, CheckCircle2,
@@ -215,21 +215,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   }, [isOpen, fetchLastFmConfig]);
 
-  const persistSettings = (updated: AppSettings) => {
+  const persistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootUpdateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafThemeRef = useRef<number | null>(null);
+
+  const [localColors, setLocalColors] = useState({
+    accentColor: settings.accentColor || "#38bdf8",
+    customGradientStart: settings.customGradientStart || "#0f172a",
+    customGradientEnd: settings.customGradientEnd || "#020617",
+  });
+
+  useEffect(() => {
+    setLocalColors({
+      accentColor: settings.accentColor || "#38bdf8",
+      customGradientStart: settings.customGradientStart || "#0f172a",
+      customGradientEnd: settings.customGradientEnd || "#020617",
+    });
+  }, [settings.accentColor, settings.customGradientStart, settings.customGradientEnd]);
+
+  const persistSettings = useCallback((updated: AppSettings, immediate = false) => {
     try {
       localStorage.setItem("cadence_settings", JSON.stringify(updated));
     } catch {}
-    fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updated)
-    }).catch(() => {});
-  };
+
+    if (immediate) {
+      if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+      fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated)
+      }).catch(() => {});
+      return;
+    }
+
+    if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+    persistDebounceRef.current = setTimeout(() => {
+      fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated)
+      }).catch(() => {});
+    }, 300);
+  }, []);
 
   const set = <K extends keyof AppSettings>(key: K, val: AppSettings[K]) => {
     const updated = { ...settings, [key]: val };
     onSettingsChange(updated);
-    persistSettings(updated);
+    persistSettings(updated, true);
   };
 
   const handleApplyThemePreset = (presetId: string) => {
@@ -247,30 +279,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     onSettingsChange(updated);
-    persistSettings(updated);
+    persistSettings(updated, true);
 
     const customTheme = buildCustomGradient(preset.startColor, preset.endColor, preset.angle, preset.accent);
     applyThemeColors(customTheme);
   };
 
-  const handleCustomThemeChange = (key: "accentColor" | "customGradientStart" | "customGradientEnd" | "customGradientAngle", val: any) => {
-    const updated: AppSettings = {
-      ...settings,
-      themePreset: "custom",
-      dynamicTheme: false,
+  const handleCustomThemeChange = (
+    key: "accentColor" | "customGradientStart" | "customGradientEnd",
+    val: string
+  ) => {
+    // 1. Instant local state update for input responsiveness
+    const nextColors = {
+      ...localColors,
       [key]: val
     };
+    setLocalColors(nextColors);
 
-    onSettingsChange(updated);
-    persistSettings(updated);
+    // 2. Direct CSS variable update on RAF (ultra-smooth 60-120fps with zero layout thrash)
+    if (rafThemeRef.current) cancelAnimationFrame(rafThemeRef.current);
+    rafThemeRef.current = requestAnimationFrame(() => {
+      const customTheme = buildCustomGradient(
+        nextColors.customGradientStart,
+        nextColors.customGradientEnd,
+        settings.customGradientAngle || 145,
+        nextColors.accentColor
+      );
+      applyThemeColors(customTheme);
+    });
 
-    const customTheme = buildCustomGradient(
-      key === "customGradientStart" ? val : updated.customGradientStart,
-      key === "customGradientEnd" ? val : updated.customGradientEnd,
-      key === "customGradientAngle" ? val : updated.customGradientAngle,
-      key === "accentColor" ? val : updated.accentColor
-    );
-    applyThemeColors(customTheme);
+    // 3. Debounce React root update and server sync so mouse drag is buttery smooth
+    if (rootUpdateDebounceRef.current) clearTimeout(rootUpdateDebounceRef.current);
+    rootUpdateDebounceRef.current = setTimeout(() => {
+      const updated: AppSettings = {
+        ...settings,
+        themePreset: "custom",
+        dynamicTheme: false,
+        [key]: val
+      };
+      onSettingsChange(updated);
+      persistSettings(updated, false);
+    }, 150);
   };
 
   const handleLastFmToggle = async (enabled: boolean) => {
@@ -582,7 +631,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   {/* Custom Dual Gradient & Accent Customizer */}
                   <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3.5">
-                    <p className="text-xs font-semibold text-white">Custom Gradient & Accent</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-white">Custom Gradient & Accent</p>
+                      <span className="text-[10px] text-neutral-400 font-mono">120 FPS Real-time</span>
+                    </div>
+
+                    {/* Quick Accent Swatches */}
+                    <div>
+                      <label className="text-[11px] text-neutral-400 block mb-1.5">Quick Accents</label>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {[
+                          { name: "Sky", color: "#38bdf8" },
+                          { name: "Emerald", color: "#10b981" },
+                          { name: "Amber", color: "#f59e0b" },
+                          { name: "Violet", color: "#8b5cf6" },
+                          { name: "Pink", color: "#ec4899" },
+                          { name: "Cyan", color: "#06b6d4" },
+                          { name: "Rose", color: "#f43f5e" },
+                          { name: "Arctic", color: "#f8fafc" },
+                        ].map(swatch => {
+                          const isCurrent = localColors.accentColor.toLowerCase() === swatch.color.toLowerCase();
+                          return (
+                            <button
+                              key={swatch.name}
+                              type="button"
+                              title={swatch.name}
+                              onClick={() => handleCustomThemeChange("accentColor", swatch.color)}
+                              className={`w-6 h-6 rounded-full transition-all flex items-center justify-center ${
+                                isCurrent ? "ring-2 ring-white scale-110 shadow-md" : "opacity-80 hover:opacity-100 hover:scale-105"
+                              }`}
+                              style={{ backgroundColor: swatch.color }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
@@ -590,11 +673,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10">
                           <input
                             type="color"
-                            value={settings.accentColor}
+                            value={localColors.accentColor}
                             onChange={e => handleCustomThemeChange("accentColor", e.target.value)}
                             className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0"
                           />
-                          <span className="text-xs font-mono text-white">{settings.accentColor}</span>
+                          <span className="text-xs font-mono text-white">{localColors.accentColor}</span>
                         </div>
                       </div>
 
@@ -603,11 +686,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10">
                           <input
                             type="color"
-                            value={settings.customGradientStart}
+                            value={localColors.customGradientStart}
                             onChange={e => handleCustomThemeChange("customGradientStart", e.target.value)}
                             className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0"
                           />
-                          <span className="text-xs font-mono text-white">{settings.customGradientStart}</span>
+                          <span className="text-xs font-mono text-white">{localColors.customGradientStart}</span>
                         </div>
                       </div>
 
@@ -616,11 +699,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10">
                           <input
                             type="color"
-                            value={settings.customGradientEnd}
+                            value={localColors.customGradientEnd}
                             onChange={e => handleCustomThemeChange("customGradientEnd", e.target.value)}
                             className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0"
                           />
-                          <span className="text-xs font-mono text-white">{settings.customGradientEnd}</span>
+                          <span className="text-xs font-mono text-white">{localColors.customGradientEnd}</span>
                         </div>
                       </div>
                     </div>

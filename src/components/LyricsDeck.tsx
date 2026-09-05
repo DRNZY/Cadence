@@ -139,37 +139,82 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
     }
   }
 
-  // Smoothly scroll active line to center with absolute viewport math
-  const scrollToActive = useCallback((behavior: ScrollBehavior = "smooth") => {
+  const scrollAnimRef = useRef<number | null>(null);
+
+  // Easing function: easeInOutCubic for buttery smooth motion
+  const easeInOutCubic = (t: number) => {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  };
+
+  const smoothScrollTo = useCallback((targetScrollTop: number, duration = 400) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    if (scrollAnimRef.current !== null) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
+
+    const startTop = container.scrollTop;
+    const distance = targetScrollTop - startTop;
+    if (Math.abs(distance) < 1) return;
+
+    const startTime = performance.now();
+
+    const frame = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = easeInOutCubic(progress);
+
+      container.scrollTop = startTop + distance * eased;
+
+      if (progress < 1) {
+        scrollAnimRef.current = requestAnimationFrame(frame);
+      } else {
+        scrollAnimRef.current = null;
+      }
+    };
+
+    scrollAnimRef.current = requestAnimationFrame(frame);
+  }, []);
+
+  // Cleanup animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollAnimRef.current !== null) {
+        cancelAnimationFrame(scrollAnimRef.current);
+      }
+    };
+  }, []);
+
+  // Smoothly scroll active line to center with layout-stable positioning
+  const scrollToActive = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container || activeIndex < 0) return;
     const targetEl = lineRefs.current[activeIndex];
     if (!targetEl) return;
 
-    const containerRect = container.getBoundingClientRect();
-    const targetRect = targetEl.getBoundingClientRect();
-    if (containerRect.height === 0 || targetRect.height === 0) return;
+    const containerHeight = container.clientHeight;
+    if (containerHeight === 0) return;
 
-    // Exact delta to align the vertical center of targetEl with vertical center of container
-    const targetCenter = targetRect.top + targetRect.height / 2;
-    const containerCenter = containerRect.top + containerRect.height / 2;
-    const delta = targetCenter - containerCenter;
-
-    container.scrollTo({
-      top: container.scrollTop + delta,
-      behavior
-    });
-  }, [activeIndex]);
+    // Use stable layout offsets (completely immune to CSS transforms/transitions)
+    const targetScrollTop = targetEl.offsetTop - (containerHeight / 2) + (targetEl.offsetHeight / 2);
+    smoothScrollTo(Math.max(0, targetScrollTop), 400);
+  }, [activeIndex, smoothScrollTo]);
 
   // Trigger auto-scroll on activeIndex change if not in manual interaction
   useEffect(() => {
     if (!isUserInteracting && lyricsState.synced && activeIndex >= 0) {
-      scrollToActive("smooth");
+      scrollToActive();
     }
   }, [activeIndex, isUserInteracting, lyricsState.synced, scrollToActive]);
 
   // Detect user manual scroll/drag
   const handleUserWheelOrTouch = () => {
+    if (scrollAnimRef.current !== null) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
     setIsUserInteracting(true);
     if (userScrollTimeoutRef.current) {
       window.clearTimeout(userScrollTimeoutRef.current);
@@ -185,7 +230,7 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
     if (userScrollTimeoutRef.current) {
       window.clearTimeout(userScrollTimeoutRef.current);
     }
-    scrollToActive("smooth");
+    scrollToActive();
   };
 
   const handleLineClick = (line: LyricLine, idx: number) => {
@@ -196,19 +241,12 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
       }
       onSeek(line.time);
       
-      // Instantly align
       const container = scrollContainerRef.current;
       const targetEl = lineRefs.current[idx];
       if (container && targetEl) {
-        const containerRect = container.getBoundingClientRect();
-        const targetRect = targetEl.getBoundingClientRect();
-        const targetCenter = targetRect.top + targetRect.height / 2;
-        const containerCenter = containerRect.top + containerRect.height / 2;
-        const delta = targetCenter - containerCenter;
-        container.scrollTo({
-          top: container.scrollTop + delta,
-          behavior: "smooth"
-        });
+        const containerHeight = container.clientHeight;
+        const targetScrollTop = targetEl.offsetTop - (containerHeight / 2) + (targetEl.offsetHeight / 2);
+        smoothScrollTo(Math.max(0, targetScrollTop), 320);
       }
     }
   };
@@ -340,19 +378,23 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
                   lineRefs.current[idx] = el;
                 }}
                 onClick={() => handleLineClick(line, idx)}
-                className={`transition-all duration-300 ease-out text-left rounded-2xl p-2.5 transform-gpu ${
+                className={`text-left rounded-2xl py-2 px-3 select-none transition-colors duration-200 ${
                   lyricsState.synced ? "cursor-pointer" : "cursor-default"
-                } ${
-                  isActive
-                    ? "text-white font-bold text-2xl md:text-3xl leading-snug scale-105 translate-x-2 drop-shadow-[0_4px_16px_var(--primary-glow)] opacity-100"
-                    : isPast
-                    ? "text-neutral-400 font-medium text-lg md:text-xl opacity-30 hover:opacity-60"
-                    : distance > 3
-                    ? "text-neutral-400 font-medium text-lg md:text-xl opacity-20 hover:opacity-50"
-                    : "text-neutral-400 font-medium text-lg md:text-xl opacity-50 hover:opacity-80"
                 }`}
               >
-                {line.text}
+                <div
+                  className={`text-xl md:text-2xl font-bold leading-relaxed tracking-tight transform-gpu origin-left transition-all duration-300 ease-out will-change-transform ${
+                    isActive
+                      ? "text-white opacity-100 scale-[1.04] translate-x-1.5 drop-shadow-[0_4px_24px_var(--primary-glow)]"
+                      : isPast
+                      ? "text-neutral-400 opacity-30 hover:opacity-65 scale-100 translate-x-0"
+                      : distance > 3
+                      ? "text-neutral-400 opacity-20 hover:opacity-55 scale-100 translate-x-0"
+                      : "text-neutral-400 opacity-45 hover:opacity-75 scale-100 translate-x-0"
+                  }`}
+                >
+                  {line.text}
+                </div>
               </div>
             );
           })
