@@ -60,6 +60,14 @@ export type PlayerBarPosition = "bottom" | "top" | "left";
 export type LibraryPosition = "left" | "right";
 export type SidebarPosition = "right" | "left";
 
+export type WidgetId = "visualizer" | "lyrics" | "queue" | "trackDetails";
+
+export interface WidgetConfig {
+  id: WidgetId;
+  title: string;
+  enabled: boolean;
+}
+
 export interface ThemeConfig {
   accentColor: string;
   bgMode: "dynamic" | "custom" | "obsidian" | "graphite" | "sunset" | "nordic" | "emerald";

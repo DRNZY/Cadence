@@ -52,10 +52,18 @@ function startBackendServer() {
   const serverMjs = path.join(projectRoot, "dist-server/index.mjs");
   const serverTs = path.join(projectRoot, "server/index.ts");
 
+  // Use Electron's embedded Node runtime for self-contained execution (supports app.asar)
+  const nodeRuntime = process.execPath;
+
   if (fs.existsSync(serverMjs)) {
-    serverProcess = spawn("node", [serverMjs], {
+    serverProcess = spawn(nodeRuntime, [serverMjs], {
       cwd: projectRoot,
-      env: { ...process.env, PORT: SERVER_PORT.toString(), NODE_ENV: "production" },
+      env: { 
+        ...process.env, 
+        ELECTRON_RUN_AS_NODE: "1", 
+        PORT: SERVER_PORT.toString(), 
+        NODE_ENV: "production" 
+      },
       stdio: "inherit"
     });
   } else if (fs.existsSync(serverTs)) {
@@ -119,18 +127,22 @@ async function createWindow() {
     console.log(`[Renderer Console] ${message}`);
   });
 
-  // Determine target URL
+  // Determine target URL: always use production build unless CADENCE_DEV is explicitly set
   let targetUrl = PROD_URL;
-  const isDevRunning = await checkUrl(DEV_URL);
-  if (isDevRunning) {
-    targetUrl = DEV_URL;
-  } else {
-    // Wait for production backend to respond
+  if (!app.isPackaged && process.env.CADENCE_DEV) {
+    const isDevRunning = await checkUrl(DEV_URL);
+    if (isDevRunning) {
+      targetUrl = DEV_URL;
+    }
+  }
+
+  if (targetUrl === PROD_URL) {
+    // Wait for internal backend to respond
     for (let i = 0; i < 40; i++) {
       if (await checkUrl(PROD_URL)) {
         break;
       }
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 100));
     }
   }
 

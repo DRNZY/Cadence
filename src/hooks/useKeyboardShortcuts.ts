@@ -9,6 +9,8 @@ export interface KeyboardShortcutsHandlers {
   onToggleQueue: () => void;
   onToggleFullscreen?: () => void;
   onCloseModals?: () => void;
+  onToggleLibrary?: () => void;
+  onToggleSidebar?: () => void;
   enabled?: boolean;
 }
 
@@ -21,6 +23,8 @@ export function useKeyboardShortcuts({
   onToggleQueue,
   onToggleFullscreen,
   onCloseModals,
+  onToggleLibrary,
+  onToggleSidebar,
   enabled = true,
 }: KeyboardShortcutsHandlers) {
   useEffect(() => {
@@ -84,6 +88,18 @@ export function useKeyboardShortcuts({
           onToggleQueue();
           break;
         }
+        case "KeyB": {
+          e.preventDefault();
+          onToggleLibrary?.();
+          break;
+        }
+        case "KeyW": {
+          if (!e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            onToggleSidebar?.();
+          }
+          break;
+        }
         case "KeyF": {
           if (!e.metaKey && !e.ctrlKey) {
             e.preventDefault();
@@ -113,5 +129,7 @@ export function useKeyboardShortcuts({
     onToggleQueue,
     onToggleFullscreen,
     onCloseModals,
+    onToggleLibrary,
+    onToggleSidebar
   ]);
 }

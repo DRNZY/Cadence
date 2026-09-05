@@ -124,7 +124,7 @@ function savePlaylists(playlists: Playlist[]) {
   try {
     fs.writeFileSync(PLAYLISTS_FILE, JSON.stringify(playlists, null, 2), "utf-8");
   } catch (err) {
-    console.error("[AuraDeck Server] Error saving playlists:", err);
+    console.error("[Cadence Server] Error saving playlists:", err);
   }
 }
 
@@ -230,6 +230,29 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
           const imgRes = await fetch(coverUrl, { signal: AbortSignal.timeout(7000) });
           if (imgRes.ok) {
             const buffer = Buffer.from(await imgRes.arrayBuffer());
+            fs.writeFileSync(cacheFile, buffer);
+            return cacheFile;
+          }
+        }
+      }
+    }
+
+    // 3. Query MusicBrainz + Cover Art Archive (Zero API Key, Open Community)
+    if (cleanArtist && (cleanAlbum || cleanTitle)) {
+      const mbQuery = cleanAlbum ? `release:${cleanAlbum} AND artist:${cleanArtist}` : `release:${cleanTitle} AND artist:${cleanArtist}`;
+      const mbUrl = `https://musicbrainz.org/ws/2/release/?query=${encodeURIComponent(mbQuery)}&fmt=json&limit=1`;
+      const mbRes = await fetch(mbUrl, {
+        headers: { "User-Agent": "CadenceAudioPlayer/1.0.0 ( contact@cadence.app )" },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (mbRes.ok) {
+        const mbData: any = await mbRes.json();
+        const mbid = mbData?.releases?.[0]?.id;
+        if (mbid) {
+          const caaUrl = `https://coverartarchive.org/release/${mbid}/front-500`;
+          const caaRes = await fetch(caaUrl, { signal: AbortSignal.timeout(7000), redirect: "follow" });
+          if (caaRes.ok) {
+            const buffer = Buffer.from(await caaRes.arrayBuffer());
             fs.writeFileSync(cacheFile, buffer);
             return cacheFile;
           }
@@ -383,7 +406,7 @@ async function scanLibrary(): Promise<Track[]> {
   }
 
   await walk(MUSIC_DIR);
-  console.log(`[AuraDeck Server] Discovered ${audioFilePaths.length} audio files. Parsing metadata...`);
+  console.log(`[Cadence Server] Discovered ${audioFilePaths.length} audio files. Parsing metadata...`);
 
   const tracks = await mapConcurrent(audioFilePaths, 12, async (fullPath) => {
     const ext = path.extname(fullPath).toLowerCase();
@@ -710,28 +733,55 @@ app.get("/covers", async (req, res) => {
     }
   }
 
+  const accent = (req.query.accent as string) || (req.query.color as string) || "#38bdf8";
+  const cleanAccent = /^#[0-9a-fA-F]{3,8}$/.test(accent) ? accent : "#38bdf8";
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
     <defs>
       <radialGradient id="grad" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="#1f2430" />
-        <stop offset="70%" stop-color="#111318" />
-        <stop offset="100%" stop-color="#07080a" />
+        <stop offset="0%" stop-color="#181a20" />
+        <stop offset="60%" stop-color="#0e1015" />
+        <stop offset="90%" stop-color="#08090c" />
+        <stop offset="100%" stop-color="#040507" />
+      </radialGradient>
+      <radialGradient id="labelGrad" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="${cleanAccent}" stop-opacity="0.9" />
+        <stop offset="70%" stop-color="${cleanAccent}" stop-opacity="0.75" />
+        <stop offset="100%" stop-color="#0a0b10" stop-opacity="0.95" />
       </radialGradient>
       <linearGradient id="sheen" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="rgba(255,255,255,0.15)" />
-        <stop offset="50%" stop-color="rgba(255,255,255,0.02)" />
-        <stop offset="100%" stop-color="rgba(255,255,255,0.15)" />
+        <stop offset="0%" stop-color="rgba(255,255,255,0.18)" />
+        <stop offset="45%" stop-color="rgba(255,255,255,0.01)" />
+        <stop offset="55%" stop-color="rgba(255,255,255,0.01)" />
+        <stop offset="100%" stop-color="rgba(255,255,255,0.18)" />
       </linearGradient>
     </defs>
-    <circle cx="150" cy="150" r="145" fill="url(#grad)" stroke="#222" stroke-width="2"/>
-    <circle cx="150" cy="150" r="130" fill="none" stroke="#252830" stroke-width="1"/>
-    <circle cx="150" cy="150" r="115" fill="none" stroke="#1d2027" stroke-width="1"/>
-    <circle cx="150" cy="150" r="100" fill="none" stroke="#252830" stroke-width="1"/>
-    <circle cx="150" cy="150" r="85" fill="none" stroke="#1d2027" stroke-width="1"/>
-    <circle cx="150" cy="150" r="55" fill="#6750A4" stroke="#D0BCFF" stroke-width="2"/>
-    <circle cx="150" cy="150" r="15" fill="#000" />
-    <circle cx="150" cy="150" r="145" fill="url(#sheen)"/>
-    <text x="150" y="155" text-anchor="middle" fill="#fff" font-family="system-ui" font-weight="bold" font-size="11">AURA DECK</text>
+    <!-- Vinyl Disc Outer Body -->
+    <circle cx="150" cy="150" r="146" fill="url(#grad)" stroke="#222530" stroke-width="2"/>
+    
+    <!-- Microgrooves -->
+    <circle cx="150" cy="150" r="134" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+    <circle cx="150" cy="150" r="122" fill="none" stroke="rgba(0,0,0,0.6)" stroke-width="1.5"/>
+    <circle cx="150" cy="150" r="110" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+    <circle cx="150" cy="150" r="98" fill="none" stroke="rgba(0,0,0,0.6)" stroke-width="1.5"/>
+    <circle cx="150" cy="150" r="86" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+    <circle cx="150" cy="150" r="74" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="1"/>
+    
+    <!-- Center Label Platter -->
+    <circle cx="150" cy="150" r="58" fill="url(#labelGrad)" stroke="${cleanAccent}" stroke-width="1.5" stroke-opacity="0.8"/>
+    <circle cx="150" cy="150" r="52" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="0.8" stroke-dasharray="2,2"/>
+    
+    <!-- Center Spindle & Ring -->
+    <circle cx="150" cy="150" r="16" fill="#0b0c10" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
+    <circle cx="150" cy="150" r="6" fill="#000" />
+    
+    <!-- Conic Sheen Reflection -->
+    <circle cx="150" cy="150" r="146" fill="url(#sheen)"/>
+    
+    <!-- Studio Branding Typography -->
+    <text x="150" y="124" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-family="system-ui, -apple-system, sans-serif" font-weight="600" font-size="6.5" letter-spacing="2">33⅓ RPM • HI-FI</text>
+    <text x="150" y="142" text-anchor="middle" fill="#ffffff" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="13" letter-spacing="3.5">CADENCE</text>
+    <text x="150" y="168" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-family="system-ui, -apple-system, sans-serif" font-weight="600" font-size="6" letter-spacing="1.5">AUDIO ENGINE</text>
   </svg>`;
 
   res.setHeader("Content-Type", "image/svg+xml");

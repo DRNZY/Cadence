@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Disc3, Sliders, Monitor, LayoutGrid, Sparkles, BookOpen,
-  Music2, Maximize2, Minimize2, ListMusic, Mic2, Settings2,
-  Minus, Square, X, Palette, Moon
+  Disc3, Sliders, Monitor, LayoutGrid, BookOpen,
+  Music2, Maximize2, Minimize2, Settings2,
+  Minus, Square, X, Palette, Moon, PanelLeftClose, PanelLeft,
+  PanelRightClose, PanelRight, Search, FolderSync
 } from "lucide-react";
 import type { Track, DeckMode, VisualizerMode, LayoutMode } from "./types";
 import { useAudioEngine } from "./hooks/useAudioEngine";
@@ -14,6 +15,7 @@ import { VinylDeck } from "./components/VinylDeck";
 import { LyricsDeck } from "./components/LyricsDeck";
 import { SpectrumVisualizer } from "./components/SpectrumVisualizer";
 import { QueueDrawer } from "./components/QueueDrawer";
+import { WidgetContainer } from "./components/WidgetContainer";
 import { ControlBar } from "./components/ControlBar";
 import { EqualizerModal } from "./components/EqualizerModal";
 import { SettingsModal, loadSettings } from "./components/SettingsModal";
@@ -62,7 +64,20 @@ export const App: React.FC = () => {
   const [deckMode, setDeckMode] = useState<DeckMode>("cover");
   const [visualizerMode, setVisualizerMode] = useState<VisualizerMode>("bars");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("studio");
-  const [rightPanelTab, setRightPanelTab] = useState<"split" | "lyrics" | "queue">("split");
+  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("cadence_library_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("cadence_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
@@ -71,6 +86,18 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
   const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("cadence_library_collapsed", isLibraryCollapsed ? "true" : "false");
+    } catch {}
+  }, [isLibraryCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("cadence_sidebar_collapsed", isRightPanelCollapsed ? "true" : "false");
+    } catch {}
+  }, [isRightPanelCollapsed]);
 
   // Auto-detect screen aspect ratio & dimensions on mount/resize
   useEffect(() => {
@@ -334,8 +361,10 @@ export const App: React.FC = () => {
     onSeekRelative: (delta) => audioEngine.seek(audioEngine.currentTime + delta),
     onAdjustVolume: (delta) => audioEngine.setVolume(audioEngine.volume + delta),
     onToggleMute: () => audioEngine.toggleMute(),
-    onToggleLyrics: () => setRightPanelTab(prev => (prev === "lyrics" ? "split" : "lyrics")),
-    onToggleQueue: () => setRightPanelTab(prev => (prev === "queue" ? "split" : "queue")),
+    onToggleLyrics: () => setIsRightPanelCollapsed(prev => !prev),
+    onToggleQueue: () => setIsRightPanelCollapsed(prev => !prev),
+    onToggleLibrary: () => setIsLibraryCollapsed(prev => !prev),
+    onToggleSidebar: () => setIsRightPanelCollapsed(prev => !prev),
     onToggleFullscreen: () => toggleFullscreen(),
     onCloseModals: () => {
       setIsEqualizerOpen(false);
@@ -346,19 +375,66 @@ export const App: React.FC = () => {
   });
 
   // Render Left Column Content
-  const renderLibraryPanel = () => (
-    <div className="h-full glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
-      <LibraryBrowser
-        tracks={tracks}
-        currentTrack={audioEngine.currentTrack}
-        isPlaying={audioEngine.isPlaying}
-        onPlayTrack={handlePlayTrack}
-        onAddToQueue={handleAddToQueue}
-        onPlayAlbum={handlePlayAlbum}
-        onRescan={fetchLibrary}
-      />
-    </div>
-  );
+  const renderLibraryPanel = () => {
+    if (isLibraryCollapsed) {
+      return (
+        <div className="h-full glass-panel rounded-3xl overflow-hidden flex flex-col items-center py-4 px-2 shadow-xl border border-white/10 w-14 shrink-0 justify-between select-none">
+          <div className="flex flex-col items-center gap-3">
+            <button
+              onClick={() => setIsLibraryCollapsed(false)}
+              className="p-2 rounded-2xl bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 transition-all hover:scale-105 active:scale-95"
+              title="Expand Library (Ctrl+B)"
+            >
+              <PanelLeft className="w-4 h-4" />
+            </button>
+            <div className="w-6 h-[1px] bg-white/10" />
+            <button
+              onClick={() => setIsLibraryCollapsed(false)}
+              className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+              title="Browse Music"
+            >
+              <Disc3 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setIsLibraryCollapsed(false)}
+              className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+              title="Search Tracks"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex flex-col items-center gap-3">
+            <span className="text-[9px] font-mono text-neutral-500 [writing-mode:vertical-lr] rotate-180 uppercase tracking-widest">
+              {tracks.length} Tracks
+            </span>
+            <div className="w-6 h-[1px] bg-white/10" />
+            <button
+              onClick={fetchLibrary}
+              className="p-2 text-neutral-400 hover:text-primary hover:bg-white/5 rounded-xl transition-all"
+              title="Rescan Library"
+            >
+              <FolderSync className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="h-full glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+        <LibraryBrowser
+          tracks={tracks}
+          currentTrack={audioEngine.currentTrack}
+          isPlaying={audioEngine.isPlaying}
+          onPlayTrack={handlePlayTrack}
+          onAddToQueue={handleAddToQueue}
+          onPlayAlbum={handlePlayAlbum}
+          onRescan={fetchLibrary}
+        />
+      </div>
+    );
+  };
 
   // Render Hero Deck Center
   const renderHeroDeck = () => (
@@ -378,99 +454,38 @@ export const App: React.FC = () => {
         onEndScratch={audioEngine.endScratch}
         isLoved={lastFm.isLoved}
         onToggleLove={lastFm.toggleLove}
+        accentColor={settings.accentColor}
       />
     </div>
   );
 
-  // Render Sidebar Stack (Lyrics / Visualizer / Queue)
+  // Render Sidebar Stack (Modular Drag & Drop Widgets)
   const renderSidebarStack = () => (
-    <div className="flex flex-col h-full gap-3 overflow-hidden min-w-0">
-      {/* Right Panel View Switcher Tabs with Apple Springs */}
-      <div className="flex bg-black/50 p-1 rounded-2xl border border-white/10 shrink-0 justify-between backdrop-blur-xl">
-        <button
-          onClick={() => setRightPanelTab("split")}
-          className={`flex-1 py-1 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-1 active:scale-95 ${
-            rightPanelTab === "split" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
-          }`}
-        >
-          <Sparkles className="w-3 h-3 text-primary" />
-          <span>Mix</span>
-        </button>
-        <button
-          onClick={() => setRightPanelTab("lyrics")}
-          className={`flex-1 py-1 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-1 active:scale-95 ${
-            rightPanelTab === "lyrics" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
-          }`}
-        >
-          <Mic2 className="w-3 h-3 text-primary" />
-          <span>Lyrics</span>
-        </button>
-        <button
-          onClick={() => setRightPanelTab("queue")}
-          className={`flex-1 py-1 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-1 active:scale-95 ${
-            rightPanelTab === "queue" ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
-          }`}
-        >
-          <ListMusic className="w-3 h-3 text-primary" />
-          <span>Queue ({queue.length})</span>
-        </button>
-      </div>
-
-      {rightPanelTab === "split" && (
-        <div className="flex-1 flex flex-col gap-3 overflow-hidden">
-          {settings.visualizerEnabled && (
-            <div className="glass-panel rounded-3xl overflow-hidden h-40 shrink-0 shadow-xl">
-              <SpectrumVisualizer
-                isPlaying={audioEngine.isPlaying}
-                visualizerMode={visualizerMode}
-                onSetVisualizerMode={setVisualizerMode}
-                getFrequencyData={audioEngine.getFrequencyData}
-                getTimeDomainData={audioEngine.getTimeDomainData}
-                accentColor={settings.accentColor}
-              />
-            </div>
-          )}
-          <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
-            <LyricsDeck
-              currentTrack={audioEngine.currentTrack}
-              currentTime={audioEngine.currentTime}
-              onSeek={audioEngine.seek}
-            />
-          </div>
-        </div>
-      )}
-
-      {rightPanelTab === "lyrics" && (
-        <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
-          <LyricsDeck
-            currentTrack={audioEngine.currentTrack}
-            currentTime={audioEngine.currentTime}
-            onSeek={audioEngine.seek}
-          />
-        </div>
-      )}
-
-      {rightPanelTab === "queue" && (
-        <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
-          <QueueDrawer
-            queue={queue}
-            currentTrack={audioEngine.currentTrack}
-            isPlaying={audioEngine.isPlaying}
-            onPlayTrack={handlePlayTrack}
-            onRemoveFromQueue={idx => setQueue(prev => prev.filter((_, i) => i !== idx))}
-            onClearQueue={() => setQueue([])}
-            onMoveQueueItem={(from, to) => {
-              setQueue(prev => {
-                const copy = [...prev];
-                const [item] = copy.splice(from, 1);
-                copy.splice(to, 0, item);
-                return copy;
-              });
-            }}
-          />
-        </div>
-      )}
-    </div>
+    <WidgetContainer
+      currentTrack={audioEngine.currentTrack}
+      isPlaying={audioEngine.isPlaying}
+      currentTime={audioEngine.currentTime}
+      duration={audioEngine.duration}
+      visualizerMode={visualizerMode}
+      onSetVisualizerMode={setVisualizerMode}
+      getFrequencyData={audioEngine.getFrequencyData}
+      getTimeDomainData={audioEngine.getTimeDomainData}
+      accentColor={settings.accentColor}
+      queue={queue}
+      onPlayTrack={handlePlayTrack}
+      onRemoveFromQueue={idx => setQueue(prev => prev.filter((_, i) => i !== idx))}
+      onClearQueue={() => setQueue([])}
+      onMoveQueueItem={(from, to) => {
+        setQueue(prev => {
+          const copy = [...prev];
+          const [item] = copy.splice(from, 1);
+          copy.splice(to, 0, item);
+          return copy;
+        });
+      }}
+      onSeek={audioEngine.seek}
+      visualizerEnabled={settings.visualizerEnabled}
+    />
   );
 
   return (
@@ -515,14 +530,25 @@ export const App: React.FC = () => {
           className="h-12 w-full px-4 flex items-center justify-between border-b border-white/5 z-20 bg-neutral-950/70 backdrop-blur-xl shrink-0 select-none"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
-          {/* Logo & Brand */}
-          <div className="flex items-center space-x-2.5" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          {/* Logo & Brand + Quick Library Toggle */}
+          <div className="flex items-center space-x-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
             <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center shadow-md">
               <Disc3 className="w-4 h-4 text-white" />
             </div>
-            <h1 className="text-xs font-bold tracking-tight text-white uppercase">
+            <h1 className="text-xs font-bold tracking-tight text-white uppercase mr-1">
               Cadence
             </h1>
+            <button
+              onClick={() => setIsLibraryCollapsed(prev => !prev)}
+              className={`p-1.5 rounded-xl border transition-all active:scale-95 ${
+                isLibraryCollapsed
+                  ? "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-400 hover:text-white"
+                  : "bg-white/10 border-white/20 text-white"
+              }`}
+              title={isLibraryCollapsed ? "Expand Library (Ctrl+B)" : "Collapse Library (Ctrl+B)"}
+            >
+              {isLibraryCollapsed ? <PanelLeft className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
+            </button>
           </div>
 
           {/* Center: Apple Segmented Layout Switcher */}
@@ -624,6 +650,19 @@ export const App: React.FC = () => {
               <Settings2 className="w-3.5 h-3.5" />
             </button>
 
+            {/* Right Panel / Widgets Toggle */}
+            <button
+              onClick={() => setIsRightPanelCollapsed(prev => !prev)}
+              className={`p-1.5 rounded-xl border transition-all active:scale-95 ${
+                isRightPanelCollapsed
+                  ? "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-400 hover:text-white"
+                  : "bg-white/10 border-white/20 text-white"
+              }`}
+              title={isRightPanelCollapsed ? "Show Widgets" : "Hide Widgets"}
+            >
+              {isRightPanelCollapsed ? <PanelRight className="w-3.5 h-3.5" /> : <PanelRightClose className="w-3.5 h-3.5" />}
+            </button>
+
             {/* Integrated Window Control Action Buttons */}
             <div className="flex items-center ml-1.5 space-x-1 pl-2 border-l border-white/10">
               <button
@@ -678,20 +717,36 @@ export const App: React.FC = () => {
 
         {/* Main Grid Area */}
         <main className="flex-1 w-full p-3 md:p-4 overflow-hidden z-10 min-h-0">
-          {/* 1. STUDIO MODE (3-Column Balanced) */}
+          {/* 1. STUDIO MODE (Responsive Collapsible Layout) */}
           {layoutMode === "studio" && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 h-full w-full overflow-hidden">
+            <div className="flex gap-3.5 h-full w-full overflow-hidden">
               {settings.libraryPosition === "left" ? (
                 <>
-                  <div className="lg:col-span-4 h-full overflow-hidden min-w-0">{renderLibraryPanel()}</div>
-                  <div className="lg:col-span-5 h-full overflow-hidden min-w-0">{renderHeroDeck()}</div>
-                  <div className="lg:col-span-3 h-full overflow-hidden min-w-0">{renderSidebarStack()}</div>
+                  <div className={`h-full overflow-hidden transition-all duration-300 ${isLibraryCollapsed ? "w-14 shrink-0" : "w-80 xl:w-96 2xl:w-[420px] shrink-0"}`}>
+                    {renderLibraryPanel()}
+                  </div>
+                  <div className="flex-1 h-full overflow-hidden min-w-0">
+                    {renderHeroDeck()}
+                  </div>
+                  {!isRightPanelCollapsed && (
+                    <div className="w-80 xl:w-96 2xl:w-[400px] shrink-0 h-full overflow-hidden min-w-0">
+                      {renderSidebarStack()}
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
-                  <div className="lg:col-span-3 h-full overflow-hidden min-w-0">{renderSidebarStack()}</div>
-                  <div className="lg:col-span-5 h-full overflow-hidden min-w-0">{renderHeroDeck()}</div>
-                  <div className="lg:col-span-4 h-full overflow-hidden min-w-0">{renderLibraryPanel()}</div>
+                  {!isRightPanelCollapsed && (
+                    <div className="w-80 xl:w-96 2xl:w-[400px] shrink-0 h-full overflow-hidden min-w-0">
+                      {renderSidebarStack()}
+                    </div>
+                  )}
+                  <div className="flex-1 h-full overflow-hidden min-w-0">
+                    {renderHeroDeck()}
+                  </div>
+                  <div className={`h-full overflow-hidden transition-all duration-300 ${isLibraryCollapsed ? "w-14 shrink-0" : "w-80 xl:w-96 2xl:w-[420px] shrink-0"}`}>
+                    {renderLibraryPanel()}
+                  </div>
                 </>
               )}
             </div>

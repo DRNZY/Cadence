@@ -51,11 +51,35 @@ function getCacheKey(artist: string, title: string): string {
 
 function cleanQueryString(str: string): string {
   return str
+    .replace(/\.(mp3|flac|wav|m4a|ogg|opus|aac|wma)$/i, "")
     .replace(/\(.*?\)/g, "")
     .replace(/\[.*?\]/g, "")
+    .replace(/\{.*?\}/g, "")
+    .replace(/\b(official|audio|video|lyrics|hd|4k|remastered|remaster|live|mono|stereo)\b/gi, "")
     .replace(/feat\..*/i, "")
     .replace(/ft\..*/i, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
+}
+
+async function fetchLyricsOvh(artist: string, title: string): Promise<string | null> {
+  try {
+    const cleanArt = cleanQueryString(artist);
+    const cleanTit = cleanQueryString(title);
+    if (!cleanArt || !cleanTit) return null;
+
+    const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(cleanArt)}/${encodeURIComponent(cleanTit)}`, {
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      const data: any = await res.json();
+      if (data && data.lyrics && typeof data.lyrics === "string") {
+        return data.lyrics.trim();
+      }
+    }
+  } catch {}
+  return null;
 }
 
 export async function fetchOnlineLyrics(
@@ -63,7 +87,7 @@ export async function fetchOnlineLyrics(
   title: string,
   album?: string,
   duration?: number
-): Promise<{ synced: boolean; lrc: string; plain?: string } | null> {
+): Promise<{ synced: boolean; lrc: string; plain?: string; provider?: string } | null> {
   const cleanArtist = cleanQueryString(artist || "");
   const cleanTitle = cleanQueryString(title || "");
 
@@ -78,27 +102,29 @@ export async function fetchOnlineLyrics(
     if (duration && duration > 0) params.set("duration", Math.round(duration).toString());
 
     const getRes = await fetch(`https://lrclib.net/api/get?${params.toString()}`, {
-      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0 (https://github.com/DRNZY/Cadence)" }
+      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0 (https://github.com/DRNZY/Cadence)" },
+      signal: AbortSignal.timeout(5000)
     });
 
     if (getRes.ok) {
       const data = await getRes.json();
       if (data.syncedLyrics) {
-        return { synced: true, lrc: data.syncedLyrics };
+        return { synced: true, lrc: data.syncedLyrics, provider: "LRCLIB (Synced)" };
       }
       if (data.plainLyrics) {
-        return { synced: false, lrc: "", plain: data.plainLyrics };
+        return { synced: false, lrc: "", plain: data.plainLyrics, provider: "LRCLIB (Plain)" };
       }
     }
   } catch (e) {
     console.warn("[Lyrics] LRCLIB get error:", e);
   }
 
-  // 2. Fallback to LRCLIB search endpoint
+  // 2. Fallback to LRCLIB search endpoint (artist + title)
   try {
     const query = `${cleanArtist} ${cleanTitle}`.trim();
     const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(query)}`, {
-      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0 (https://github.com/DRNZY/Cadence)" }
+      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0 (https://github.com/DRNZY/Cadence)" },
+      signal: AbortSignal.timeout(5000)
     });
 
     if (searchRes.ok) {
@@ -107,16 +133,47 @@ export async function fetchOnlineLyrics(
         // Prioritize synced lyrics
         const syncedItem = results.find((r: any) => r.syncedLyrics);
         if (syncedItem) {
-          return { synced: true, lrc: syncedItem.syncedLyrics };
+          return { synced: true, lrc: syncedItem.syncedLyrics, provider: "LRCLIB (Search Synced)" };
         }
         const plainItem = results.find((r: any) => r.plainLyrics);
         if (plainItem) {
-          return { synced: false, lrc: "", plain: plainItem.plainLyrics };
+          return { synced: false, lrc: "", plain: plainItem.plainLyrics, provider: "LRCLIB (Search Plain)" };
         }
       }
     }
   } catch (e) {
     console.warn("[Lyrics] LRCLIB search error:", e);
+  }
+
+  // 3. Fallback to LRCLIB search with just title if artist failed or was unknown
+  if (cleanTitle.length > 3) {
+    try {
+      const titleRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(cleanTitle)}`, {
+        headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0 (https://github.com/DRNZY/Cadence)" },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (titleRes.ok) {
+        const results = await titleRes.json();
+        if (Array.isArray(results) && results.length > 0) {
+          const syncedItem = results.find((r: any) => r.syncedLyrics);
+          if (syncedItem) {
+            return { synced: true, lrc: syncedItem.syncedLyrics, provider: "LRCLIB (Title Match)" };
+          }
+          const plainItem = results.find((r: any) => r.plainLyrics);
+          if (plainItem) {
+            return { synced: false, lrc: "", plain: plainItem.plainLyrics, provider: "LRCLIB (Title Plain)" };
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 4. Fallback to lyrics.ovh (Plain text lyrics, zero API keys required)
+  if (cleanArtist && cleanTitle) {
+    const ovhText = await fetchLyricsOvh(cleanArtist, cleanTitle);
+    if (ovhText) {
+      return { synced: false, lrc: "", plain: ovhText, provider: "Lyrics.ovh" };
+    }
   }
 
   return null;
@@ -187,7 +244,7 @@ export async function getLyricsForTrack(
         return {
           synced: true,
           source: "online",
-          provider: "LRCLIB",
+          provider: online.provider || "LRCLIB",
           lines: parseLrc(online.lrc)
         };
       }
@@ -197,7 +254,7 @@ export async function getLyricsForTrack(
         return {
           synced: false,
           source: "online",
-          provider: "LRCLIB",
+          provider: online.provider || "LRCLIB",
           lines: rawLines.map((text, idx) => ({ time: idx * 4, text }))
         };
       }

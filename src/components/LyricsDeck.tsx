@@ -7,12 +7,16 @@ interface LyricsDeckProps {
   currentTrack: Track | null;
   currentTime: number;
   onSeek: (time: number) => void;
+  onLyricsLoaded?: (state: LyricsState) => void;
+  isCompact?: boolean;
 }
 
 export const LyricsDeck: React.FC<LyricsDeckProps> = ({
   currentTrack,
   currentTime,
-  onSeek
+  onSeek,
+  onLyricsLoaded,
+  isCompact
 }) => {
   const [lyricsState, setLyricsState] = useState<LyricsState>({
     synced: false,
@@ -56,16 +60,20 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
     fetch(`/api/lyrics?${params.toString()}`)
       .then(res => res.json())
       .then(data => {
-        setLyricsState({
+        const state: LyricsState = {
           synced: !!data.synced,
           source: data.source || "none",
           provider: data.provider || "LRCLIB",
           lines: data.lines || []
-        });
+        };
+        setLyricsState(state);
+        onLyricsLoaded?.(state);
       })
       .catch(err => {
         console.error("Failed to load lyrics:", err);
-        setLyricsState({ synced: false, source: "none", lines: [] });
+        const state: LyricsState = { synced: false, source: "none", lines: [] };
+        setLyricsState(state);
+        onLyricsLoaded?.(state);
       })
       .finally(() => {
         setIsLoading(false);
@@ -275,8 +283,8 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
         onPointerDown={handleUserWheelOrTouch}
         className="flex-1 overflow-y-auto overflow-x-hidden px-2 space-y-6 relative no-scrollbar"
         style={{
-          paddingTop: "38vh",
-          paddingBottom: "38vh"
+          paddingTop: isCompact ? "1rem" : (lyricsState.synced ? "36vh" : "1.5rem"),
+          paddingBottom: isCompact ? "1rem" : (lyricsState.synced ? "36vh" : "2rem")
         }}
       >
         {isLoading ? (

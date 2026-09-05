@@ -18,6 +18,7 @@ interface VinylDeckProps {
   onEndScratch?: (spinUpMs?: number) => void;
   isLoved?: boolean;
   onToggleLove?: (track: Track, loved: boolean) => void;
+  accentColor?: string;
 }
 
 const DECK_MODES: { id: DeckMode; label: string; icon: React.ReactNode }[] = [
@@ -41,7 +42,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   onScratch,
   onEndScratch,
   isLoved,
-  onToggleLove
+  onToggleLove,
+  accentColor
 }) => {
   const [isScratching, setIsScratching] = useState(false);
   const [scratchRpmDisplay, setScratchRpmDisplay] = useState<number>(0);
@@ -101,7 +103,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     ? `/covers?path=${encodeURIComponent(currentTrack.coverPath)}`
     : currentTrack
     ? `/covers?artist=${encodeURIComponent(currentTrack.artist)}&album=${encodeURIComponent(currentTrack.album)}&title=${encodeURIComponent(currentTrack.title)}`
-    : `/covers`;
+    : `/covers?accent=${encodeURIComponent(accentColor || "#38bdf8")}`;
 
   // Real-time DJ Vinyl Scratch handlers
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -227,6 +229,18 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
 
       {/* Main Deck Hero Surface */}
       <div className="flex-1 w-full flex items-center justify-center relative my-auto min-h-0">
+
+        {/* Ambient Reactive Bloom / Underglow matching artwork colors */}
+        <div 
+          className={`absolute w-[320px] h-[320px] sm:w-[370px] sm:h-[370px] rounded-full pointer-events-none transition-all duration-700 blur-3xl transform-gpu ${
+            isPlaying ? "opacity-60 scale-105" : "opacity-30 scale-95"
+          }`}
+          style={{
+            background: "radial-gradient(circle, var(--primary-glow, rgba(255,255,255,0.25)) 0%, var(--secondary-glow, rgba(56,189,248,0.15)) 45%, transparent 72%)",
+            filter: "blur(50px)",
+            willChange: "transform, opacity",
+          }}
+        />
 
         {/* ─── MODE 1: SQUARE ALBUM COVER HERO ─── */}
         {deckMode === "cover" && (
