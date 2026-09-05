@@ -273,7 +273,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               <div className="space-y-2">
                 <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono uppercase tracking-widest text-primary font-semibold">
                   <Sparkles className="w-3 h-3 text-primary" />
-                  <span>Studio Sound Engine v2.1</span>
+                  <span>Studio Sound Engine v2.2</span>
                 </div>
                 <h2 className="text-xl md:text-2xl font-bold tracking-tight text-white">
                   Welcome to Cadence

@@ -704,12 +704,12 @@ app.post("/api/settings", (req, res) => {
 // Update Checker API
 app.get("/api/update-check", (_req, res) => {
   res.json({
-    currentVersion: "2.1.0",
-    latestVersion: "2.1.0",
+    currentVersion: "2.2.0",
+    latestVersion: "2.2.0",
     updateAvailable: false,
     channel: "stable",
     lastChecked: Date.now(),
-    releaseNotes: "Cadence 2.1: Welcome Launchpad, Centered Lyrics, Edge-to-Edge Dock, Auto-Adjusting Layout & Light Mode Settings."
+    releaseNotes: "Cadence 2.2: Ultra-smooth jitter-free lyrics, 120 FPS real-time color customizer, 99.3% faster library disk cache, atomic data persistence, and performance enhancements."
   });
 });
 

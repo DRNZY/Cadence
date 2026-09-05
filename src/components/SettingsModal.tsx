@@ -154,8 +154,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }>({
     checking: false,
     checked: false,
-    currentVersion: "2.1.0",
-    latestVersion: "2.1.0",
+    currentVersion: "2.2.0",
+    latestVersion: "2.2.0",
     updateAvailable: false,
   });
 
