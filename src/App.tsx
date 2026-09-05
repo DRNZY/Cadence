@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Disc3, Sliders, Monitor, LayoutGrid, BookOpen,
+  Disc3, LayoutGrid, BookOpen,
   Music2, Maximize2, Minimize2, Settings2,
-  Minus, Square, X, Palette, Moon, PanelLeftClose, PanelLeft,
+  Minus, Square, X, Moon, PanelLeftClose, PanelLeft,
   PanelRightClose, PanelRight, Search, FolderSync
 } from "lucide-react";
 import type { Track, DeckMode, VisualizerMode, LayoutMode } from "./types";
@@ -13,8 +13,6 @@ import { extractColors, applyThemeColors, THEME_PRESETS, buildCustomGradient } f
 import { LibraryBrowser } from "./components/LibraryBrowser";
 import { VinylDeck } from "./components/VinylDeck";
 import { LyricsDeck } from "./components/LyricsDeck";
-import { SpectrumVisualizer } from "./components/SpectrumVisualizer";
-import { QueueDrawer } from "./components/QueueDrawer";
 import { WidgetContainer } from "./components/WidgetContainer";
 import { ControlBar } from "./components/ControlBar";
 import { EqualizerModal } from "./components/EqualizerModal";
@@ -99,24 +97,123 @@ export const App: React.FC = () => {
     } catch {}
   }, [isRightPanelCollapsed]);
 
-  // Auto-detect screen aspect ratio & dimensions on mount/resize
-  useEffect(() => {
-    const handleResize = () => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      const aspect = w / (h || 1);
-      // Auto-set 32:9 for ultrawide, otherwise standard 16:9 studio
-      if (aspect >= 2.1 || w >= 2400) {
-        setLayoutMode("panoramic");
-      } else {
-        setLayoutMode("studio");
+  // Calculate responsive ideal panel widths based on viewport size
+  const getIdealPanelWidths = (winWidth: number) => {
+    if (winWidth >= 2800) {
+      return { left: Math.round(winWidth * 0.22), right: Math.round(winWidth * 0.26) };
+    }
+    if (winWidth >= 2000) {
+      return { left: Math.round(winWidth * 0.23), right: Math.round(winWidth * 0.26) };
+    }
+    if (winWidth >= 1600) {
+      return { left: 380, right: 400 };
+    }
+    return { left: 340, right: 360 };
+  };
+
+  // Draggable panel widths state (persisted to localStorage)
+  const [leftPanelWidth, setLeftPanelWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("cadence_panel_widths");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.left === "number") {
+          const maxAllowed = Math.round(window.innerWidth * 0.55);
+          return Math.min(Math.max(parsed.left, 180), maxAllowed);
+        }
       }
+    } catch {}
+    return getIdealPanelWidths(window.innerWidth).left;
+  });
+
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("cadence_panel_widths");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.right === "number") {
+          const maxAllowed = Math.round(window.innerWidth * 0.55);
+          return Math.min(Math.max(parsed.right, 180), maxAllowed);
+        }
+      }
+    } catch {}
+    return getIdealPanelWidths(window.innerWidth).right;
+  });
+
+  // Auto-balance reset handler
+  const handleResetPanelWidths = useCallback(() => {
+    const ideal = getIdealPanelWidths(window.innerWidth);
+    setLeftPanelWidth(ideal.left);
+    setRightPanelWidth(ideal.right);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("cadence_panel_widths", JSON.stringify({ left: leftPanelWidth, right: rightPanelWidth }));
+    } catch {}
+  }, [leftPanelWidth, rightPanelWidth]);
+
+  // Load persistent settings from disk API on mount
+  useEffect(() => {
+    fetch("/api/settings")
+      .then(res => res.json())
+      .then(data => {
+        if (data.settings) {
+          setSettings(prev => ({ ...prev, ...data.settings }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Theme mode effect (Dark vs Light)
+  useEffect(() => {
+    const isLight = settings.themeMode === "light";
+    document.documentElement.classList.toggle("light", isLight);
+    document.body.classList.toggle("light", isLight);
+  }, [settings.themeMode]);
+
+  // Divider drag handlers with extended bounds
+  const handleLeftDividerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = leftPanelWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const maxW = Math.round(window.innerWidth * 0.55);
+      const newWidth = Math.min(Math.max(startWidth + deltaX, 180), maxW);
+      setLeftPanelWidth(newWidth);
     };
 
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    const onMouseUp = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  };
+
+  const handleRightDividerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = rightPanelWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = startX - moveEvent.clientX;
+      const maxW = Math.round(window.innerWidth * 0.55);
+      const newWidth = Math.min(Math.max(startWidth + deltaX, 180), maxW);
+      setRightPanelWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  };
 
   const handleTrackEndRef = useRef<() => void>(() => {});
   const handlePreviousRef = useRef<() => void>(() => {});
@@ -171,6 +268,21 @@ export const App: React.FC = () => {
     const [first, ...rest] = albumTracks;
     setQueue(rest);
     handlePlayTrack(first);
+  }, [handlePlayTrack]);
+
+  const handleShuffleAll = useCallback(() => {
+    const all = tracksRef.current;
+    if (all.length === 0) return;
+    const randomIdx = Math.floor(Math.random() * all.length);
+    const chosenTrack = all[randomIdx];
+    const remaining = all.filter((_, i) => i !== randomIdx);
+    for (let i = remaining.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
+    }
+    setQueue(remaining);
+    setIsShuffle(true);
+    handlePlayTrack(chosenTrack);
   }, [handlePlayTrack]);
 
   const handleAddToQueue = useCallback((track: Track) => {
@@ -452,9 +564,10 @@ export const App: React.FC = () => {
         onStartScratch={audioEngine.startScratch}
         onScratch={audioEngine.scratch}
         onEndScratch={audioEngine.endScratch}
-        isLoved={lastFm.isLoved}
-        onToggleLove={lastFm.toggleLove}
         accentColor={settings.accentColor}
+        tracks={tracks}
+        onShufflePlay={handleShuffleAll}
+        onOpenLibrary={() => setIsLibraryCollapsed(false)}
       />
     </div>
   );
@@ -492,7 +605,7 @@ export const App: React.FC = () => {
     <div
       className="flex h-screen w-screen text-white relative overflow-hidden select-none"
       style={{
-        background: "var(--theme-bg-gradient, #06070b)",
+        background: settings.themeMode === "light" ? "#f1f5f9" : "var(--theme-bg-gradient, #06070b)",
         transition: "background 0.8s cubic-bezier(0.4, 0, 0.2, 1)"
       }}
     >
@@ -555,7 +668,6 @@ export const App: React.FC = () => {
           <div className="flex bg-black/40 p-1 rounded-full border border-white/10 backdrop-blur-md" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
             {([
               { id: "studio", label: "Studio", icon: <LayoutGrid className="w-3.5 h-3.5" /> },
-              { id: "panoramic", label: "Ultrawide", icon: <Monitor className="w-3.5 h-3.5" /> },
               { id: "stage", label: "Stage", icon: <Music2 className="w-3.5 h-3.5" /> },
               { id: "browser", label: "Library", icon: <BookOpen className="w-3.5 h-3.5" /> }
             ] as const).map(item => {
@@ -586,34 +698,6 @@ export const App: React.FC = () => {
                 <span>Last.fm</span>
               </div>
             )}
-
-            <div className="hidden lg:flex items-center space-x-2 bg-black/40 px-2.5 py-1 rounded-full border border-white/10 text-xs font-mono">
-              <span className="text-neutral-400">{tracks.length} tracks</span>
-              <span className="text-neutral-600">•</span>
-              <span className="text-emerald-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                PipeWire
-              </span>
-            </div>
-
-            {/* Quick Themes Button */}
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-colors active:scale-95"
-              title="Themes & Layout"
-            >
-              <Palette className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              onClick={() => setIsEqualizerOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-colors active:scale-95"
-              title="Equalizer"
-            >
-              <Sliders className="w-3.5 h-3.5 text-white" />
-              <span className="hidden sm:inline">EQ</span>
-            </button>
-
             {/* Sleep Timer Button */}
             <button
               onClick={() => setIsSleepTimerOpen(true)}
@@ -717,131 +801,106 @@ export const App: React.FC = () => {
 
         {/* Main Grid Area */}
         <main className="flex-1 w-full p-3 md:p-4 overflow-hidden z-10 min-h-0">
-          {/* 1. STUDIO MODE (Responsive Collapsible Layout) */}
+          {/* 1. STUDIO MODE (Fluid 3-Panel Resizable Layout) */}
           {layoutMode === "studio" && (
-            <div className="flex gap-3.5 h-full w-full overflow-hidden">
+            <div className="flex h-full w-full overflow-hidden items-stretch relative min-w-0">
               {settings.libraryPosition === "left" ? (
                 <>
-                  <div className={`h-full overflow-hidden transition-all duration-300 ${isLibraryCollapsed ? "w-14 shrink-0" : "w-80 xl:w-96 2xl:w-[420px] shrink-0"}`}>
+                  {/* Left Library Panel */}
+                  {/* Left Library Panel */}
+                  <div
+                    style={isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }}
+                    className="h-full overflow-hidden shrink-0 transition-[width] duration-150 ease-out min-w-0"
+                  >
                     {renderLibraryPanel()}
                   </div>
-                  <div className="flex-1 h-full overflow-hidden min-w-0">
-                    {renderHeroDeck()}
-                  </div>
-                  {!isRightPanelCollapsed && (
-                    <div className="w-80 xl:w-96 2xl:w-[400px] shrink-0 h-full overflow-hidden min-w-0">
-                      {renderSidebarStack()}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  {!isRightPanelCollapsed && (
-                    <div className="w-80 xl:w-96 2xl:w-[400px] shrink-0 h-full overflow-hidden min-w-0">
-                      {renderSidebarStack()}
-                    </div>
-                  )}
-                  <div className="flex-1 h-full overflow-hidden min-w-0">
-                    {renderHeroDeck()}
-                  </div>
-                  <div className={`h-full overflow-hidden transition-all duration-300 ${isLibraryCollapsed ? "w-14 shrink-0" : "w-80 xl:w-96 2xl:w-[420px] shrink-0"}`}>
-                    {renderLibraryPanel()}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
 
-          {/* 2. PANORAMIC ULTRAWIDE MODE (4-Column) */}
-          {layoutMode === "panoramic" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 h-full w-full overflow-hidden">
-              {settings.libraryPosition === "left" ? (
-                <>
-                  <div className="h-full overflow-hidden min-w-0">{renderLibraryPanel()}</div>
-                  <div className="h-full overflow-hidden min-w-0">{renderHeroDeck()}</div>
-                  <div className="h-full glass-panel rounded-3xl overflow-hidden shadow-xl min-w-0">
-                    <LyricsDeck
-                      currentTrack={audioEngine.currentTrack}
-                      currentTime={audioEngine.currentTime}
-                      onSeek={audioEngine.seek}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-3.5 overflow-hidden min-w-0">
-                    {settings.visualizerEnabled && (
-                      <div className="glass-panel rounded-3xl overflow-hidden h-44 shrink-0 shadow-xl">
-                        <SpectrumVisualizer
-                          isPlaying={audioEngine.isPlaying}
-                          visualizerMode={visualizerMode}
-                          onSetVisualizerMode={setVisualizerMode}
-                          getFrequencyData={audioEngine.getFrequencyData}
-                          getTimeDomainData={audioEngine.getTimeDomainData}
-                          accentColor={settings.accentColor}
-                        />
-                      </div>
-                    )}
-                    <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
-                      <QueueDrawer
-                        queue={queue}
-                        currentTrack={audioEngine.currentTrack}
-                        isPlaying={audioEngine.isPlaying}
-                        onPlayTrack={handlePlayTrack}
-                        onRemoveFromQueue={idx => setQueue(prev => prev.filter((_, i) => i !== idx))}
-                        onClearQueue={() => setQueue([])}
-                        onMoveQueueItem={(from, to) => {
-                          setQueue(prev => {
-                            const copy = [...prev];
-                            const [item] = copy.splice(from, 1);
-                            copy.splice(to, 0, item);
-                            return copy;
-                          });
-                        }}
-                      />
+                  {/* Drag Handle 1: Library ⟷ Center Deck */}
+                  {!isLibraryCollapsed && (
+                    <div
+                      onMouseDown={handleLeftDividerMouseDown}
+                      onDoubleClick={handleResetPanelWidths}
+                      className="w-3 -mx-1.5 h-full cursor-col-resize z-20 flex items-center justify-center group shrink-0 select-none touch-none"
+                      title="Drag to resize Library (Double-click to auto-balance)"
+                    >
+                      <div className="w-1 h-12 rounded-full bg-white/10 group-hover:bg-primary/80 group-hover:h-20 group-hover:w-1.5 transition-all" />
                     </div>
+                  )}
+
+                  {/* Center Hero Player Deck */}
+                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2">
+                    {renderHeroDeck()}
                   </div>
+
+                  {/* Drag Handle 2: Center Deck ⟷ Widgets Sidebar */}
+                  {!isRightPanelCollapsed && (
+                    <div
+                      onMouseDown={handleRightDividerMouseDown}
+                      onDoubleClick={handleResetPanelWidths}
+                      className="w-3 -mx-1.5 h-full cursor-col-resize z-20 flex items-center justify-center group shrink-0 select-none touch-none"
+                      title="Drag to resize Widgets (Double-click to auto-balance)"
+                    >
+                      <div className="w-1 h-12 rounded-full bg-white/10 group-hover:bg-primary/80 group-hover:h-20 group-hover:w-1.5 transition-all" />
+                    </div>
+                  )}
+
+                  {/* Right Sidebar Stack */}
+                  {!isRightPanelCollapsed && (
+                    <div
+                      style={{ width: rightPanelWidth }}
+                      className="h-full overflow-hidden shrink-0 min-w-0"
+                    >
+                      {renderSidebarStack()}
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
-                  <div className="flex flex-col gap-3.5 overflow-hidden min-w-0">
-                    {settings.visualizerEnabled && (
-                      <div className="glass-panel rounded-3xl overflow-hidden h-44 shrink-0 shadow-xl">
-                        <SpectrumVisualizer
-                          isPlaying={audioEngine.isPlaying}
-                          visualizerMode={visualizerMode}
-                          onSetVisualizerMode={setVisualizerMode}
-                          getFrequencyData={audioEngine.getFrequencyData}
-                          getTimeDomainData={audioEngine.getTimeDomainData}
-                          accentColor={settings.accentColor}
-                        />
-                      </div>
-                    )}
-                    <div className="glass-panel rounded-3xl overflow-hidden flex-1 shadow-xl">
-                      <QueueDrawer
-                        queue={queue}
-                        currentTrack={audioEngine.currentTrack}
-                        isPlaying={audioEngine.isPlaying}
-                        onPlayTrack={handlePlayTrack}
-                        onRemoveFromQueue={idx => setQueue(prev => prev.filter((_, i) => i !== idx))}
-                        onClearQueue={() => setQueue([])}
-                        onMoveQueueItem={(from, to) => {
-                          setQueue(prev => {
-                            const copy = [...prev];
-                            const [item] = copy.splice(from, 1);
-                            copy.splice(to, 0, item);
-                            return copy;
-                          });
-                        }}
-                      />
+                  {/* Right Sidebar Stack on Left */}
+                  {!isRightPanelCollapsed && (
+                    <div
+                      style={{ width: rightPanelWidth }}
+                      className="h-full overflow-hidden shrink-0 min-w-0"
+                    >
+                      {renderSidebarStack()}
                     </div>
+                  )}
+
+                  {!isRightPanelCollapsed && (
+                    <div
+                      onMouseDown={handleRightDividerMouseDown}
+                      onDoubleClick={handleResetPanelWidths}
+                      className="w-3 -mx-1.5 h-full cursor-col-resize z-20 flex items-center justify-center group shrink-0 select-none touch-none"
+                      title="Drag to resize Widgets (Double-click to auto-balance)"
+                    >
+                      <div className="w-1 h-12 rounded-full bg-white/10 group-hover:bg-primary/80 group-hover:h-20 group-hover:w-1.5 transition-all" />
+                    </div>
+                  )}
+
+                  {/* Center Hero Player Deck */}
+                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2">
+                    {renderHeroDeck()}
                   </div>
-                  <div className="h-full glass-panel rounded-3xl overflow-hidden shadow-xl min-w-0">
-                    <LyricsDeck
-                      currentTrack={audioEngine.currentTrack}
-                      currentTime={audioEngine.currentTime}
-                      onSeek={audioEngine.seek}
-                    />
+
+                  {/* Drag Handle: Center Deck ⟷ Library */}
+                  {!isLibraryCollapsed && (
+                    <div
+                      onMouseDown={handleLeftDividerMouseDown}
+                      onDoubleClick={handleResetPanelWidths}
+                      className="w-3 -mx-1.5 h-full cursor-col-resize z-20 flex items-center justify-center group shrink-0 select-none touch-none"
+                      title="Drag to resize Library (Double-click to auto-balance)"
+                    >
+                      <div className="w-1 h-12 rounded-full bg-white/10 group-hover:bg-primary/80 group-hover:h-20 group-hover:w-1.5 transition-all" />
+                    </div>
+                  )}
+
+                  {/* Library on Right */}
+                  <div
+                    style={isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }}
+                    className="h-full overflow-hidden shrink-0 transition-[width] duration-150 ease-out min-w-0"
+                  >
+                    {renderLibraryPanel()}
                   </div>
-                  <div className="h-full overflow-hidden min-w-0">{renderHeroDeck()}</div>
-                  <div className="h-full overflow-hidden min-w-0">{renderLibraryPanel()}</div>
                 </>
               )}
             </div>

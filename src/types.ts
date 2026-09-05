@@ -55,7 +55,8 @@ export interface DspSettings {
 
 export type DeckMode = "cover" | "vinyl" | "cd" | "minimal";
 export type VisualizerMode = "bars" | "wave" | "radial" | "oscilloscope";
-export type LayoutMode = "panoramic" | "studio" | "stage" | "browser";
+export type LayoutMode = "studio" | "stage" | "browser";
+export type ThemeMode = "dark" | "light";
 export type PlayerBarPosition = "bottom" | "top" | "left";
 export type LibraryPosition = "left" | "right";
 export type SidebarPosition = "right" | "left";

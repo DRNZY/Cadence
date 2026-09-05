@@ -69,6 +69,176 @@ body {
   -webkit-backdrop-filter: blur(40px) saturate(1.8);
   border: 1px solid var(--m3-outline);
 }
+.glass-panel {
+  background: color-mix(in oklab, var(--m3-surface-container) 75%, transparent);
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  border: 1px solid var(--m3-outline);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.cd-hologram {
+  background: conic-gradient(
+    from 0deg,
+    rgba(255, 0, 128, 0.2),
+    rgba(0, 255, 255, 0.25),
+    rgba(255, 255, 0, 0.2),
+    rgba(0, 255, 0, 0.2),
+    rgba(0, 0, 255, 0.25),
+    rgba(255, 0, 128, 0.2)
+  );
+}
+
+/* ---------- LIGHT MODE THEME OVERRIDES ---------- */
+:root.light,
+body.light {
+  --m3-surface: #f8fafc;
+  --m3-surface-dim: #f1f5f9;
+  --m3-surface-container: #ffffff;
+  --m3-surface-container-high: #f8fafc;
+  --m3-on-surface: #0f172a;
+  --m3-on-surface-variant: #475569;
+  --m3-outline: rgb(0 0 0 / 0.08);
+  --m3-primary: #6366f1;
+  --m3-on-primary: #ffffff;
+  --m3-primary-container: #e0e7ff;
+  --m3-secondary-container: rgb(99 102 241 / 0.12);
+
+  --ambient-1: #c7d2fe;
+  --ambient-2: #e2e8f0;
+}
+
+body.light {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+body.light #app-root {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+.light .glass-panel {
+  background: rgba(255, 255, 255, 0.84) !important;
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06) !important;
+  color: #0f172a !important;
+}
+
+.light .glass {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: #0f172a !important;
+}
+
+.light .glass-strong {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: #0f172a !important;
+}
+
+.light header {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-bottom-color: rgba(0, 0, 0, 0.08) !important;
+  color: #0f172a !important;
+}
+
+.light .text-white {
+  color: #0f172a !important;
+}
+
+.light .text-neutral-200,
+.light .text-neutral-300,
+.light .text-white\/70 {
+  color: #334155 !important;
+}
+
+.light .text-neutral-400,
+.light .text-neutral-500,
+.light .text-white\/40 {
+  color: #64748b !important;
+}
+
+.light .bg-black\/40,
+.light .bg-black\/50,
+.light .bg-black\/60,
+.light .bg-black\/70 {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.light .bg-white\/5,
+.light .bg-white\/10,
+.light .bg-white\/20,
+.light .bg-white\/\[0\.02\],
+.light .bg-white\/\[0\.03\],
+.light .bg-white\/\[0\.04\],
+.light .bg-white\/\[0\.05\],
+.light .bg-white\/\[0\.07\] {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.light .border-white\/5,
+.light .border-white\/10,
+.light .border-white\/15,
+.light .border-white\/20 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.light .lyrics-gradient-top {
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.95), transparent) !important;
+}
+
+.light .lyrics-gradient-bottom {
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.95), transparent) !important;
+}
+
+.light input[type="text"],
+.light input[type="search"],
+.light input[type="password"] {
+  color: #0f172a !important;
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+.light input::placeholder {
+  color: #94a3b8 !important;
+}
+
+.settings-modal-dialog {
+  background: rgba(10, 11, 16, 0.96);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.light .settings-modal-dialog {
+  background: rgba(255, 255, 255, 0.97) !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.18) !important;
+}
+
+.dock-integrated {
+  background: rgba(10, 11, 16, 0.88);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+}
+
+.light .dock-integrated {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-top-color: rgba(0, 0, 0, 0.08) !important;
+  border-bottom-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.03) !important;
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15) !important;
+}
+
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25) !important;
+}
 
 /* ---------- M3 state layers ---------- */
 .state-layer {

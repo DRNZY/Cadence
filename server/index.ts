@@ -32,6 +32,7 @@ const USER_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "ca
 const LEGACY_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "auradeck");
 const COVER_CACHE_DIR = path.join(os.homedir(), ".cache", "cadence", "covers");
 const PLAYLISTS_FILE = path.join(USER_DATA_DIR, "playlists.json");
+const SETTINGS_FILE = path.join(USER_DATA_DIR, "settings.json");
 
 // Path boundary checker for audio and cover streaming
 export function isPathAllowed(targetPath: string): boolean {
@@ -604,6 +605,44 @@ app.post("/api/playlists/import", (req, res) => {
   playlists.push(newPlaylist);
   savePlaylists(playlists);
   res.json({ playlist: newPlaylist, matchedCount: matchedTrackIds.length });
+});
+
+// Settings API (persistent to ~/.config/cadence/settings.json)
+app.get("/api/settings", (_req, res) => {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const data = fs.readFileSync(SETTINGS_FILE, "utf-8");
+      return res.json({ settings: JSON.parse(data) });
+    }
+  } catch (err) {
+    console.error("[Cadence Server] Error reading settings:", err);
+  }
+  res.json({ settings: null });
+});
+
+app.post("/api/settings", (req, res) => {
+  try {
+    if (!fs.existsSync(USER_DATA_DIR)) {
+      fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(req.body, null, 2), "utf-8");
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[Cadence Server] Error saving settings:", err);
+    res.status(500).json({ error: "Failed to save settings" });
+  }
+});
+
+// Update Checker API
+app.get("/api/update-check", (_req, res) => {
+  res.json({
+    currentVersion: "2.1.0",
+    latestVersion: "2.1.0",
+    updateAvailable: false,
+    channel: "stable",
+    lastChecked: Date.now(),
+    releaseNotes: "Cadence 2.1: Welcome Launchpad, Centered Lyrics, Edge-to-Edge Dock, Auto-Adjusting Layout & Light Mode Settings."
+  });
 });
 
 app.get("/api/lyrics", async (req, res) => {

@@ -9,6 +9,7 @@ interface SpectrumVisualizerProps {
   getFrequencyData: () => Uint8Array;
   getTimeDomainData: () => Uint8Array;
   accentColor?: string;
+  hideHeader?: boolean;
 }
 
 export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(({
@@ -17,7 +18,8 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
   onSetVisualizerMode,
   getFrequencyData,
   getTimeDomainData,
-  accentColor
+  accentColor,
+  hideHeader = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -43,22 +45,6 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
       return "#38bdf8";
     };
 
-    // Render static idle state when paused
-    const renderIdle = () => {
-      ctx.clearRect(0, 0, width, height);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(0, height / 2);
-      ctx.lineTo(width, height / 2);
-      ctx.stroke();
-    };
-
-    if (!isPlaying) {
-      renderIdle();
-      return;
-    }
-
     const render = (now: number) => {
       // Throttle to 60 FPS max
       if (now - lastRenderTime < 16) {
@@ -83,7 +69,10 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         const gap = (width / numBars) * 0.3;
 
         for (let i = 0; i < numBars; i++) {
-          const val = freqData[i * 2] || 0;
+          let val = freqData[i * 2] || 0;
+          if (!isPlaying) {
+            val = Math.max(3, Math.round((Math.sin(now * 0.002 + i * 0.25) * 0.5 + 0.5) * 25));
+          }
           const barHeight = Math.max(3, (val / 255) * (height - 10));
           const x = i * (barWidth + gap) + gap / 2;
           const y = height - barHeight;
@@ -117,7 +106,10 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         let x = 0;
 
         for (let i = 0; i < timeData.length; i++) {
-          const v = (timeData[i] || 128) / 128.0;
+          let v = (timeData[i] || 128) / 128.0;
+          if (!isPlaying) {
+            v = 1.0 + Math.sin(now * 0.0025 + i * 0.12) * 0.08;
+          }
           const y = (v * height) / 2;
 
           if (i === 0) ctx.moveTo(x, y);
@@ -136,7 +128,10 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         ctx.beginPath();
         const step = Math.max(1, Math.floor(timeData.length / width));
         for (let i = 0; i < width; i++) {
-          const val = timeData[i * step] || 128;
+          let val = timeData[i * step] || 128;
+          if (!isPlaying) {
+            val = 128 + Math.round(Math.sin(now * 0.003 + i * 0.035) * 14);
+          }
           const y = (val / 255) * height;
           if (i === 0) ctx.moveTo(i, y);
           else ctx.lineTo(i, y);
@@ -152,7 +147,10 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
 
         for (let i = 0; i < bars; i++) {
           const rad = (i * 2 * Math.PI) / bars;
-          const val = freqData[i * 2] || 0;
+          let val = freqData[i * 2] || 0;
+          if (!isPlaying) {
+            val = Math.round((Math.sin(now * 0.002 + i * 0.25) * 0.5 + 0.5) * 20);
+          }
           const barLen = (val / 255) * 28 + 3;
 
           const x1 = centerX + Math.cos(rad) * radius;
@@ -177,39 +175,41 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
   }, [isPlaying, visualizerMode, getFrequencyData, getTimeDomainData, accentColor]);
 
   return (
-    <div className="flex flex-col h-full w-full p-3.5 select-none relative">
-      {/* Header with Visualizer Mode Toggles */}
-      <div className="flex items-center justify-between pb-2 border-b border-white/5 shrink-0">
-        <div className="flex items-center space-x-2">
-          <Activity className="w-3.5 h-3.5 text-primary" />
-          <span className="text-xs uppercase tracking-wider font-semibold text-neutral-300">
-            Spectrum
-          </span>
-        </div>
+    <div className={`flex flex-col h-full w-full select-none relative ${hideHeader ? "p-2" : "p-3.5"}`}>
+      {/* Header with Visualizer Mode Toggles (if not hidden by parent widget) */}
+      {!hideHeader && (
+        <div className="flex items-center justify-between pb-2 border-b border-white/5 shrink-0">
+          <div className="flex items-center space-x-2">
+            <Activity className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs uppercase tracking-wider font-semibold text-neutral-300">
+              Spectrum
+            </span>
+          </div>
 
-        <div className="flex bg-black/40 p-0.5 rounded-full border border-white/10">
-          {([
-            { id: "bars", icon: <Radio className="w-3 h-3" />, title: "Bars" },
-            { id: "wave", icon: <Waves className="w-3 h-3" />, title: "Wave" },
-            { id: "radial", icon: <Zap className="w-3 h-3" />, title: "Radial" },
-            { id: "oscilloscope", icon: <Activity className="w-3 h-3" />, title: "Oscilloscope" }
-          ] as const).map(m => (
-            <button
-              key={m.id}
-              onClick={() => onSetVisualizerMode(m.id)}
-              className={`p-1.5 rounded-full transition-all active:scale-90 ${
-                visualizerMode === m.id ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
-              }`}
-              title={m.title}
-            >
-              {m.icon}
-            </button>
-          ))}
+          <div className="flex bg-black/40 p-0.5 rounded-full border border-white/10">
+            {([
+              { id: "bars", icon: <Radio className="w-3 h-3" />, title: "Bars" },
+              { id: "wave", icon: <Waves className="w-3 h-3" />, title: "Wave" },
+              { id: "radial", icon: <Zap className="w-3 h-3" />, title: "Radial" },
+              { id: "oscilloscope", icon: <Activity className="w-3 h-3" />, title: "Oscilloscope" }
+            ] as const).map(m => (
+              <button
+                key={m.id}
+                onClick={() => onSetVisualizerMode(m.id)}
+                className={`p-1.5 rounded-full transition-all active:scale-90 ${
+                  visualizerMode === m.id ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                }`}
+                title={m.title}
+              >
+                {m.icon}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Canvas Area */}
-      <div className="flex-1 flex items-center justify-center pt-2 relative overflow-hidden min-h-0">
+      <div className={`flex-1 flex items-center justify-center relative overflow-hidden min-h-0 ${hideHeader ? "pt-0" : "pt-2"}`}>
         <canvas
           ref={canvasRef}
           width={320}

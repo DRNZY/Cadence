@@ -1,7 +1,12 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic2, Music, RefreshCw, Search, Sparkles } from "lucide-react";
 import { Track, LyricLine, LyricsState } from "../types";
+
+export interface LyricsDeckHandle {
+  toggleSearch: () => void;
+  refresh: () => void;
+}
 
 interface LyricsDeckProps {
   currentTrack: Track | null;
@@ -9,15 +14,17 @@ interface LyricsDeckProps {
   onSeek: (time: number) => void;
   onLyricsLoaded?: (state: LyricsState) => void;
   isCompact?: boolean;
+  hideHeader?: boolean;
 }
 
-export const LyricsDeck: React.FC<LyricsDeckProps> = ({
+export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
   currentTrack,
   currentTime,
   onSeek,
   onLyricsLoaded,
-  isCompact
-}) => {
+  isCompact,
+  hideHeader = false
+}, ref) => {
   const [lyricsState, setLyricsState] = useState<LyricsState>({
     synced: false,
     source: "none",
@@ -35,6 +42,22 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
 
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [containerHeight, setContainerHeight] = useState<number>(320);
+
+  // Dynamically observe container height for resolution-independent padding
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        if (entry.contentRect.height > 0) {
+          setContainerHeight(entry.contentRect.height);
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const fetchLyrics = useCallback((customArtist?: string, customTitle?: string) => {
     if (!currentTrack) {
@@ -81,6 +104,11 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
       });
   }, [currentTrack]);
 
+  useImperativeHandle(ref, () => ({
+    toggleSearch: () => setIsSearchOpen(prev => !prev),
+    refresh: () => fetchLyrics()
+  }), [fetchLyrics]);
+
   // Fetch lyrics whenever track changes
   useEffect(() => {
     setIsUserInteracting(false);
@@ -111,22 +139,24 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
     }
   }
 
-  // Smoothly scroll active line to center
+  // Smoothly scroll active line to center with absolute viewport math
   const scrollToActive = useCallback((behavior: ScrollBehavior = "smooth") => {
     const container = scrollContainerRef.current;
     if (!container || activeIndex < 0) return;
     const targetEl = lineRefs.current[activeIndex];
     if (!targetEl) return;
 
-    const containerHeight = container.clientHeight;
-    const elementTop = targetEl.offsetTop;
-    const elementHeight = targetEl.offsetHeight;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+    if (containerRect.height === 0 || targetRect.height === 0) return;
 
-    // Calculate vertical position so active line is in the vertical center
-    const targetScrollTop = elementTop - (containerHeight / 2) + (elementHeight / 2);
+    // Exact delta to align the vertical center of targetEl with vertical center of container
+    const targetCenter = targetRect.top + targetRect.height / 2;
+    const containerCenter = containerRect.top + containerRect.height / 2;
+    const delta = targetCenter - containerCenter;
 
     container.scrollTo({
-      top: Math.max(0, targetScrollTop),
+      top: container.scrollTop + delta,
       behavior
     });
   }, [activeIndex]);
@@ -170,10 +200,13 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
       const container = scrollContainerRef.current;
       const targetEl = lineRefs.current[idx];
       if (container && targetEl) {
-        const containerHeight = container.clientHeight;
-        const targetScrollTop = targetEl.offsetTop - (containerHeight / 2) + (targetEl.offsetHeight / 2);
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = targetEl.getBoundingClientRect();
+        const targetCenter = targetRect.top + targetRect.height / 2;
+        const containerCenter = containerRect.top + containerRect.height / 2;
+        const delta = targetCenter - containerCenter;
         container.scrollTo({
-          top: Math.max(0, targetScrollTop),
+          top: container.scrollTop + delta,
           behavior: "smooth"
         });
       }
@@ -189,54 +222,56 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full w-full p-4 md:p-6 select-none relative overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between z-20 pb-3 border-b border-white/5 shrink-0">
-        <div className="flex items-center space-x-2">
-          <Mic2 className="w-4 h-4 text-primary" />
-          <span className="text-xs uppercase tracking-wider font-semibold text-neutral-300">
-            Lyrics
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          {/* Source Indicator Pill */}
-          {lyricsState.lines.length > 0 && (
-            <span
-              className={`flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full border ${
-                lyricsState.synced
-                  ? "bg-primary/15 text-primary border-primary/30"
-                  : "bg-neutral-800/80 text-neutral-400 border-white/10"
-              }`}
-            >
-              {lyricsState.synced && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
-              <span>{lyricsState.synced ? "Synced" : "Plain"}</span>
+    <div className={`flex flex-col h-full w-full select-none relative overflow-hidden ${hideHeader ? "p-2 md:p-3" : "p-4 md:p-6"}`}>
+      {/* Header (if not hidden by parent widget container) */}
+      {!hideHeader && (
+        <div className="flex items-center justify-between z-20 pb-3 border-b border-white/5 shrink-0">
+          <div className="flex items-center space-x-2">
+            <Mic2 className="w-4 h-4 text-primary" />
+            <span className="text-xs uppercase tracking-wider font-semibold text-neutral-300">
+              Lyrics
             </span>
-          )}
+          </div>
 
-          {/* Search / Refresh Online Lyrics Action */}
-          <button
-            onClick={() => setIsSearchOpen(prev => !prev)}
-            className={`p-1.5 rounded-full border transition-all ${
-              isSearchOpen
-                ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
-                : "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-300 hover:text-white"
-            }`}
-            title="Search lyrics"
-          >
-            <Search className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {/* Source Indicator Pill */}
+            {lyricsState.lines.length > 0 && (
+              <span
+                className={`flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full border ${
+                  lyricsState.synced
+                    ? "bg-primary/15 text-primary border-primary/30"
+                    : "bg-neutral-800/80 text-neutral-400 border-white/10"
+                }`}
+              >
+                {lyricsState.synced && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
+                <span>{lyricsState.synced ? "Synced" : "Plain"}</span>
+              </span>
+            )}
 
-          <button
-            onClick={() => fetchLyrics()}
-            disabled={isLoading}
-            className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-all disabled:opacity-50"
-            title="Refresh lyrics"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-primary" : ""}`} />
-          </button>
+            {/* Search / Refresh Online Lyrics Action */}
+            <button
+              onClick={() => setIsSearchOpen(prev => !prev)}
+              className={`p-1.5 rounded-full border transition-all ${
+                isSearchOpen
+                  ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
+                  : "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-300 hover:text-white"
+              }`}
+              title="Search lyrics"
+            >
+              <Search className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={() => fetchLyrics()}
+              disabled={isLoading}
+              className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-all disabled:opacity-50"
+              title="Refresh lyrics"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-primary" : ""}`} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Manual Search Drawer */}
       <AnimatePresence>
@@ -283,8 +318,8 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
         onPointerDown={handleUserWheelOrTouch}
         className="flex-1 overflow-y-auto overflow-x-hidden px-2 space-y-6 relative no-scrollbar"
         style={{
-          paddingTop: isCompact ? "1rem" : (lyricsState.synced ? "36vh" : "1.5rem"),
-          paddingBottom: isCompact ? "1rem" : (lyricsState.synced ? "36vh" : "2rem")
+          paddingTop: isCompact ? "1rem" : (lyricsState.synced ? `${Math.max(40, Math.round(containerHeight * 0.44))}px` : "1.5rem"),
+          paddingBottom: isCompact ? "1rem" : (lyricsState.synced ? `${Math.max(40, Math.round(containerHeight * 0.44))}px` : "2rem")
         }}
       >
         {isLoading ? (
@@ -362,10 +397,10 @@ export const LyricsDeck: React.FC<LyricsDeckProps> = ({
       </AnimatePresence>
 
       {/* Floating Gradient Masks */}
-      <div className="pointer-events-none absolute top-12 left-0 right-0 h-16 bg-gradient-to-b from-[#0e1017] to-transparent z-10" />
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#0e1017] to-transparent z-10" />
+      <div className={`lyrics-gradient-top pointer-events-none absolute left-0 right-0 h-16 bg-gradient-to-b from-[#0e1017] to-transparent z-10 ${hideHeader ? "top-0" : "top-12"}`} />
+      <div className="lyrics-gradient-bottom pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#0e1017] to-transparent z-10" />
     </div>
   );
-};
+});
 
 export default LyricsDeck;

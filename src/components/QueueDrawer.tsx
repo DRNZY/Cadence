@@ -10,6 +10,8 @@ interface QueueDrawerProps {
   onRemoveFromQueue: (index: number) => void;
   onClearQueue: () => void;
   onMoveQueueItem: (fromIdx: number, toIdx: number) => void;
+  hideHeader?: boolean;
+  hideNowPlaying?: boolean;
 }
 
 export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
@@ -19,7 +21,9 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
   onPlayTrack,
   onRemoveFromQueue,
   onClearQueue,
-  onMoveQueueItem
+  onMoveQueueItem,
+  hideHeader = false,
+  hideNowPlaying = true
 }) => {
   const queueContainerRef = useRef<HTMLDivElement | null>(null);
   const queueItemRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -49,27 +53,29 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
   }, [currentTrack, queue]);
 
   return (
-    <div className="flex flex-col h-full w-full p-4 select-none relative overflow-hidden space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-white/5">
-        <div className="flex items-center space-x-2">
-          <ListMusic className="w-4 h-4 text-primary" />
-          <span className="text-xs uppercase tracking-wider font-semibold text-neutral-300">
-            Queue ({queue.length})
-          </span>
+    <div className={`flex flex-col h-full w-full select-none relative overflow-hidden ${hideHeader ? "p-2 space-y-2" : "p-4 space-y-4"}`}>
+      {/* Header (if not hidden by parent widget container) */}
+      {!hideHeader && (
+        <div className="flex items-center justify-between pb-2 border-b border-white/5">
+          <div className="flex items-center space-x-2">
+            <ListMusic className="w-4 h-4 text-primary" />
+            <span className="text-xs uppercase tracking-wider font-semibold text-neutral-300">
+              Queue ({queue.length})
+            </span>
+          </div>
+          {queue.length > 0 && (
+            <button
+              onClick={onClearQueue}
+              className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-red-400 font-medium transition-colors"
+            >
+              <Trash2 className="w-3 h-3" /> Clear
+            </button>
+          )}
         </div>
-        {queue.length > 0 && (
-          <button
-            onClick={onClearQueue}
-            className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-red-400 font-medium transition-colors"
-          >
-            <Trash2 className="w-3 h-3" /> Clear
-          </button>
-        )}
-      </div>
+      )}
 
-      {/* Current Playing Track Details Card */}
-      {currentTrack && (
+      {/* Current Playing Track Details Card (optional) */}
+      {!hideNowPlaying && currentTrack && (
         <div className="p-3 bg-primary/10 border border-primary/20 rounded-2xl space-y-2 text-left">
           <div className="flex items-center justify-between text-[10px] uppercase font-mono text-primary font-bold">
             <span className="flex items-center gap-1.5">

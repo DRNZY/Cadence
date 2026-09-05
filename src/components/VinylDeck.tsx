@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Disc3, Disc, Sparkles, Image as ImageIcon, Heart } from "lucide-react";
+import { Disc3, Disc, Sparkles, Image as ImageIcon, Shuffle, FolderOpen } from "lucide-react";
 import { Track, DeckMode } from "../types";
 
 interface VinylDeckProps {
@@ -16,9 +16,10 @@ interface VinylDeckProps {
   onStartScratch?: () => void;
   onScratch?: (velocityDegPerSec: number, deltaAngle: number) => void;
   onEndScratch?: (spinUpMs?: number) => void;
-  isLoved?: boolean;
-  onToggleLove?: (track: Track, loved: boolean) => void;
   accentColor?: string;
+  tracks?: Track[];
+  onShufflePlay?: () => void;
+  onOpenLibrary?: () => void;
 }
 
 const DECK_MODES: { id: DeckMode; label: string; icon: React.ReactNode }[] = [
@@ -41,9 +42,10 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   onStartScratch,
   onScratch,
   onEndScratch,
-  isLoved,
-  onToggleLove,
-  accentColor
+  accentColor,
+  tracks = [],
+  onShufflePlay,
+  onOpenLibrary
 }) => {
   const [isScratching, setIsScratching] = useState(false);
   const [scratchRpmDisplay, setScratchRpmDisplay] = useState<number>(0);
@@ -187,44 +189,48 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   return (
     <div className="flex flex-col items-center justify-between h-full w-full p-4 md:p-6 select-none relative overflow-hidden">
       {/* Top Deck Mode Apple-Style Segmented Control */}
-      <div className="w-full flex items-center justify-between z-20 shrink-0 mb-3">
+      <div className="w-full grid grid-cols-3 items-center z-20 shrink-0 mb-3">
         <div className="flex items-center space-x-2">
           {currentTrack && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-neutral-300">
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
               <span>{currentTrack.format}</span>
               {currentTrack.sampleRate && (
-                <span className="text-neutral-500">• {(currentTrack.sampleRate / 1000).toFixed(1)}kHz</span>
+                <span className="text-neutral-500 hidden sm:inline">• {(currentTrack.sampleRate / 1000).toFixed(1)}kHz</span>
               )}
             </div>
           )}
         </div>
 
-        {/* Fluid Apple Segmented Pill Switcher */}
-        <div className="flex bg-black/50 p-1 rounded-full border border-white/10 backdrop-blur-xl relative">
-          {DECK_MODES.map(mode => {
-            const isActive = deckMode === mode.id;
-            return (
-              <button
-                key={mode.id}
-                onClick={() => onSetDeckMode(mode.id)}
-                className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 active:scale-95 ${
-                  isActive ? "text-white" : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="active-deck-pill"
-                    transition={{ type: "spring", stiffness: 450, damping: 32 }}
-                    className="absolute inset-0 rounded-full bg-white/20 border border-white/20 shadow-md backdrop-blur-md"
-                  />
-                )}
-                <span className="relative z-10">{mode.icon}</span>
-                <span className="relative z-10">{mode.label}</span>
-              </button>
-            );
-          })}
+        {/* Fluid Apple Segmented Pill Switcher Centered */}
+        <div className="flex justify-center">
+          <div className="flex bg-black/50 p-1 rounded-full border border-white/10 backdrop-blur-xl relative">
+            {DECK_MODES.map(mode => {
+              const isActive = deckMode === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() => onSetDeckMode(mode.id)}
+                  className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 active:scale-95 ${
+                    isActive ? "text-white" : "text-neutral-400 hover:text-neutral-200"
+                  }`}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="active-deck-pill"
+                      transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                      className="absolute inset-0 rounded-full bg-white/20 border border-white/20 shadow-md backdrop-blur-md"
+                    />
+                  )}
+                  <span className="relative z-10">{mode.icon}</span>
+                  <span className="relative z-10">{mode.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        <div className="flex items-center justify-end" />
       </div>
 
       {/* Main Deck Hero Surface */}
@@ -232,7 +238,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
 
         {/* Ambient Reactive Bloom / Underglow matching artwork colors */}
         <div 
-          className={`absolute w-[320px] h-[320px] sm:w-[370px] sm:h-[370px] rounded-full pointer-events-none transition-all duration-700 blur-3xl transform-gpu ${
+          className={`absolute w-[320px] h-[320px] sm:w-[380px] sm:h-[380px] lg:w-[500px] lg:h-[500px] xl:w-[600px] xl:h-[600px] 2xl:w-[700px] 2xl:h-[700px] rounded-full pointer-events-none transition-all duration-700 blur-3xl transform-gpu ${
             isPlaying ? "opacity-60 scale-105" : "opacity-30 scale-95"
           }`}
           style={{
@@ -242,53 +248,109 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
           }}
         />
 
-        {/* ─── MODE 1: SQUARE ALBUM COVER HERO ─── */}
+        {/* ─── MODE 1: SQUARE ALBUM COVER HERO OR WELCOME LAUNCHPAD ─── */}
         {deckMode === "cover" && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.94 }}
-            transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="relative flex flex-col items-center justify-center max-w-[360px] w-full aspect-square"
-            onMouseMove={handleCoverMouseMove}
-            onMouseLeave={handleCoverMouseLeave}
-            style={{ perspective: 1000 }}
-          >
-            {/* Main Pristine Cover Card Frame */}
+          !currentTrack ? (
             <motion.div
-              style={{
-                rotateX: tilt.y,
-                rotateY: tilt.x,
-                transformStyle: "preserve-3d"
-              }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              className="w-full h-full rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group"
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -12 }}
+              transition={{ type: "spring", stiffness: 360, damping: 28 }}
+              className="relative flex flex-col items-center justify-center max-w-[480px] w-full p-6 md:p-8 rounded-3xl bg-neutral-900/60 border border-white/10 shadow-2xl backdrop-blur-2xl text-center space-y-6"
             >
-              <img
-                src={coverUrl}
-                alt={currentTrack?.album || "Cover"}
-                className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
-              />
+              {/* Pulsing Concentric Audio Rings */}
+              <div className="relative flex items-center justify-center my-2">
+                <div className="absolute w-24 h-24 rounded-full bg-primary/20 animate-ping opacity-30" />
+                <div className="absolute w-20 h-20 rounded-full bg-primary/30 blur-md" />
+                <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary to-sky-400 p-0.5 shadow-xl shadow-primary/30 flex items-center justify-center">
+                  <div className="w-full h-full rounded-[14px] bg-neutral-950 flex items-center justify-center">
+                    <Disc3 className="w-8 h-8 text-primary animate-spin" style={{ animationDuration: "8s" }} />
+                  </div>
+                </div>
+              </div>
 
-              {/* Glass sheen highlight */}
-              <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
+              {/* Welcome Title & Subtitle */}
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono uppercase tracking-widest text-primary font-semibold">
+                  <Sparkles className="w-3 h-3 text-primary" />
+                  <span>Studio Sound Engine v2.1</span>
+                </div>
+                <h2 className="text-xl md:text-2xl font-bold tracking-tight text-white">
+                  Welcome to Cadence
+                </h2>
+                <p className="text-xs text-neutral-400 max-w-sm mx-auto leading-relaxed">
+                  High-fidelity audio reproduction, real-time synchronized karaoke lyrics, and studio master acoustics.
+                </p>
+              </div>
 
-              {/* Quick Love Button */}
-              {currentTrack && onToggleLove && (
-                <button
-                  onClick={() => onToggleLove(currentTrack, !isLoved)}
-                  className={`absolute top-3.5 right-3.5 p-2 rounded-full backdrop-blur-md border transition-all active:scale-90 ${
-                    isLoved
-                      ? "bg-rose-500/90 text-white border-rose-400 shadow-lg shadow-rose-500/40"
-                      : "bg-black/50 text-white/70 hover:text-white border-white/15 hover:bg-black/70"
-                  }`}
-                  title={isLoved ? "Loved on Last.fm" : "Love Track"}
-                >
-                  <Heart className={`w-4 h-4 ${isLoved ? "fill-current" : ""}`} />
-                </button>
-              )}
+              {/* Quick Actions */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-xs justify-center">
+                {onShufflePlay && (
+                  <button
+                    onClick={onShufflePlay}
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-primary to-sky-500 hover:from-primary/90 hover:to-sky-400 text-white text-xs font-bold shadow-lg shadow-primary/25 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Shuffle className="w-4 h-4" />
+                    <span>Shuffle All {tracks && tracks.length > 0 ? `(${tracks.length})` : ""}</span>
+                  </button>
+                )}
+
+                {onOpenLibrary && (
+                  <button
+                    onClick={onOpenLibrary}
+                    className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-xs font-semibold hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    <FolderOpen className="w-4 h-4 text-neutral-300" />
+                    <span>Explore Library</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Feature Badges */}
+              <div className="pt-2 border-t border-white/5 w-full flex flex-wrap items-center justify-center gap-2">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-neutral-400 border border-white/5">
+                  32-Bit Floating DSP
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-neutral-400 border border-white/5">
+                  Synced Lyrics
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-neutral-400 border border-white/5">
+                  Analog Decks
+                </span>
+              </div>
             </motion.div>
-          </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.94 }}
+              transition={{ type: "spring", stiffness: 380, damping: 28 }}
+              className="relative flex flex-col items-center justify-center max-w-[360px] md:max-w-[440px] lg:max-w-[520px] xl:max-w-[620px] 2xl:max-w-[700px] w-full aspect-square"
+              onMouseMove={handleCoverMouseMove}
+              onMouseLeave={handleCoverMouseLeave}
+              style={{ perspective: 1000 }}
+            >
+              {/* Main Pristine Cover Card Frame */}
+              <motion.div
+                style={{
+                  rotateX: tilt.y,
+                  rotateY: tilt.x,
+                  transformStyle: "preserve-3d"
+                }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className="w-full h-full rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group"
+              >
+                <img
+                  src={coverUrl}
+                  alt={currentTrack?.album || "Cover"}
+                  className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
+                />
+
+                {/* Glass sheen highlight */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
+              </motion.div>
+            </motion.div>
+          )
         )}
 
         {/* ─── MODE 2: ANALOG TURNTABLE (VINYL ONLY) ─── */}
@@ -303,7 +365,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            className="relative w-full aspect-square max-w-[360px] flex items-center justify-center cursor-grab active:cursor-grabbing my-auto"
+            className="relative w-full aspect-square max-w-[360px] md:max-w-[420px] lg:max-w-[480px] xl:max-w-[540px] 2xl:max-w-[620px] flex items-center justify-center cursor-grab active:cursor-grabbing my-auto"
           >
             {/* Real-time DJ Scratch HUD Indicator */}
             <AnimatePresence>
@@ -398,7 +460,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.94 }}
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="relative w-full aspect-square max-w-[340px] flex items-center justify-center my-auto"
+            className="relative w-full aspect-square max-w-[340px] md:max-w-[420px] lg:max-w-[500px] xl:max-w-[580px] 2xl:max-w-[660px] flex items-center justify-center my-auto"
           >
             {/* Jewel Case Crystal Tray */}
             <div className="w-full h-full rounded-3xl bg-white/[0.03] border border-white/15 p-4 shadow-2xl backdrop-blur-2xl flex items-center justify-center relative overflow-hidden">
@@ -445,7 +507,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.94 }}
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="w-full max-w-[420px] flex flex-col items-center justify-center text-center p-6 space-y-4"
+            className="w-full max-w-[420px] md:max-w-[500px] lg:max-w-[620px] flex flex-col items-center justify-center text-center p-6 space-y-4"
           >
             {/* Soft Ambient Album Aura */}
             <div className="relative w-44 h-44 rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-black/40 backdrop-blur-xl">

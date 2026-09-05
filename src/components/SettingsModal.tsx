@@ -4,15 +4,16 @@ import {
   X, Zap, Cpu, Sparkles, Monitor, CheckCircle2,
   Volume2, RefreshCw, HardDrive, Settings2, Radio,
   User, Lock, Layout, Palette, Check, AlertCircle,
-  LogOut, AlignLeft, ArrowDown, ArrowUp
+  LogOut, AlignLeft, ArrowDown, ArrowUp, Sun, Moon
 } from "lucide-react";
 import { THEME_PRESETS, buildCustomGradient, applyThemeColors } from "../utils/colorExtractor";
-import { PlayerBarPosition, LibraryPosition, SidebarPosition } from "../types";
+import { PlayerBarPosition, LibraryPosition, SidebarPosition, ThemeMode } from "../types";
 
 export type PerformanceMode = "quality" | "balanced" | "performance" | "ultra-low";
 
 export interface AppSettings {
   performanceMode: PerformanceMode;
+  themeMode?: ThemeMode;
   enableAmbientGlow: boolean;
   enableGlassBlur: boolean;
   visualizerEnabled: boolean;
@@ -31,6 +32,7 @@ export interface AppSettings {
 
 const DEFAULT_SETTINGS: AppSettings = {
   performanceMode: "balanced",
+  themeMode: "dark",
   enableAmbientGlow: true,
   enableGlassBlur: true,
   visualizerEnabled: true,
@@ -139,7 +141,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onSettingsChange,
 }) => {
-  const [tab, setTab] = useState<"layout" | "theme" | "performance" | "audio" | "lastfm">("layout");
+  const [tab, setTab] = useState<"layout" | "theme" | "performance" | "audio" | "lastfm" | "updates">("layout");
+
+  // Update Checker State
+  const [updateInfo, setUpdateInfo] = useState<{
+    checking: boolean;
+    checked: boolean;
+    currentVersion: string;
+    latestVersion: string;
+    updateAvailable: boolean;
+    releaseNotes?: string;
+  }>({
+    checking: false,
+    checked: false,
+    currentVersion: "2.1.0",
+    latestVersion: "2.1.0",
+    updateAvailable: false,
+  });
+
+  const checkUpdates = async () => {
+    setUpdateInfo(prev => ({ ...prev, checking: true }));
+    try {
+      const res = await fetch("/api/update-check");
+      const data = await res.json();
+      setUpdateInfo({
+        checking: false,
+        checked: true,
+        currentVersion: data.currentVersion || "2.1.0",
+        latestVersion: data.latestVersion || "2.1.0",
+        updateAvailable: Boolean(data.updateAvailable),
+        releaseNotes: data.releaseNotes
+      });
+    } catch {
+      setUpdateInfo(prev => ({ ...prev, checking: false, checked: true }));
+    }
+  };
 
   // Last.fm State
   const [lastFmConfig, setLastFmConfig] = useState<{
@@ -179,12 +215,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   }, [isOpen, fetchLastFmConfig]);
 
-  const set = <K extends keyof AppSettings>(key: K, val: AppSettings[K]) => {
-    const updated = { ...settings, [key]: val };
-    onSettingsChange(updated);
+  const persistSettings = (updated: AppSettings) => {
     try {
       localStorage.setItem("cadence_settings", JSON.stringify(updated));
     } catch {}
+    fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated)
+    }).catch(() => {});
+  };
+
+  const set = <K extends keyof AppSettings>(key: K, val: AppSettings[K]) => {
+    const updated = { ...settings, [key]: val };
+    onSettingsChange(updated);
+    persistSettings(updated);
   };
 
   const handleApplyThemePreset = (presetId: string) => {
@@ -202,9 +247,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     onSettingsChange(updated);
-    try {
-      localStorage.setItem("cadence_settings", JSON.stringify(updated));
-    } catch {}
+    persistSettings(updated);
 
     const customTheme = buildCustomGradient(preset.startColor, preset.endColor, preset.angle, preset.accent);
     applyThemeColors(customTheme);
@@ -219,9 +262,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     onSettingsChange(updated);
-    try {
-      localStorage.setItem("cadence_settings", JSON.stringify(updated));
-    } catch {}
+    persistSettings(updated);
 
     const customTheme = buildCustomGradient(
       key === "customGradientStart" ? val : updated.customGradientStart,
@@ -313,8 +354,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: "spring", stiffness: 420, damping: 30 }}
-            className="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-3xl border border-white/10 overflow-hidden shadow-2xl"
-            style={{ background: "rgba(10, 11, 16, 0.96)" }}
+            className="settings-modal-dialog relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-3xl border overflow-hidden shadow-2xl transition-colors duration-200"
+            style={{
+              background: settings.themeMode === "light" ? "rgba(255, 255, 255, 0.97)" : "rgba(10, 11, 16, 0.96)",
+              borderColor: settings.themeMode === "light" ? "rgba(0, 0, 0, 0.12)" : "rgba(255, 255, 255, 0.1)"
+            }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
@@ -339,7 +383,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 { id: "theme", label: "Colors & Themes", icon: <Palette className="w-3.5 h-3.5" /> },
                 { id: "performance", label: "Performance", icon: <Cpu className="w-3.5 h-3.5" /> },
                 { id: "audio", label: "Audio & Library", icon: <Volume2 className="w-3.5 h-3.5" /> },
-                { id: "lastfm", label: "Last.fm", icon: <Radio className="w-3.5 h-3.5" /> }
+                { id: "lastfm", label: "Last.fm", icon: <Radio className="w-3.5 h-3.5" /> },
+                { id: "updates", label: "Updates", icon: <RefreshCw className="w-3.5 h-3.5" /> }
               ] as const).map(t => (
                 <button
                   key={t.id}
@@ -450,6 +495,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* ─── 2. THEMES & COLORS TAB ─── */}
               {tab === "theme" && (
                 <div className="space-y-4">
+                  {/* Appearance Mode: Dark vs Light */}
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold text-white">Appearance & Mode</p>
+                      <p className="text-[11px] text-neutral-400">Choose between Apple obsidian dark glass or clean daylight frosted glass.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => set("themeMode", "dark")}
+                        className={`p-3 rounded-xl border flex items-center gap-3 transition-all ${
+                          (settings.themeMode || "dark") === "dark"
+                            ? "border-primary bg-primary/20 text-white shadow-md shadow-primary/10"
+                            : "border-white/5 bg-black/40 text-neutral-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        <Moon className="w-4 h-4 text-primary" />
+                        <div className="text-left">
+                          <div className="text-xs font-bold text-white">Dark Mode</div>
+                          <div className="text-[10px] text-neutral-400">Obsidian & neon glow</div>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => set("themeMode", "light")}
+                        className={`p-3 rounded-xl border flex items-center gap-3 transition-all ${
+                          settings.themeMode === "light"
+                            ? "border-amber-400 bg-amber-400/20 text-white shadow-md shadow-amber-400/10"
+                            : "border-white/5 bg-black/40 text-neutral-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        <Sun className="w-4 h-4 text-amber-400" />
+                        <div className="text-left">
+                          <div className="text-xs font-bold text-white">Light Mode</div>
+                          <div className="text-[10px] text-neutral-400">Frosted daylight & contrast</div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
                   {/* Dynamic Album Art Theme Switch */}
                   <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
                     <Toggle
@@ -777,6 +861,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </button>
                     </form>
                   )}
+                </div>
+              )}
+
+              {/* ─── 6. UPDATES TAB ─── */}
+              {tab === "updates" && (
+                <div className="space-y-4">
+                  <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/5 space-y-4 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary">
+                      <RefreshCw className={`w-6 h-6 ${updateInfo.checking ? "animate-spin" : ""}`} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Cadence Music Player</h3>
+                      <p className="text-xs text-neutral-400 mt-0.5">Version {updateInfo.currentVersion} • Stable Channel</p>
+                    </div>
+
+                    <div className="flex justify-center">
+                      <button
+                        onClick={checkUpdates}
+                        disabled={updateInfo.checking}
+                        className="px-4 py-2 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${updateInfo.checking ? "animate-spin" : ""}`} />
+                        <span>{updateInfo.checking ? "Checking for Updates..." : "Check for Updates"}</span>
+                      </button>
+                    </div>
+
+                    {updateInfo.checked && (
+                      <div className="p-3 rounded-xl bg-black/40 border border-white/10 text-xs text-neutral-300">
+                        {updateInfo.updateAvailable ? (
+                          <div className="text-emerald-400 font-semibold">A new update is available ({updateInfo.latestVersion})!</div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1.5 text-emerald-400 font-semibold">
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Cadence is up to date! (v{updateInfo.currentVersion})</span>
+                          </div>
+                        )}
+                        {updateInfo.releaseNotes && (
+                          <p className="text-[11px] text-neutral-400 mt-2 font-mono">{updateInfo.releaseNotes}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

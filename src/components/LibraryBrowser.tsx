@@ -324,7 +324,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto pt-4 pr-1 no-scrollbar space-y-4">
+      <div className="flex-1 overflow-y-auto pt-4 px-1.5 no-scrollbar space-y-4">
         {/* Active Artist Filter Chip */}
         {selectedArtist && (
           <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-2xl px-4 py-2">
@@ -342,7 +342,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
 
         {/* 1. Albums Grid View */}
         {activeTab === "albums" && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3.5 pb-8">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(135px,1fr))] gap-3 pb-8">
             {filteredAlbums.map(item => {
               const coverUrl = item.coverPath
                 ? `/covers?path=${encodeURIComponent(item.coverPath)}`
@@ -354,7 +354,11 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                   key={`${item.artist}-${item.album}`}
                   whileHover={{ y: -4, scale: 1.02 }}
                   onClick={() => setPreviewAlbum(item)}
-                  className="group relative bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/20 rounded-2xl p-3 transition-all flex flex-col justify-between shadow-lg cursor-pointer"
+                  className={`group relative bg-white/[0.03] hover:bg-white/[0.07] border rounded-2xl p-3 transition-all flex flex-col justify-between shadow-lg cursor-pointer ${
+                    isCurrentAlbum && isPlaying
+                      ? "border-primary/50 shadow-primary/10 bg-white/[0.05]"
+                      : "border-white/5 hover:border-white/20"
+                  }`}
                 >
                   <div className="relative aspect-square rounded-xl overflow-hidden mb-2.5 bg-black/40 shadow-inner">
                     <img
@@ -378,15 +382,18 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                     </div>
 
                     {isCurrentAlbum && isPlaying && (
-                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-primary text-black text-[10px] font-bold font-mono uppercase tracking-wider flex items-center gap-1 shadow-md">
-                        <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
-                        Now Playing
+                      <div className="absolute top-2 right-2 px-2 py-1 rounded-full bg-black/70 backdrop-blur-md border border-primary/40 flex items-center gap-0.5 shadow-lg" title="Currently Playing">
+                        <span className="w-0.5 h-2.5 bg-primary rounded-full animate-[pulse_0.6s_ease-in-out_infinite]" />
+                        <span className="w-0.5 h-3.5 bg-primary rounded-full animate-[pulse_0.8s_ease-in-out_infinite_0.2s]" />
+                        <span className="w-0.5 h-2 bg-primary rounded-full animate-[pulse_0.7s_ease-in-out_infinite_0.4s]" />
                       </div>
                     )}
                   </div>
 
                   <div className="space-y-0.5 text-left">
-                    <h3 className="text-xs font-bold text-white truncate group-hover:text-primary transition-colors">
+                    <h3 className={`text-xs font-bold truncate transition-colors ${
+                      isCurrentAlbum && isPlaying ? "text-primary" : "text-white group-hover:text-primary"
+                    }`}>
                       {item.album}
                     </h3>
                     <p className="text-[11px] text-neutral-400 truncate">
@@ -483,7 +490,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
 
         {/* 3. Artists Discography View */}
         {activeTab === "artists" && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pb-8">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3 pb-8">
             {artists.map(art => (
               <button
                 key={art.name}

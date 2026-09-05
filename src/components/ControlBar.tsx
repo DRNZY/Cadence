@@ -183,38 +183,41 @@ export const ControlBar: React.FC<ControlBarProps> = ({
 
   // ─── HORIZONTAL (BOTTOM OR TOP) POSITION ───
   return (
-    <div className={`w-full max-w-7xl mx-auto px-4 md:px-6 ${position === "top" ? "pt-1 pb-3" : "py-3"} z-30 select-none`}>
-      <div className="glass-panel rounded-full px-5 py-2.5 md:py-3 flex items-center justify-between shadow-2xl border border-white/10 bg-neutral-950/80 backdrop-blur-2xl">
-        {/* Left: Track Info & Mini Art */}
-        <div className="flex items-center space-x-3 w-64 md:w-72 min-w-0">
-          <div className="relative w-11 h-11 rounded-2xl overflow-hidden bg-black/40 border border-white/10 shrink-0 shadow-md">
-            <img src={coverUrl} alt="" className="w-full h-full object-cover" />
-            {isPlaying && (
-              <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                <Disc3 className="w-5 h-5 text-white animate-spin" />
-              </div>
-            )}
-          </div>
-
-          <div className="min-w-0 flex-1 text-left">
-            <div className="flex items-center gap-1.5">
-              <h4 className="text-xs md:text-sm font-bold text-white tracking-tight truncate">
-                {currentTrack?.title || "No track selected"}
-              </h4>
-              {currentTrack && (
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/10 text-white/90 border border-white/10 uppercase font-semibold shrink-0">
-                  {currentTrack.format}
-                </span>
-              )}
+    <footer
+      className={`w-full dock-integrated ${
+        position === "top" ? "border-b" : "border-t"
+      } border-white/10 px-6 py-2.5 flex items-center justify-between z-30 select-none shrink-0 transition-colors`}
+    >
+      {/* Left: Track Info & Mini Art */}
+      <div className="flex items-center space-x-3 w-72 md:w-80 min-w-0">
+        <div className="relative w-11 h-11 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0 shadow-md">
+          <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+          {isPlaying && (
+            <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+              <Disc3 className="w-5 h-5 text-white animate-spin" />
             </div>
-            <p className="text-[11px] text-neutral-400 tracking-tight truncate">
-              {currentTrack ? `${currentTrack.artist} — ${currentTrack.album}` : "Select music to play"}
-            </p>
-          </div>
+          )}
         </div>
 
+        <div className="min-w-0 flex-1 text-left">
+          <div className="flex items-center gap-1.5">
+            <h4 className="text-xs md:text-sm font-bold text-white tracking-tight truncate">
+              {currentTrack?.title || "Cadence Studio Engine"}
+            </h4>
+            {currentTrack && (
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/10 text-white/90 border border-white/10 uppercase font-semibold shrink-0">
+                {currentTrack.format}
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-neutral-400 tracking-tight truncate">
+            {currentTrack ? `${currentTrack.artist} — ${currentTrack.album}` : "Select music to play or press Space"}
+          </p>
+        </div>
+      </div>
+
         {/* Center: Playback Controls & Progress Scrubber */}
-        <div className="flex-1 max-w-2xl px-4 md:px-6 flex flex-col items-center space-y-1">
+        <div className="flex-1 max-w-3xl px-4 md:px-8 flex flex-col items-center space-y-1">
           {/* Action Buttons */}
           <div className="flex items-center space-x-3 md:space-x-4">
             <button
@@ -305,7 +308,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
         </div>
 
         {/* Right: Volume & DSP Equalizer */}
-        <div className="flex items-center space-x-2.5 w-64 md:w-72 justify-end">
+        <div className="flex items-center space-x-2.5 w-72 md:w-80 justify-end">
           {/* Equalizer Toggle */}
           <button
             onClick={onToggleEqualizer}
@@ -339,7 +342,6 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             />
           </div>
         </div>
-      </div>
-    </div>
+    </footer>
   );
 };

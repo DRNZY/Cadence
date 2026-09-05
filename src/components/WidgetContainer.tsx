@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   GripVertical, 
   EyeOff, 
@@ -10,11 +10,18 @@ import {
   RotateCcw,
   Sparkles,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Search,
+  RefreshCw,
+  Radio,
+  Waves,
+  Zap,
+  Trash2
 } from "lucide-react";
+import { Reorder, useDragControls } from "framer-motion";
 import { Track, VisualizerMode, WidgetId, LyricsState } from "../types";
 import { SpectrumVisualizer } from "./SpectrumVisualizer";
-import { LyricsDeck } from "./LyricsDeck";
+import { LyricsDeck, LyricsDeckHandle } from "./LyricsDeck";
 import { QueueDrawer } from "./QueueDrawer";
 
 interface WidgetContainerProps {
@@ -50,7 +57,313 @@ const WIDGET_DEFS: WidgetItemDef[] = [
   { id: "trackDetails", title: "Audio Specs", icon: <Info className="w-3.5 h-3.5" />, defaultVisible: false }
 ];
 
-const STORAGE_KEY = "cadence_widgets_v2";
+const STORAGE_KEY = "cadence_widgets_v3";
+
+interface WidgetCardItemProps {
+  widgetId: WidgetId;
+  isMinimized: boolean;
+  isOnlyVisible: boolean;
+  shouldLyricsCompact: boolean;
+  hasSyncedLyrics: boolean;
+  hasAnyLyrics: boolean;
+  onToggleMinimize: () => void;
+  onToggleWidget: () => void;
+  // Visualizer props
+  isPlaying: boolean;
+  visualizerMode: VisualizerMode;
+  onSetVisualizerMode: (mode: VisualizerMode) => void;
+  getFrequencyData: () => Uint8Array;
+  getTimeDomainData: () => Uint8Array;
+  accentColor?: string;
+  // Lyrics props
+  currentTrack: Track | null;
+  currentTime: number;
+  onSeek: (time: number) => void;
+  onLyricsLoaded: (state: LyricsState) => void;
+  lyricsRef: React.RefObject<LyricsDeckHandle | null>;
+  // Queue props
+  queue: Track[];
+  onPlayTrack: (track: Track) => void;
+  onRemoveFromQueue: (index: number) => void;
+  onClearQueue: () => void;
+  onMoveQueueItem: (fromIdx: number, toIdx: number) => void;
+  visibleWidgets: WidgetId[];
+}
+
+const WidgetCardItem: React.FC<WidgetCardItemProps> = ({
+  widgetId,
+  isMinimized,
+  isOnlyVisible,
+  shouldLyricsCompact,
+  hasSyncedLyrics,
+  hasAnyLyrics,
+  onToggleMinimize,
+  onToggleWidget,
+  isPlaying,
+  visualizerMode,
+  onSetVisualizerMode,
+  getFrequencyData,
+  getTimeDomainData,
+  accentColor,
+  currentTrack,
+  currentTime,
+  onSeek,
+  onLyricsLoaded,
+  lyricsRef,
+  queue,
+  onPlayTrack,
+  onRemoveFromQueue,
+  onClearQueue,
+  onMoveQueueItem,
+  visibleWidgets
+}) => {
+  const dragControls = useDragControls();
+
+  // Dynamic height determination
+  const heightClass = isMinimized
+    ? "shrink-0 h-auto"
+    : isOnlyVisible
+    ? "flex-1 min-h-0"
+    : widgetId === "visualizer"
+    ? (visibleWidgets.includes("lyrics") && !hasSyncedLyrics
+        ? "flex-1 min-h-[200px]"
+        : "h-44 shrink-0")
+    : widgetId === "lyrics"
+    ? (shouldLyricsCompact ? "h-36 shrink-0" : "flex-1 min-h-[200px]")
+    : widgetId === "queue"
+    ? (visibleWidgets.includes("lyrics") && !hasSyncedLyrics
+        ? "flex-1 min-h-[220px]"
+        : (visibleWidgets.includes("lyrics") ? "h-52 shrink-0" : "flex-1 min-h-0"))
+    : "shrink-0 h-auto";
+
+  return (
+    <Reorder.Item
+      as="div"
+      value={widgetId}
+      dragListener={false}
+      dragControls={dragControls}
+      whileDrag={{ scale: 1.02, zIndex: 50 }}
+      transition={{ type: "spring", stiffness: 350, damping: 30 }}
+      className={`glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl border border-white/10 transition-colors duration-200 ${heightClass}`}
+    >
+      {/* ─── SINGLE UNIFIED HEADER ─── */}
+      <div
+        onPointerDown={(e) => {
+          const target = e.target as HTMLElement;
+          if (target.closest("button") || target.closest("input")) return;
+          dragControls.start(e);
+        }}
+        className="flex items-center justify-between px-3.5 py-2 border-b border-white/5 bg-white/[0.02] shrink-0 select-none cursor-grab active:cursor-grabbing"
+      >
+        {/* Left: Drag Handle, Icon, Title & Badges */}
+        <div className="flex items-center gap-2 min-w-0">
+          <GripVertical className="w-3.5 h-3.5 text-neutral-500 hover:text-neutral-300 transition-colors shrink-0" />
+          
+          {widgetId === "visualizer" && (
+            <>
+              <Activity className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300">
+                Spectrum
+              </span>
+            </>
+          )}
+
+          {widgetId === "lyrics" && (
+            <>
+              <Mic2 className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300">
+                Lyrics
+              </span>
+              {hasAnyLyrics && (
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                  hasSyncedLyrics 
+                    ? "bg-primary/15 text-primary border-primary/30" 
+                    : "bg-neutral-800/80 text-neutral-400 border-white/10"
+                }`}>
+                  {hasSyncedLyrics && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
+                  <span>{hasSyncedLyrics ? "Synced" : "Plain"}</span>
+                </span>
+              )}
+            </>
+          )}
+
+          {widgetId === "queue" && (
+            <>
+              <ListMusic className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300">
+                Queue
+              </span>
+              <span className="text-[10px] font-mono text-neutral-500">
+                ({queue.length})
+              </span>
+            </>
+          )}
+
+          {widgetId === "trackDetails" && (
+            <>
+              <Info className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300">
+                Audio Specs
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Right: Widget Contextual Actions & Window Controls */}
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Spectrum Mode Switcher in Header */}
+          {widgetId === "visualizer" && !isMinimized && (
+            <div className="flex bg-black/40 p-0.5 rounded-full border border-white/10 mr-1">
+              {([
+                { id: "bars", icon: <Radio className="w-2.5 h-2.5" />, title: "Bars" },
+                { id: "wave", icon: <Waves className="w-2.5 h-2.5" />, title: "Wave" },
+                { id: "radial", icon: <Zap className="w-2.5 h-2.5" />, title: "Radial" },
+                { id: "oscilloscope", icon: <Activity className="w-2.5 h-2.5" />, title: "Oscilloscope" }
+              ] as const).map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => onSetVisualizerMode(m.id)}
+                  className={`p-1 rounded-full transition-all active:scale-90 ${
+                    visualizerMode === m.id ? "bg-white/20 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                  }`}
+                  title={m.title}
+                >
+                  {m.icon}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Lyrics Search & Refresh in Header */}
+          {widgetId === "lyrics" && !isMinimized && (
+            <div className="flex items-center gap-0.5 mr-1">
+              <button
+                onClick={() => lyricsRef.current?.toggleSearch()}
+                className="p-1 text-neutral-400 hover:text-white rounded hover:bg-white/5 transition-colors"
+                title="Search Lyrics Online"
+              >
+                <Search className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => lyricsRef.current?.refresh()}
+                className="p-1 text-neutral-400 hover:text-white rounded hover:bg-white/5 transition-colors"
+                title="Refresh Lyrics"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          {/* Queue Clear in Header */}
+          {widgetId === "queue" && !isMinimized && queue.length > 0 && (
+            <button
+              onClick={onClearQueue}
+              className="flex items-center gap-1 px-2 py-0.5 mr-1 rounded text-[10px] font-mono text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+              title="Clear Queue"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>Clear</span>
+            </button>
+          )}
+
+          {/* Minimize / Expand */}
+          <button
+            onClick={onToggleMinimize}
+            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-white/5 transition-colors"
+            title={isMinimized ? "Expand" : "Collapse"}
+          >
+            {isMinimized ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+          </button>
+
+          {/* Hide Widget */}
+          <button
+            onClick={onToggleWidget}
+            className="p-1 text-neutral-400 hover:text-rose-400 rounded hover:bg-white/5 transition-colors"
+            title="Hide Widget"
+          >
+            <EyeOff className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {/* ─── WIDGET CONTENT (NO INNER HEADERS!) ─── */}
+      {!isMinimized && (
+        <div className="flex-1 overflow-hidden min-h-0 relative flex flex-col">
+          {widgetId === "visualizer" && (
+            <SpectrumVisualizer
+              isPlaying={isPlaying}
+              visualizerMode={visualizerMode}
+              onSetVisualizerMode={onSetVisualizerMode}
+              getFrequencyData={getFrequencyData}
+              getTimeDomainData={getTimeDomainData}
+              accentColor={accentColor}
+              hideHeader={true}
+            />
+          )}
+
+          {widgetId === "lyrics" && (
+            <LyricsDeck
+              ref={lyricsRef}
+              currentTrack={currentTrack}
+              currentTime={currentTime}
+              onSeek={onSeek}
+              onLyricsLoaded={onLyricsLoaded}
+              isCompact={shouldLyricsCompact}
+              hideHeader={true}
+            />
+          )}
+
+          {widgetId === "queue" && (
+            <QueueDrawer
+              queue={queue}
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              onPlayTrack={onPlayTrack}
+              onRemoveFromQueue={onRemoveFromQueue}
+              onClearQueue={onClearQueue}
+              onMoveQueueItem={onMoveQueueItem}
+              hideHeader={true}
+              hideNowPlaying={true}
+            />
+          )}
+
+          {widgetId === "trackDetails" && (
+            <div className="p-4 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                <span className="text-neutral-400">Container / Codec</span>
+                <span className="font-mono font-bold text-white uppercase">{currentTrack?.format || "FLAC"}</span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                <span className="text-neutral-400">Bitrate</span>
+                <span className="font-mono text-primary font-semibold">
+                  {currentTrack?.bitrate ? `${currentTrack.bitrate} kbps` : "Lossless / VBR"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                <span className="text-neutral-400">Sample Rate</span>
+                <span className="font-mono text-neutral-200">
+                  {currentTrack?.sampleRate ? `${(currentTrack.sampleRate / 1000).toFixed(1)} kHz` : "44.1 kHz"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                <span className="text-neutral-400">ReplayGain</span>
+                <span className="font-mono text-neutral-300">
+                  {currentTrack?.replayGain ? `${currentTrack.replayGain > 0 ? "+" : ""}${currentTrack.replayGain.toFixed(1)} dB` : "0.0 dB"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-400">File Location</span>
+                <span className="font-mono text-[10px] text-neutral-400 truncate max-w-[180px]" title={currentTrack?.filePath}>
+                  {currentTrack?.filePath || "—"}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Reorder.Item>
+  );
+};
 
 export const WidgetContainer: React.FC<WidgetContainerProps> = ({
   currentTrack,
@@ -112,8 +425,6 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
 
   const [hasSyncedLyrics, setHasSyncedLyrics] = useState<boolean>(true);
   const [hasAnyLyrics, setHasAnyLyrics] = useState<boolean>(true);
-  const [draggedWidgetId, setDraggedWidgetId] = useState<WidgetId | null>(null);
-  const [dragOverWidgetId, setDragOverWidgetId] = useState<WidgetId | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [minimizedMap, setMinimizedMap] = useState<Record<WidgetId, boolean>>({
     visualizer: false,
@@ -121,6 +432,8 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
     queue: false,
     trackDetails: false
   });
+
+  const lyricsRef = useRef<LyricsDeckHandle | null>(null);
 
   // Save changes to localStorage
   useEffect(() => {
@@ -164,48 +477,15 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
     });
   };
 
-  // Drag and Drop reordering handlers
-  const handleDragStart = (e: React.DragEvent, id: WidgetId) => {
-    setDraggedWidgetId(id);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", id);
-  };
-
-  const handleDragOver = (e: React.DragEvent, id: WidgetId) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (dragOverWidgetId !== id) {
-      setDragOverWidgetId(id);
-    }
-  };
-
-  const handleDragLeave = () => {
-    setDragOverWidgetId(null);
-  };
-
-  const handleDrop = (e: React.DragEvent, targetId: WidgetId) => {
-    e.preventDefault();
-    setDragOverWidgetId(null);
-    if (!draggedWidgetId || draggedWidgetId === targetId) {
-      setDraggedWidgetId(null);
-      return;
-    }
-
-    setOrder(prev => {
-      const next = [...prev];
-      const fromIdx = next.indexOf(draggedWidgetId);
-      const toIdx = next.indexOf(targetId);
-      if (fromIdx !== -1 && toIdx !== -1) {
-        next.splice(fromIdx, 1);
-        next.splice(toIdx, 0, draggedWidgetId);
-      }
-      return next;
-    });
-
-    setDraggedWidgetId(null);
-  };
-
   const visibleWidgets = order.filter(id => visibility[id]);
+
+  // Framer Motion real-time reorder handler
+  const handleReorder = (newVisibleOrder: WidgetId[]) => {
+    setOrder(prev => {
+      const hidden = prev.filter(id => !visibility[id]);
+      return [...newVisibleOrder, ...hidden];
+    });
+  };
 
   // Dynamic Expansion Logic:
   // When tracks do NOT have synced lyrics or any lyrics, lyrics widget occupies a compact bar,
@@ -247,14 +527,14 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
             <RotateCcw className="w-3 h-3" />
           </button>
 
-          {/* Manage Dropdown Popover */}
+          {/* Manage Dropdown Popover (Fully Opaque, Crisp, No Bleed-through) */}
           {isMenuOpen && (
             <>
               <div 
                 className="fixed inset-0 z-40" 
                 onClick={() => setIsMenuOpen(false)} 
               />
-              <div className="absolute top-8 right-0 z-50 w-52 p-2 bg-neutral-900/95 border border-white/15 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col gap-1">
+              <div className="absolute top-8 right-0 z-50 w-52 p-2 bg-[#0e1017] border border-white/20 rounded-2xl shadow-2xl shadow-black/90 flex flex-col gap-1">
                 <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
                   Toggle Widgets
                 </div>
@@ -266,7 +546,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
                       onClick={() => toggleWidget(def.id)}
                       className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center justify-between transition-all ${
                         isVisible
-                          ? "bg-white/10 text-white font-semibold"
+                          ? "bg-white/15 text-white font-semibold"
                           : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200"
                       }`}
                     >
@@ -284,183 +564,61 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
         </div>
       </div>
 
-      {/* Widget Stack Body */}
-      <div className="flex-1 flex flex-col gap-3 overflow-hidden min-h-0">
-        {visibleWidgets.length === 0 ? (
-          <div className="flex-1 glass-panel rounded-3xl flex flex-col items-center justify-center p-6 text-center text-neutral-400 border border-white/10">
-            <Sparkles className="w-8 h-8 text-neutral-600 mb-2" />
-            <p className="text-sm font-semibold text-neutral-300">All widgets are hidden</p>
-            <p className="text-xs text-neutral-500 mt-1 max-w-xs">
-              Click Manage above to show the Lyrics Deck, Audio Spectrum, Queue, or Audio Specs.
-            </p>
-            <button
-              onClick={resetWidgets}
-              className="mt-4 px-3 py-1.5 bg-primary/20 text-primary border border-primary/30 rounded-xl text-xs font-semibold hover:bg-primary/30 transition-all"
-            >
-              Restore Widgets
-            </button>
-          </div>
-        ) : (
-          visibleWidgets.map((widgetId) => {
-            const isDragging = draggedWidgetId === widgetId;
-            const isDragOver = dragOverWidgetId === widgetId;
-            const isMinimized = minimizedMap[widgetId];
-
-            // Auto-expansion rules:
-            // - If lyrics has no synced lyrics, spectrum or queue takes primary expanded height.
-            // - If only 1 widget is visible, it takes full flex-1.
-            // - If multiple are visible, determine heights gracefully.
-            const isOnlyVisible = visibleWidgets.length === 1;
-
-            return (
-              <div
-                key={widgetId}
-                draggable
-                onDragStart={(e) => handleDragStart(e, widgetId)}
-                onDragOver={(e) => handleDragOver(e, widgetId)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, widgetId)}
-                className={`group glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl border transition-all duration-300 ${
-                  isDragging ? "opacity-40 scale-[0.98] border-primary/50" : "opacity-100"
-                } ${
-                  isDragOver ? "border-primary shadow-lg shadow-primary/20" : "border-white/10"
-                } ${
-                  isMinimized ? "shrink-0 h-auto" : 
-                  isOnlyVisible ? "flex-1 min-h-0" :
-                  widgetId === "visualizer" ? (
-                    visibleWidgets.includes("lyrics") && !hasSyncedLyrics
-                      ? "flex-1 min-h-[220px]" 
-                      : "h-44 shrink-0"
-                  ) :
-                  widgetId === "lyrics" ? (
-                    shouldLyricsCompact ? "h-40 shrink-0" : "flex-1 min-h-[200px]"
-                  ) :
-                  widgetId === "queue" ? (
-                    visibleWidgets.includes("lyrics") && !hasSyncedLyrics
-                      ? "flex-1 min-h-[240px]"
-                      : (visibleWidgets.includes("lyrics") ? "h-52 shrink-0" : "flex-1 min-h-0")
-                  ) :
-                  /* trackDetails */ "shrink-0 h-auto"
-                }`}
-              >
-                {/* Widget Drag Handle & Action Header */}
-                <div className="flex items-center justify-between px-3.5 py-2 border-b border-white/5 bg-white/[0.02] shrink-0 select-none cursor-grab active:cursor-grabbing">
-                  <div className="flex items-center gap-2">
-                    <GripVertical className="w-3.5 h-3.5 text-neutral-500 group-hover:text-neutral-300 transition-colors" />
-                    {widgetId === "visualizer" && <Activity className="w-3.5 h-3.5 text-primary" />}
-                    {widgetId === "lyrics" && <Mic2 className="w-3.5 h-3.5 text-primary" />}
-                    {widgetId === "queue" && <ListMusic className="w-3.5 h-3.5 text-primary" />}
-                    {widgetId === "trackDetails" && <Info className="w-3.5 h-3.5 text-primary" />}
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300">
-                      {widgetId === "visualizer" && "Audio Spectrum"}
-                      {widgetId === "lyrics" && (hasSyncedLyrics ? "Synced Lyrics" : hasAnyLyrics ? "Plain Lyrics" : "Lyrics Deck")}
-                      {widgetId === "queue" && `Play Queue (${queue.length})`}
-                      {widgetId === "trackDetails" && "Audio Engine Specs"}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    {/* Minimize / Expand */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleMinimize(widgetId);
-                      }}
-                      className="p-1 text-neutral-400 hover:text-white rounded hover:bg-white/5 transition-colors"
-                      title={isMinimized ? "Expand" : "Collapse"}
-                    >
-                      {isMinimized ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
-                    </button>
-
-                    {/* Hide Widget */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleWidget(widgetId);
-                      }}
-                      className="p-1 text-neutral-400 hover:text-rose-400 rounded hover:bg-white/5 transition-colors"
-                      title="Hide Widget"
-                    >
-                      <EyeOff className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Widget Body Content */}
-                {!isMinimized && (
-                  <div className="flex-1 overflow-hidden min-h-0 relative flex flex-col">
-                    {widgetId === "visualizer" && (
-                      <SpectrumVisualizer
-                        isPlaying={isPlaying}
-                        visualizerMode={visualizerMode}
-                        onSetVisualizerMode={onSetVisualizerMode}
-                        getFrequencyData={getFrequencyData}
-                        getTimeDomainData={getTimeDomainData}
-                        accentColor={accentColor}
-                      />
-                    )}
-
-                    {widgetId === "lyrics" && (
-                      <LyricsDeck
-                        currentTrack={currentTrack}
-                        currentTime={currentTime}
-                        onSeek={onSeek}
-                        onLyricsLoaded={handleLyricsLoaded}
-                        isCompact={shouldLyricsCompact}
-                      />
-                    )}
-
-                    {widgetId === "queue" && (
-                      <QueueDrawer
-                        queue={queue}
-                        currentTrack={currentTrack}
-                        isPlaying={isPlaying}
-                        onPlayTrack={onPlayTrack}
-                        onRemoveFromQueue={onRemoveFromQueue}
-                        onClearQueue={onClearQueue}
-                        onMoveQueueItem={onMoveQueueItem}
-                      />
-                    )}
-
-                    {widgetId === "trackDetails" && (
-                      <div className="p-4 space-y-2.5 text-xs">
-                        <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                          <span className="text-neutral-400">Container / Codec</span>
-                          <span className="font-mono font-bold text-white uppercase">{currentTrack?.format || "FLAC"}</span>
-                        </div>
-                        <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                          <span className="text-neutral-400">Bitrate</span>
-                          <span className="font-mono text-primary font-semibold">
-                            {currentTrack?.bitrate ? `${currentTrack.bitrate} kbps` : "Lossless / VBR"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                          <span className="text-neutral-400">Sample Rate</span>
-                          <span className="font-mono text-neutral-200">
-                            {currentTrack?.sampleRate ? `${(currentTrack.sampleRate / 1000).toFixed(1)} kHz` : "44.1 kHz"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                          <span className="text-neutral-400">ReplayGain Target</span>
-                          <span className="font-mono text-neutral-300">
-                            {currentTrack?.replayGain ? `${currentTrack.replayGain > 0 ? "+" : ""}${currentTrack.replayGain.toFixed(1)} dB` : "0.0 dB"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-neutral-400">File Location</span>
-                          <span className="font-mono text-[10px] text-neutral-400 truncate max-w-[180px]" title={currentTrack?.filePath}>
-                            {currentTrack?.filePath || "—"}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
+      {/* Real-time Reorderable Widget Stack */}
+      {visibleWidgets.length === 0 ? (
+        <div className="flex-1 glass-panel rounded-3xl flex flex-col items-center justify-center p-6 text-center text-neutral-400 border border-white/10">
+          <Sparkles className="w-8 h-8 text-neutral-600 mb-2" />
+          <p className="text-sm font-semibold text-neutral-300">All widgets are hidden</p>
+          <p className="text-xs text-neutral-500 mt-1 max-w-xs">
+            Click Manage above to show the Lyrics Deck, Audio Spectrum, Queue, or Audio Specs.
+          </p>
+          <button
+            onClick={resetWidgets}
+            className="mt-4 px-3 py-1.5 bg-primary/20 text-primary border border-primary/30 rounded-xl text-xs font-semibold hover:bg-primary/30 transition-all"
+          >
+            Restore Widgets
+          </button>
+        </div>
+      ) : (
+        <Reorder.Group
+          axis="y"
+          values={visibleWidgets}
+          onReorder={handleReorder}
+          as="div"
+          className="flex-1 flex flex-col gap-3 overflow-y-auto overflow-x-hidden min-h-0 no-scrollbar p-1"
+        >
+          {visibleWidgets.map((widgetId) => (
+            <WidgetCardItem
+              key={widgetId}
+              widgetId={widgetId}
+              isMinimized={minimizedMap[widgetId]}
+              isOnlyVisible={visibleWidgets.length === 1}
+              shouldLyricsCompact={shouldLyricsCompact}
+              hasSyncedLyrics={hasSyncedLyrics}
+              hasAnyLyrics={hasAnyLyrics}
+              onToggleMinimize={() => toggleMinimize(widgetId)}
+              onToggleWidget={() => toggleWidget(widgetId)}
+              isPlaying={isPlaying}
+              visualizerMode={visualizerMode}
+              onSetVisualizerMode={onSetVisualizerMode}
+              getFrequencyData={getFrequencyData}
+              getTimeDomainData={getTimeDomainData}
+              accentColor={accentColor}
+              currentTrack={currentTrack}
+              currentTime={currentTime}
+              onSeek={onSeek}
+              onLyricsLoaded={handleLyricsLoaded}
+              lyricsRef={lyricsRef}
+              queue={queue}
+              onPlayTrack={onPlayTrack}
+              onRemoveFromQueue={onRemoveFromQueue}
+              onClearQueue={onClearQueue}
+              onMoveQueueItem={onMoveQueueItem}
+              visibleWidgets={visibleWidgets}
+            />
+          ))}
+        </Reorder.Group>
+      )}
     </div>
   );
 };
