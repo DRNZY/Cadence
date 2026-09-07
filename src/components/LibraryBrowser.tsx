@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, User, Play, Plus, Mic2, FolderSync, ListMusic, Download, Upload, Trash2, ShieldCheck } from "lucide-react";
+import { Search, User, Play, Plus, Mic2, FolderSync, ListMusic, Download, Upload, Trash2, ShieldCheck, Heart } from "lucide-react";
 import { Track, Playlist } from "../types";
 
 interface LibraryBrowserProps {
@@ -25,7 +25,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
   const [formatFilter, setFormatFilter] = useState<"ALL" | "FLAC" | "MP3" | "LYRICS">("ALL");
-  const [activeTab, setActiveTab] = useState<"albums" | "tracks" | "artists" | "playlists">("albums");
+  const [activeTab, setActiveTab] = useState<"albums" | "tracks" | "artists" | "playlists" | "favorites">("albums");
   const [previewAlbum, setPreviewAlbum] = useState<{
     album: string;
     artist: string;
@@ -33,6 +33,9 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
     coverPath?: string;
     tracks: Track[];
   } | null>(null);
+
+  // Favorites State
+  const [favorites, setFavorites] = useState<string[]>([]);
 
   // Playlists State
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -43,7 +46,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
   const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch Playlists from backend
+  // Fetch Playlists & Favorites from backend
   const fetchPlaylists = () => {
     fetch("/api/playlists")
       .then(res => res.json())
@@ -51,8 +54,31 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
       .catch(() => {});
   };
 
+  const fetchFavorites = () => {
+    fetch("/api/favorites")
+      .then(res => res.json())
+      .then(data => setFavorites(data.favorites || []))
+      .catch(() => {});
+  };
+
+  const toggleFavorite = async (trackId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      const res = await fetch("/api/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackId, action: "toggle" }),
+      });
+      const data = await res.json();
+      if (data.favorites) {
+        setFavorites(data.favorites);
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     fetchPlaylists();
+    fetchFavorites();
   }, []);
 
   const handleCreatePlaylist = async () => {
@@ -182,6 +208,10 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
   // Smart Collections
   const hiResTracks = useMemo(() => safeTracks.filter(t => t.format === "FLAC"), [safeTracks]);
   const karaokeTracks = useMemo(() => safeTracks.filter(t => t.hasLyrics), [safeTracks]);
+  const likedTracks = useMemo(() => {
+    const favSet = new Set(favorites);
+    return safeTracks.filter(t => favSet.has(t.id));
+  }, [favorites, safeTracks]);
 
   // Filtered tracks
   const filteredTracks = useMemo(() => {
@@ -301,6 +331,20 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
               }`}
             >
               Playlists
+            </button>
+            <button
+              onClick={() => { setActiveTab("favorites"); setSelectedPlaylistId(null); }}
+              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 ${
+                activeTab === "favorites" ? "bg-red-500/20 text-red-400 border border-red-500/40" : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <Heart size={12} className={favorites.length > 0 ? "text-red-400 fill-red-400" : ""} />
+              <span>Liked</span>
+              {favorites.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-300 font-mono">
+                  {favorites.length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -467,6 +511,15 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                       {t.format}
                     </span>
                     <span>{formatSeconds(t.duration)}</span>
+                    <button
+                      onClick={(e) => toggleFavorite(t.id, e)}
+                      className={`p-1 rounded-full hover:bg-white/15 transition-colors ${
+                        favorites.includes(t.id) ? "text-red-500" : "text-neutral-400 hover:text-red-400"
+                      }`}
+                      title={favorites.includes(t.id) ? "Unlike" : "Like"}
+                    >
+                      <Heart className={`w-3.5 h-3.5 ${favorites.includes(t.id) ? "fill-red-500" : ""}`} />
+                    </button>
                     <button
                       onClick={() => setAddToPlaylistTrack(t)}
                       className="p-1 rounded-full hover:bg-white/15 text-neutral-400 hover:text-primary transition-colors"
@@ -703,6 +756,116 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5. Liked Songs Collection View */}
+        {activeTab === "favorites" && (
+          <div className="space-y-4 pb-8">
+            {/* Header Hero Card */}
+            <div className="p-5 rounded-2xl bg-gradient-to-r from-red-500/20 via-rose-500/10 to-transparent border border-red-500/30 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 rounded-xl bg-red-500/30 border border-red-500/40 flex items-center justify-center text-red-400">
+                  <Heart className="w-6 h-6 fill-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Liked Songs</h3>
+                  <p className="text-xs text-neutral-400 font-mono">
+                    {likedTracks.length} tracks • {Math.round(likedTracks.reduce((acc, t) => acc + (t.duration || 0), 0) / 60)} min total
+                  </p>
+                </div>
+              </div>
+
+              {likedTracks.length > 0 && (
+                <button
+                  onClick={() => onPlayAlbum(likedTracks)}
+                  className="px-4 py-2 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition-all flex items-center gap-1.5 shadow-lg"
+                >
+                  <Play className="w-4 h-4 fill-black ml-0.5" /> Play All
+                </button>
+              )}
+            </div>
+
+            {/* Tracks List */}
+            {likedTracks.length === 0 ? (
+              <div className="p-12 rounded-2xl bg-white/[0.02] border border-dashed border-white/10 text-center space-y-2">
+                <Heart className="w-8 h-8 text-neutral-600 mx-auto" />
+                <p className="text-xs text-neutral-400 font-semibold">No liked songs yet</p>
+                <p className="text-[11px] text-neutral-500">Tap the heart icon on any track to add it to your collection.</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {likedTracks.map((t, idx) => {
+                  const isSelected = currentTrack?.id === t.id;
+                  const coverUrl = t.coverPath
+                    ? `/covers?path=${encodeURIComponent(t.coverPath)}`
+                    : `/covers`;
+
+                  return (
+                    <div
+                      key={t.id}
+                      onDoubleClick={() => onPlayTrack(t)}
+                      className={`group flex items-center justify-between px-3 py-2 rounded-xl text-left border transition-all ${
+                        isSelected
+                          ? "bg-red-500/15 border-red-500/30 text-white"
+                          : "bg-white/[0.02] hover:bg-white/[0.06] border-white/5 text-neutral-300"
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3 min-w-0 flex-1">
+                        <span className="text-[10px] font-mono text-neutral-500 w-4 text-center">
+                          {idx + 1}
+                        </span>
+                        <div className="relative w-9 h-9 rounded-lg overflow-hidden bg-black/40 shrink-0 border border-white/10">
+                          <img src={coverUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => onPlayTrack(t)}
+                            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                          >
+                            <Play className="w-4 h-4 fill-white text-white ml-0.5" />
+                          </button>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-bold truncate ${isSelected ? "text-red-400" : "text-white"}`}>
+                            {t.title}
+                          </p>
+                          <p className="text-[11px] text-neutral-400 truncate">
+                            {t.artist} • {t.album}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2 shrink-0 text-[11px] font-mono text-neutral-400">
+                        <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[9px]">
+                          {t.format}
+                        </span>
+                        <span>{formatSeconds(t.duration)}</span>
+                        <button
+                          onClick={(e) => toggleFavorite(t.id, e)}
+                          className="p-1 rounded-full hover:bg-red-500/20 text-red-400 transition-colors"
+                          title="Unlike"
+                        >
+                          <Heart className="w-3.5 h-3.5 fill-red-400" />
+                        </button>
+                        <button
+                          onClick={() => setAddToPlaylistTrack(t)}
+                          className="p-1 rounded-full hover:bg-white/15 text-neutral-400 hover:text-primary transition-colors"
+                          title="Add to playlist"
+                        >
+                          <ListMusic className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onAddToQueue(t)}
+                          className="p-1 rounded-full hover:bg-white/15 text-neutral-400 hover:text-white transition-colors"
+                          title="Add to queue"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

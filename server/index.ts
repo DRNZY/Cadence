@@ -58,6 +58,7 @@ const CADENCE_CACHE_DIR = path.join(os.homedir(), ".cache", "cadence");
 const COVER_CACHE_DIR = path.join(CADENCE_CACHE_DIR, "covers");
 const LIBRARY_CACHE_FILE = path.join(CADENCE_CACHE_DIR, "library_cache.json");
 const PLAYLISTS_FILE = path.join(USER_DATA_DIR, "playlists.json");
+const FAVORITES_FILE = path.join(USER_DATA_DIR, "favorites.json");
 const SETTINGS_FILE = path.join(USER_DATA_DIR, "settings.json");
 
 export function atomicWriteFileSync(filePath: string, data: string) {
@@ -215,6 +216,28 @@ function savePlaylists(playlists: Playlist[]) {
     atomicWriteFileSync(PLAYLISTS_FILE, JSON.stringify(playlists, null, 2));
   } catch (err) {
     console.error("[Cadence Server] Error saving playlists:", err);
+  }
+}
+
+// Favorites storage helpers
+function loadFavorites(): string[] {
+  try {
+    if (fs.existsSync(FAVORITES_FILE)) {
+      const data = fs.readFileSync(FAVORITES_FILE, "utf-8");
+      const list = JSON.parse(data);
+      if (Array.isArray(list)) return list;
+    }
+  } catch (err) {
+    console.error("[Cadence Server] Error reading favorites:", err);
+  }
+  return [];
+}
+
+function saveFavorites(favorites: string[]) {
+  try {
+    atomicWriteFileSync(FAVORITES_FILE, JSON.stringify(favorites, null, 2));
+  } catch (err) {
+    console.error("[Cadence Server] Error saving favorites:", err);
   }
 }
 
@@ -688,6 +711,37 @@ app.delete("/api/playlists/:id", (req, res) => {
   }
   savePlaylists(playlists);
   res.json({ success: true, id });
+});
+
+// Favorites API (Cross-Device Bi-Directional Synchronization)
+app.get("/api/favorites", (_req, res) => {
+  const favorites = loadFavorites();
+  res.json({ favorites });
+});
+
+app.post("/api/favorites", (req, res) => {
+  const { trackId, action, favorites: newFavorites } = req.body;
+  let favorites = loadFavorites();
+
+  if (Array.isArray(newFavorites)) {
+    favorites = Array.from(new Set(newFavorites));
+  } else if (trackId && typeof trackId === "string") {
+    if (action === "remove") {
+      favorites = favorites.filter(id => id !== trackId);
+    } else if (action === "add") {
+      if (!favorites.includes(trackId)) favorites.push(trackId);
+    } else {
+      // Toggle
+      if (favorites.includes(trackId)) {
+        favorites = favorites.filter(id => id !== trackId);
+      } else {
+        favorites.push(trackId);
+      }
+    }
+  }
+
+  saveFavorites(favorites);
+  res.json({ favorites });
 });
 
 // Export Playlist as M3U8
