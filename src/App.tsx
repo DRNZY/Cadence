@@ -415,6 +415,10 @@ export const App: React.FC = () => {
           setIsShuffle(prev => !prev);
         } else if (cmd.action === "seek" && typeof cmd.time === "number") {
           audioEngine.seek(cmd.time);
+        } else if (cmd.type === "favorites_updated" && Array.isArray(cmd.favorites)) {
+          window.dispatchEvent(new CustomEvent("cadence:favorites_updated", { detail: cmd.favorites }));
+        } else if (cmd.type === "playlists_updated" && Array.isArray(cmd.playlists)) {
+          window.dispatchEvent(new CustomEvent("cadence:playlists_updated", { detail: cmd.playlists }));
         }
       } catch (err) {
         console.warn("[Cadence SSE error]:", err);

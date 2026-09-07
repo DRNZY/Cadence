@@ -655,6 +655,21 @@ app.get("/api/rescan", async (req, res) => {
   }
 });
 
+// Remote Control SSE Engine & Playback Bridge
+const ctlClients: Array<(data: string) => void> = [];
+let currentPlaybackState: any = { status: "stopped", currentTrack: null, currentTime: 0, duration: 0, lastUpdated: Date.now() };
+let favoritesUpdatedAt = Date.now();
+let playlistsUpdatedAt = Date.now();
+
+export function broadcastCtl(payload: any) {
+  const str = typeof payload === "string" ? payload : JSON.stringify(payload);
+  for (const client of ctlClients) {
+    try {
+      client(str);
+    } catch {}
+  }
+}
+
 // Playlists API
 app.get("/api/playlists", (_req, res) => {
   const playlists = loadPlaylists();
@@ -677,6 +692,8 @@ app.post("/api/playlists", (req, res) => {
   };
   playlists.push(newPlaylist);
   savePlaylists(playlists);
+  playlistsUpdatedAt = Date.now();
+  broadcastCtl({ type: "playlists_updated", playlists, timestamp: playlistsUpdatedAt });
   res.json({ playlist: newPlaylist });
 });
 
@@ -698,6 +715,8 @@ app.put("/api/playlists/:id", (req, res) => {
   };
   playlists[index] = updated;
   savePlaylists(playlists);
+  playlistsUpdatedAt = Date.now();
+  broadcastCtl({ type: "playlists_updated", playlists, timestamp: playlistsUpdatedAt });
   res.json({ playlist: updated });
 });
 
@@ -710,6 +729,8 @@ app.delete("/api/playlists/:id", (req, res) => {
     return res.status(404).json({ error: "Playlist not found" });
   }
   savePlaylists(playlists);
+  playlistsUpdatedAt = Date.now();
+  broadcastCtl({ type: "playlists_updated", playlists, timestamp: playlistsUpdatedAt });
   res.json({ success: true, id });
 });
 
@@ -741,6 +762,8 @@ app.post("/api/favorites", (req, res) => {
   }
 
   saveFavorites(favorites);
+  favoritesUpdatedAt = Date.now();
+  broadcastCtl({ type: "favorites_updated", favorites, timestamp: favoritesUpdatedAt });
   res.json({ favorites });
 });
 
@@ -1026,10 +1049,6 @@ app.get("/covers", async (req, res) => {
   res.send(svg);
 });
 
-// Remote Control SSE Engine & Playback Bridge
-const ctlClients: Array<(data: string) => void> = [];
-let currentPlaybackState: any = { status: "stopped", currentTrack: null, currentTime: 0, duration: 0, lastUpdated: Date.now() };
-
 app.get("/api/ctl/events", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -1187,7 +1206,11 @@ app.post("/api/ctl/state", (req, res) => {
 });
 
 app.get("/api/ctl/state", (_req, res) => {
-  res.json(currentPlaybackState);
+  res.json({
+    ...currentPlaybackState,
+    favoritesUpdatedAt,
+    playlistsUpdatedAt,
+  });
 });
 
 function getLocalIpAddresses(): string[] {

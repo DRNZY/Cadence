@@ -79,6 +79,26 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
   useEffect(() => {
     fetchPlaylists();
     fetchFavorites();
+
+    const handleFavsUpdated = (e: any) => {
+      if (Array.isArray(e.detail)) {
+        setFavorites(e.detail);
+      }
+    };
+
+    const handlePlaylistsUpdated = (e: any) => {
+      if (Array.isArray(e.detail)) {
+        setPlaylists(e.detail);
+      }
+    };
+
+    window.addEventListener("cadence:favorites_updated", handleFavsUpdated);
+    window.addEventListener("cadence:playlists_updated", handlePlaylistsUpdated);
+
+    return () => {
+      window.removeEventListener("cadence:favorites_updated", handleFavsUpdated);
+      window.removeEventListener("cadence:playlists_updated", handlePlaylistsUpdated);
+    };
   }, []);
 
   const handleCreatePlaylist = async () => {
