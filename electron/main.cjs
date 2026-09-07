@@ -119,13 +119,28 @@ async function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false
+      webSecurity: true
     }
   });
 
   // Forward renderer console to terminal
   mainWindow.webContents.on("console-message", (_event, level, message) => {
     console.log(`[Renderer Console] ${message}`);
+  });
+
+  // Prevent navigation away from trusted local origins
+  mainWindow.webContents.on("will-navigate", (event, navigationUrl) => {
+    try {
+      const parsed = new URL(navigationUrl);
+      if (parsed.origin !== PROD_URL && parsed.origin !== DEV_URL) {
+        event.preventDefault();
+        if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+          shell.openExternal(navigationUrl);
+        }
+      }
+    } catch {
+      event.preventDefault();
+    }
   });
 
   // Determine target URL: always use production build unless CADENCE_DEV is explicitly set
@@ -170,7 +185,12 @@ async function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+        shell.openExternal(url);
+      }
+    } catch {}
     return { action: "deny" };
   });
 

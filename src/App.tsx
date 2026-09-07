@@ -413,6 +413,8 @@ export const App: React.FC = () => {
           audioEngine.seek(0);
         } else if (cmd.action === "shuffle") {
           setIsShuffle(prev => !prev);
+        } else if (cmd.action === "seek" && typeof cmd.time === "number") {
+          audioEngine.seek(cmd.time);
         }
       } catch (err) {
         console.warn("[Cadence SSE error]:", err);

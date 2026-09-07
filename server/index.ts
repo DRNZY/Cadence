@@ -13,9 +13,33 @@ const execFileAsync = promisify(execFile);
 const app = express();
 const PORT = 3001;
 
+// Security Headers Middleware
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+const isPrivateIpOrigin = (origin: string): boolean => {
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.startsWith("192.168.") ||
+      host.startsWith("10.") ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+    );
+  } catch {
+    return false;
+  }
+};
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:") || origin.startsWith("file://") || origin.startsWith("vscode-webview://")) {
+    if (!origin || origin.startsWith("file://") || origin.startsWith("vscode-webview://") || isPrivateIpOrigin(origin)) {
       callback(null, true);
     } else {
       callback(new Error("Blocked by Cadence CORS policy"));
@@ -24,7 +48,7 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
   allowedHeaders: ["Range", "Accept-Ranges", "Content-Type", "Origin", "X-Requested-With"]
 }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use("/api/lastfm", lastFmRouter);
 
 const MUSIC_DIR = path.resolve(process.env.MUSIC_DIR || path.join(process.env.HOME || os.homedir(), "Music"));
@@ -39,31 +63,81 @@ const SETTINGS_FILE = path.join(USER_DATA_DIR, "settings.json");
 export function atomicWriteFileSync(filePath: string, data: string) {
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   const tempPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 7)}`;
-  fs.writeFileSync(tempPath, data, "utf-8");
+  fs.writeFileSync(tempPath, data, { encoding: "utf-8", mode: 0o600 });
   fs.renameSync(tempPath, filePath);
+  try { fs.chmodSync(filePath, 0o600); } catch {}
 }
 
-// Path boundary checker for audio and cover streaming
-export function isPathAllowed(targetPath: string): boolean {
+const AUDIO_EXTENSIONS = new Set([
+  ".flac", ".mp3", ".wav", ".m4a", ".ogg", ".opus", ".aac", ".alac", ".aiff", ".wma"
+]);
+
+const COVER_EXTENSIONS = new Set([
+  ".jpg", ".jpeg", ".png", ".webp", ".avif"
+]);
+
+export function isAudioPathAllowed(targetPath: string): boolean {
   if (!targetPath || typeof targetPath !== "string") return false;
   try {
+    if (targetPath.includes("\0")) return false;
     const resolved = path.resolve(targetPath);
+    const ext = path.extname(resolved).toLowerCase();
+    if (!AUDIO_EXTENSIONS.has(ext)) return false;
+
+    // Disallow reading from sensitive config/keys directories
+    if (resolved.startsWith(USER_DATA_DIR + path.sep) || resolved === USER_DATA_DIR) return false;
+    if (resolved.startsWith(LEGACY_DATA_DIR + path.sep) || resolved === LEGACY_DATA_DIR) return false;
+
+    const real = fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved;
+    if (!AUDIO_EXTENSIONS.has(path.extname(real).toLowerCase())) return false;
+    if (real.startsWith(USER_DATA_DIR + path.sep) || real === USER_DATA_DIR) return false;
+
     const allowedDirs = [
       MUSIC_DIR,
       CADENCE_CACHE_DIR,
-      COVER_CACHE_DIR,
-      USER_DATA_DIR,
-      LEGACY_DATA_DIR,
       path.join(os.homedir(), "Music"),
       path.join(os.homedir(), "Downloads"),
     ];
-    return allowedDirs.some(dir => resolved === dir || resolved.startsWith(dir + path.sep));
+    return allowedDirs.some(dir => real === dir || real.startsWith(dir + path.sep));
   } catch {
     return false;
   }
+}
+
+export function isCoverPathAllowed(targetPath: string): boolean {
+  if (!targetPath || typeof targetPath !== "string") return false;
+  try {
+    if (targetPath.includes("\0")) return false;
+    const resolved = path.resolve(targetPath);
+    const ext = path.extname(resolved).toLowerCase();
+    if (!COVER_EXTENSIONS.has(ext)) return false;
+
+    // Disallow reading from sensitive config/keys directories
+    if (resolved.startsWith(USER_DATA_DIR + path.sep) || resolved === USER_DATA_DIR) return false;
+    if (resolved.startsWith(LEGACY_DATA_DIR + path.sep) || resolved === LEGACY_DATA_DIR) return false;
+
+    const real = fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved;
+    if (!COVER_EXTENSIONS.has(path.extname(real).toLowerCase())) return false;
+    if (real.startsWith(USER_DATA_DIR + path.sep) || real === USER_DATA_DIR) return false;
+
+    const allowedDirs = [
+      COVER_CACHE_DIR,
+      CADENCE_CACHE_DIR,
+      MUSIC_DIR,
+      path.join(os.homedir(), "Music"),
+      path.join(os.homedir(), "Downloads"),
+    ];
+    return allowedDirs.some(dir => real === dir || real.startsWith(dir + path.sep));
+  } catch {
+    return false;
+  }
+}
+
+export function isPathAllowed(targetPath: string): boolean {
+  return isAudioPathAllowed(targetPath) || isCoverPathAllowed(targetPath);
 }
 
 // Ensure config and cache dirs exist
@@ -114,7 +188,6 @@ let cachedTracks: Track[] = [];
 let isScanning = false;
 let scanCompletePromise: Promise<Track[]> | null = null;
 
-const AUDIO_EXTENSIONS = new Set([".flac", ".mp3", ".wav", ".m4a", ".ogg", ".opus", ".aac", ".wma"]);
 const IMAGE_NAMES = ["cover.jpg", "cover.png", "folder.jpg", "folder.png", "discart.jpg", "Cover.jpg", "front.jpg"];
 
 // Playlists storage helpers
@@ -720,8 +793,11 @@ app.get("/api/lyrics", async (req, res) => {
   const album = (req.query.album as string) || "";
   const duration = parseFloat(req.query.duration as string) || 0;
 
+  // Validate filePath to prevent path traversal outside music collection
+  const safePath = (filePath && isAudioPathAllowed(filePath)) ? filePath : "";
+
   try {
-    const result = await getLyricsForTrack(filePath, artist, title, album, duration);
+    const result = await getLyricsForTrack(safePath, artist, title, album, duration);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message, synced: false, lines: [] });
@@ -751,7 +827,7 @@ app.options("/stream", (req, res) => {
 
 app.get("/stream", (req, res) => {
   const filePath = req.query.path as string;
-  if (!filePath || !isPathAllowed(filePath) || !fs.existsSync(filePath)) {
+  if (!filePath || !isAudioPathAllowed(filePath) || !fs.existsSync(filePath)) {
     return res.status(404).send("File not found or access denied");
   }
 
@@ -820,7 +896,7 @@ app.get("/covers", async (req, res) => {
   };
 
   // 1. Direct local file
-  if (coverPath && isPathAllowed(coverPath) && fs.existsSync(coverPath)) {
+  if (coverPath && isCoverPathAllowed(coverPath) && fs.existsSync(coverPath)) {
     const ext = path.extname(coverPath).toLowerCase();
     res.setHeader("Content-Type", mimeTypes[ext] || "image/jpeg");
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -967,6 +1043,68 @@ app.post("/api/ctl/playback", (req, res) => {
       ...currentPlaybackState,
       status: "playing",
       currentTrack: track,
+      currentTime: 0,
+      duration: track.duration || 0,
+      lastUpdated: Date.now()
+    };
+  } else if (body.action === "next" && cachedTracks.length > 0) {
+    const currentIdx = cachedTracks.findIndex((t) => t.id === currentPlaybackState.currentTrack?.id);
+    const nextIdx = (currentIdx + 1) % cachedTracks.length;
+    track = cachedTracks[nextIdx];
+    currentPlaybackState = {
+      ...currentPlaybackState,
+      status: "playing",
+      currentTrack: track,
+      currentTime: 0,
+      duration: track.duration || 0,
+      lastUpdated: Date.now()
+    };
+  } else if (body.action === "previous" && cachedTracks.length > 0) {
+    const currentIdx = cachedTracks.findIndex((t) => t.id === currentPlaybackState.currentTrack?.id);
+    const prevIdx = (currentIdx - 1 + cachedTracks.length) % cachedTracks.length;
+    track = cachedTracks[prevIdx];
+    currentPlaybackState = {
+      ...currentPlaybackState,
+      status: "playing",
+      currentTrack: track,
+      currentTime: 0,
+      duration: track.duration || 0,
+      lastUpdated: Date.now()
+    };
+  } else if (body.action === "toggle") {
+    currentPlaybackState = {
+      ...currentPlaybackState,
+      status: currentPlaybackState.status === "playing" ? "paused" : "playing",
+      lastUpdated: Date.now()
+    };
+  } else if (body.action === "pause") {
+    currentPlaybackState = {
+      ...currentPlaybackState,
+      status: "paused",
+      lastUpdated: Date.now()
+    };
+  } else if (body.action === "seek" && typeof body.time === "number") {
+    currentPlaybackState = {
+      ...currentPlaybackState,
+      currentTime: body.time,
+      lastUpdated: Date.now()
+    };
+  } else if (body.action === "volume" && typeof body.volume === "number") {
+    currentPlaybackState = {
+      ...currentPlaybackState,
+      volume: Math.max(0, Math.min(1, body.volume)),
+      lastUpdated: Date.now()
+    };
+  } else if (body.action === "shuffle" && typeof body.shuffle === "boolean") {
+    currentPlaybackState = {
+      ...currentPlaybackState,
+      shuffle: body.shuffle,
+      lastUpdated: Date.now()
+    };
+  } else if (body.action === "repeat" && typeof body.repeat === "string") {
+    currentPlaybackState = {
+      ...currentPlaybackState,
+      repeat: body.repeat,
       lastUpdated: Date.now()
     };
   }
@@ -985,11 +1123,55 @@ app.post("/api/ctl/playback", (req, res) => {
 
 app.post("/api/ctl/state", (req, res) => {
   currentPlaybackState = { ...req.body, lastUpdated: Date.now() };
+  const payloadStr = JSON.stringify({ type: "state-update", state: currentPlaybackState });
+  for (const client of ctlClients) {
+    try {
+      client(payloadStr);
+    } catch {}
+  }
   res.json({ success: true });
 });
 
 app.get("/api/ctl/state", (_req, res) => {
   res.json(currentPlaybackState);
+});
+
+function getLocalIpAddresses(): string[] {
+  const nets = os.networkInterfaces();
+  const results: string[] = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      if (net.family === "IPv4" && !net.internal) {
+        results.push(net.address);
+      }
+    }
+  }
+  return results;
+}
+
+app.get("/api/ping", (_req, res) => {
+  res.json({
+    status: "ok",
+    app: "cadence",
+    name: "Cadence Laptop",
+    hostname: os.hostname(),
+    port: PORT,
+    version: "2.2.0",
+    addresses: getLocalIpAddresses(),
+  });
+});
+
+app.get("/api/discovery", (_req, res) => {
+  res.json({
+    status: "ok",
+    app: "cadence",
+    name: "Cadence Laptop",
+    hostname: os.hostname(),
+    port: PORT,
+    version: "2.2.0",
+    addresses: getLocalIpAddresses(),
+    playback: currentPlaybackState,
+  });
 });
 
 // Serve production frontend assets if dist directory exists
@@ -1006,6 +1188,6 @@ if (fs.existsSync(DIST_DIR)) {
   });
 }
 
-app.listen(PORT, "127.0.0.1", () => {
-  console.log(`[Cadence Audio Server] Running on http://127.0.0.1:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`[Cadence Audio Server] Running on http://0.0.0.0:${PORT}`);
 });

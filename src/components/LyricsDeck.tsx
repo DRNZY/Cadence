@@ -40,18 +40,20 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const userScrollTimeoutRef = useRef<number | null>(null);
 
+  const outerWrapperRef = useRef<HTMLDivElement | null>(null);
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [containerHeight, setContainerHeight] = useState<number>(320);
 
-  // Dynamically observe container height for resolution-independent padding
+  // Dynamically observe container height from stable outer wrapper (zero layout feedback loop!)
   useEffect(() => {
-    const el = scrollContainerRef.current;
+    const el = outerWrapperRef.current;
     if (!el) return;
     const ro = new ResizeObserver(entries => {
       for (const entry of entries) {
-        if (entry.contentRect.height > 0) {
-          setContainerHeight(entry.contentRect.height);
+        const height = entry.contentRect.height;
+        if (height > 0) {
+          setContainerHeight(prev => (Math.abs(prev - height) > 2 ? height : prev));
         }
       }
     });
@@ -202,12 +204,12 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
     smoothScrollTo(Math.max(0, targetScrollTop), 400);
   }, [activeIndex, smoothScrollTo]);
 
-  // Trigger auto-scroll on activeIndex change if not in manual interaction
+  // Trigger auto-scroll on activeIndex change or resize if not in manual interaction
   useEffect(() => {
     if (!isUserInteracting && lyricsState.synced && activeIndex >= 0) {
       scrollToActive();
     }
-  }, [activeIndex, isUserInteracting, lyricsState.synced, scrollToActive]);
+  }, [activeIndex, isUserInteracting, lyricsState.synced, scrollToActive, containerHeight]);
 
   // Detect user manual scroll/drag
   const handleUserWheelOrTouch = () => {
@@ -260,7 +262,7 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
   };
 
   return (
-    <div className={`flex flex-col h-full w-full select-none relative overflow-hidden ${hideHeader ? "p-2 md:p-3" : "p-4 md:p-6"}`}>
+    <div ref={outerWrapperRef} className={`flex flex-col h-full w-full select-none relative overflow-hidden ${hideHeader ? "p-2 md:p-3" : "p-4 md:p-6"}`}>
       {/* Header (if not hidden by parent widget container) */}
       {!hideHeader && (
         <div className="flex items-center justify-between z-20 pb-3 border-b border-white/5 shrink-0">
@@ -353,11 +355,10 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
         ref={scrollContainerRef}
         onWheel={handleUserWheelOrTouch}
         onTouchStart={handleUserWheelOrTouch}
-        onPointerDown={handleUserWheelOrTouch}
         className="flex-1 overflow-y-auto overflow-x-hidden px-2 space-y-6 relative no-scrollbar"
         style={{
-          paddingTop: isCompact ? "1rem" : (lyricsState.synced ? `${Math.max(40, Math.round(containerHeight * 0.44))}px` : "1.5rem"),
-          paddingBottom: isCompact ? "1rem" : (lyricsState.synced ? `${Math.max(40, Math.round(containerHeight * 0.44))}px` : "2rem")
+          paddingTop: isCompact ? "1rem" : (lyricsState.synced ? `${Math.max(40, Math.round(containerHeight * 0.42))}px` : "1.5rem"),
+          paddingBottom: isCompact ? "1rem" : (lyricsState.synced ? `${Math.max(40, Math.round(containerHeight * 0.42))}px` : "2rem")
         }}
       >
         {isLoading ? (
@@ -383,14 +384,14 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
                 }`}
               >
                 <div
-                  className={`text-xl md:text-2xl font-bold leading-relaxed tracking-tight transform-gpu origin-left transition-all duration-300 ease-out will-change-transform ${
+                  className={`text-xl md:text-2xl font-bold leading-relaxed tracking-tight origin-left transition-[color,opacity,transform] duration-200 ease-out ${
                     isActive
-                      ? "text-white opacity-100 scale-[1.04] translate-x-1.5 drop-shadow-[0_4px_24px_var(--primary-glow)]"
+                      ? "text-white opacity-100 translate-x-1.5 drop-shadow-[0_2px_16px_var(--primary-glow)]"
                       : isPast
-                      ? "text-neutral-400 opacity-30 hover:opacity-65 scale-100 translate-x-0"
+                      ? "text-neutral-400 opacity-30 hover:opacity-65 translate-x-0"
                       : distance > 3
-                      ? "text-neutral-400 opacity-20 hover:opacity-55 scale-100 translate-x-0"
-                      : "text-neutral-400 opacity-45 hover:opacity-75 scale-100 translate-x-0"
+                      ? "text-neutral-400 opacity-20 hover:opacity-55 translate-x-0"
+                      : "text-neutral-400 opacity-45 hover:opacity-75 translate-x-0"
                   }`}
                 >
                   {line.text}
@@ -439,8 +440,8 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
       </AnimatePresence>
 
       {/* Floating Gradient Masks */}
-      <div className={`lyrics-gradient-top pointer-events-none absolute left-0 right-0 h-16 bg-gradient-to-b from-[#0e1017] to-transparent z-10 ${hideHeader ? "top-0" : "top-12"}`} />
-      <div className="lyrics-gradient-bottom pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#0e1017] to-transparent z-10" />
+      <div className={`lyrics-gradient-top pointer-events-none absolute left-0 right-0 ${hideHeader ? "h-10 top-0" : "h-14 top-12"} bg-gradient-to-b from-[#0e1017] via-[#0e1017]/70 to-transparent z-10 transition-all`} />
+      <div className={`lyrics-gradient-bottom pointer-events-none absolute bottom-0 left-0 right-0 ${hideHeader ? "h-10" : "h-14"} bg-gradient-to-t from-[#0e1017] via-[#0e1017]/70 to-transparent z-10 transition-all`} />
     </div>
   );
 });

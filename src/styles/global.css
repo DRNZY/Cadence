@@ -376,9 +376,38 @@ body.light #app-root {
   animation: cadence-scan-sweep 1.5s cubic-bezier(0.45, 0, 0.25, 1) infinite;
 }
 
+/* Fluid dynamic ambient mesh animations */
+@keyframes float-ambient-1 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(3%, 4%) scale(1.06);
+  }
+}
+
+@keyframes float-ambient-2 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1.04);
+  }
+  50% {
+    transform: translate(-4%, -3%) scale(0.96);
+  }
+}
+
+.animate-ambient-1 {
+  animation: float-ambient-1 14s ease-in-out infinite alternate;
+}
+
+.animate-ambient-2 {
+  animation: float-ambient-2 18s ease-in-out infinite alternate;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cadence-eq-bar,
-  .cadence-scan-sweep {
+  .cadence-scan-sweep,
+  .animate-ambient-1,
+  .animate-ambient-2 {
     animation: none;
   }
 }

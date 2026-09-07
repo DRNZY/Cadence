@@ -82,10 +82,16 @@ export async function getCadenceState(): Promise<any> {
 
 export async function rescanLibrary(): Promise<any> {
   try {
-    const res = await fetch(`${CADENCE_SERVER_URL}/api/rescan`, {
-      method: "POST",
-      signal: AbortSignal.timeout(10000)
+    let res = await fetch(`${CADENCE_SERVER_URL}/api/rescan`, {
+      method: "GET",
+      signal: AbortSignal.timeout(15000)
     });
+    if (!res.ok) {
+      res = await fetch(`${CADENCE_SERVER_URL}/api/rescan`, {
+        method: "POST",
+        signal: AbortSignal.timeout(15000)
+      });
+    }
     return await res.json();
   } catch (err: any) {
     console.error("Rescan error:", err.message);
@@ -121,12 +127,11 @@ async function main() {
         const data: any = await trRes.json();
         const allTracks: any[] = data.tracks || [];
         const qLower = query.toLowerCase();
-        const match = allTracks.find((t: any) =>
-          t.title.toLowerCase().includes(qLower) ||
-          t.artist.toLowerCase().includes(qLower) ||
-          t.album.toLowerCase().includes(qLower) ||
-          t.filePath.toLowerCase().includes(qLower)
-        );
+        const qTokens = qLower.split(/\s+/).filter(Boolean);
+        const match = allTracks.find((t: any) => {
+          const fullMeta = `${t.artist} ${t.title} ${t.album} ${t.filePath}`.toLowerCase();
+          return qTokens.every((tok: string) => fullMeta.includes(tok));
+        });
 
         if (!match) {
           console.log(`🔍 "${query}" not found in local library.`);

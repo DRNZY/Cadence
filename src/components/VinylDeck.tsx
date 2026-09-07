@@ -189,8 +189,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   return (
     <div className="flex flex-col items-center justify-between h-full w-full p-4 md:p-6 select-none relative overflow-hidden">
       {/* Top Deck Mode Apple-Style Segmented Control */}
-      <div className="w-full grid grid-cols-3 items-center z-20 shrink-0 mb-3">
-        <div className="flex items-center space-x-2">
+      <div className="w-full flex items-center justify-between z-20 shrink-0 mb-3 gap-3">
+        <div className="flex items-center space-x-2 shrink-0">
           {currentTrack && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-neutral-300">
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
@@ -202,8 +202,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
           )}
         </div>
 
-        {/* Fluid Apple Segmented Pill Switcher Centered */}
-        <div className="flex justify-center">
+        {/* Fluid Apple Segmented Pill Switcher */}
+        <div className="flex items-center justify-end sm:justify-center shrink-0">
           <div className="flex bg-black/50 p-1 rounded-full border border-white/10 backdrop-blur-xl relative">
             {DECK_MODES.map(mode => {
               const isActive = deckMode === mode.id;
@@ -211,7 +211,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                 <button
                   key={mode.id}
                   onClick={() => onSetDeckMode(mode.id)}
-                  className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 active:scale-95 ${
+                  className={`relative px-3 sm:px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 active:scale-95 ${
                     isActive ? "text-white" : "text-neutral-400 hover:text-neutral-200"
                   }`}
                 >
@@ -229,24 +229,38 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             })}
           </div>
         </div>
-
-        <div className="flex items-center justify-end" />
       </div>
 
       {/* Main Deck Hero Surface */}
-      <div className="flex-1 w-full flex items-center justify-center relative my-auto min-h-0">
+      <div className="flex-1 w-full flex items-center justify-center relative my-auto min-h-0 overflow-hidden">
 
-        {/* Ambient Reactive Bloom / Underglow matching artwork colors */}
-        <div 
-          className={`absolute w-[320px] h-[320px] sm:w-[380px] sm:h-[380px] lg:w-[500px] lg:h-[500px] xl:w-[600px] xl:h-[600px] 2xl:w-[700px] 2xl:h-[700px] rounded-full pointer-events-none transition-all duration-700 blur-3xl transform-gpu ${
-            isPlaying ? "opacity-60 scale-105" : "opacity-30 scale-95"
-          }`}
-          style={{
-            background: "radial-gradient(circle, var(--primary-glow, rgba(255,255,255,0.25)) 0%, var(--secondary-glow, rgba(56,189,248,0.15)) 45%, transparent 72%)",
-            filter: "blur(50px)",
-            willChange: "transform, opacity",
-          }}
-        />
+        {/* Dynamic Multi-Layer Full-Panel Ambient Canvas */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
+          <div 
+            className={`absolute -top-1/4 -left-1/4 w-[85%] h-[85%] rounded-full blur-[110px] transform-gpu transition-all duration-1000 ${
+              isPlaying ? "opacity-45 scale-105 animate-ambient-1" : "opacity-20 scale-95"
+            }`}
+            style={{
+              background: "radial-gradient(circle, var(--ambient-1, rgba(99, 102, 241, 0.35)) 0%, transparent 70%)"
+            }}
+          />
+          <div 
+            className={`absolute -bottom-1/4 -right-1/4 w-[85%] h-[85%] rounded-full blur-[130px] transform-gpu transition-all duration-1000 ${
+              isPlaying ? "opacity-40 scale-105 animate-ambient-2" : "opacity-20 scale-95"
+            }`}
+            style={{
+              background: "radial-gradient(circle, var(--ambient-2, rgba(168, 85, 247, 0.3)) 0%, transparent 70%)"
+            }}
+          />
+          <div 
+            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95%] max-w-5xl h-[85%] rounded-full blur-[80px] transform-gpu transition-all duration-700 ${
+              isPlaying ? "opacity-60 scale-105" : "opacity-25 scale-95"
+            }`}
+            style={{
+              background: "radial-gradient(circle, var(--primary-glow, rgba(255,255,255,0.22)) 0%, var(--secondary-glow, rgba(56,189,248,0.12)) 45%, transparent 75%)"
+            }}
+          />
+        </div>
 
         {/* ─── MODE 1: SQUARE ALBUM COVER HERO OR WELCOME LAUNCHPAD ─── */}
         {deckMode === "cover" && (
@@ -256,7 +270,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -12 }}
               transition={{ type: "spring", stiffness: 360, damping: 28 }}
-              className="relative flex flex-col items-center justify-center max-w-[480px] w-full p-6 md:p-8 rounded-3xl bg-neutral-900/60 border border-white/10 shadow-2xl backdrop-blur-2xl text-center space-y-6"
+              className="relative flex flex-col items-center justify-center max-w-[480px] w-full p-6 md:p-8 rounded-3xl bg-neutral-900/60 border border-white/10 shadow-2xl backdrop-blur-2xl text-center space-y-6 z-10"
             >
               {/* Pulsing Concentric Audio Rings */}
               <div className="relative flex items-center justify-center my-2">
@@ -325,30 +339,127 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.94 }}
               transition={{ type: "spring", stiffness: 380, damping: 28 }}
-              className="relative flex flex-col items-center justify-center max-w-[360px] md:max-w-[440px] lg:max-w-[520px] xl:max-w-[620px] 2xl:max-w-[700px] w-full aspect-square"
-              onMouseMove={handleCoverMouseMove}
-              onMouseLeave={handleCoverMouseLeave}
-              style={{ perspective: 1000 }}
+              className="relative flex flex-col items-center justify-center w-full max-w-4xl my-auto px-4 z-10"
             >
-              {/* Main Pristine Cover Card Frame */}
-              <motion.div
-                style={{
-                  rotateX: tilt.y,
-                  rotateY: tilt.x,
-                  transformStyle: "preserve-3d"
-                }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="w-full h-full rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group"
+              {/* Sleeve + Peeking Vinyl Record Presentation */}
+              <div 
+                className="relative flex items-center justify-center"
+                onMouseMove={handleCoverMouseMove}
+                onMouseLeave={handleCoverMouseLeave}
+                style={{ perspective: 1000 }}
               >
-                <img
-                  src={coverUrl}
-                  alt={currentTrack?.album || "Cover"}
-                  className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
-                />
+                {/* Vinyl Record that slides out smoothly from behind sleeve */}
+                <div
+                  className={`absolute right-0 top-1/2 -translate-y-1/2 aspect-square rounded-full shadow-2xl z-0 pointer-events-none transition-all duration-700 ease-out ${
+                    isPlaying 
+                      ? "w-[92%] translate-x-[36%] rotate-12 opacity-100" 
+                      : "w-[92%] translate-x-0 rotate-0 opacity-0"
+                  }`}
+                  style={{
+                    background: "radial-gradient(circle, #25252a 0%, #16161a 50%, #0a0a0c 100%)",
+                    boxShadow: "0 20px 50px rgba(0,0,0,0.7), 0 0 30px rgba(0,0,0,0.5)",
+                    border: "2px solid rgba(255,255,255,0.08)"
+                  }}
+                >
+                  {/* Vinyl Grooves Texture */}
+                  <div className="absolute inset-0 rounded-full vinyl-grooves opacity-95" />
+                  {/* Dynamic Vinyl Sheen */}
+                  <div className="absolute inset-0 rounded-full vinyl-sheen opacity-80" />
+                  {/* Spinning Center Label with Album Artwork */}
+                  <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[34%] aspect-square rounded-full overflow-hidden border-2 border-neutral-900 shadow-lg ${isPlaying ? "animate-spin-vinyl" : ""}`}>
+                    <img src={coverUrl} alt="" className="w-full h-full object-cover select-none pointer-events-none" />
+                    <div className="absolute inset-0 bg-black/15" />
+                    {/* Spindle hole */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-neutral-950 border border-neutral-400/80 shadow-inner" />
+                  </div>
+                </div>
 
-                {/* Glass sheen highlight */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
-              </motion.div>
+                {/* Main Album Jacket Card Frame with 3D Tilt */}
+                <motion.div
+                  style={{
+                    rotateX: tilt.y,
+                    rotateY: tilt.x,
+                    transformStyle: "preserve-3d"
+                  }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  className={`w-[230px] sm:w-[280px] md:w-[320px] lg:w-[360px] xl:w-[400px] 2xl:w-[440px] aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 transition-transform duration-700 ease-out ${
+                    isPlaying ? "-translate-x-8 sm:-translate-x-12" : "translate-x-0"
+                  }`}
+                >
+                  <img
+                    src={coverUrl}
+                    alt={currentTrack?.album || "Cover"}
+                    className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
+                  />
+                  {/* Glass sheen highlight */}
+                  <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
+                </motion.div>
+
+                {/* Ambient Floor Shadow / Reflection */}
+                <div 
+                  className={`absolute -bottom-8 left-1/2 -translate-x-1/2 w-4/5 h-12 rounded-full blur-2xl pointer-events-none transition-all duration-700 ${
+                    isPlaying ? "opacity-75 scale-105" : "opacity-35 scale-95"
+                  }`}
+                  style={{
+                    background: "radial-gradient(ellipse at center, var(--primary-glow, rgba(255,255,255,0.3)) 0%, rgba(0,0,0,0.85) 60%, transparent 80%)"
+                  }}
+                />
+              </div>
+
+              {/* Prominent Studio Master Typography & Metadata */}
+              <div className="mt-6 sm:mt-7 flex flex-col items-center text-center max-w-lg w-full px-2 z-10">
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-white drop-shadow-md truncate max-w-full leading-snug">
+                  {currentTrack.title}
+                </h1>
+
+                <div className="flex items-center justify-center gap-2 mt-1.5 text-xs sm:text-sm text-neutral-300 font-medium flex-wrap">
+                  <span 
+                    onClick={onOpenLibrary}
+                    className="hover:text-white transition-colors cursor-pointer"
+                    title="View Artist in Library"
+                  >
+                    {currentTrack.artist || "Unknown Artist"}
+                  </span>
+                  {currentTrack.album && (
+                    <>
+                      <span className="text-neutral-500">•</span>
+                      <span className="text-neutral-400 truncate max-w-[240px]">{currentTrack.album}</span>
+                    </>
+                  )}
+                  {currentTrack.year && (
+                    <>
+                      <span className="text-neutral-500">•</span>
+                      <span className="text-neutral-500 font-mono text-xs">{currentTrack.year}</span>
+                    </>
+                  )}
+                </div>
+
+                {/* Studio Quality Specs Badges */}
+                <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-sm text-[11px] font-mono text-neutral-300">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? "bg-primary animate-pulse" : "bg-neutral-500"}`} />
+                    <span className="font-bold text-white uppercase">{currentTrack.format || "FLAC"}</span>
+                    {currentTrack.bitrate && (
+                      <>
+                        <span className="text-neutral-600">•</span>
+                        <span>{currentTrack.bitrate} kbps</span>
+                      </>
+                    )}
+                    {currentTrack.sampleRate && (
+                      <>
+                        <span className="text-neutral-600">•</span>
+                        <span>{(currentTrack.sampleRate / 1000).toFixed(1)} kHz</span>
+                      </>
+                    )}
+                  </div>
+
+                  {currentTrack.replayGain !== undefined && (
+                    <div className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-neutral-400">
+                      <span>{currentTrack.replayGain > 0 ? "+" : ""}{currentTrack.replayGain.toFixed(1)} dB</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </motion.div>
           )
         )}

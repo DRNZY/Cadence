@@ -41,9 +41,10 @@ export function loadLastFmConfig(): LastFmConfig {
 export function saveLastFmConfig(config: LastFmConfig) {
   try {
     if (!fs.existsSync(USER_DATA_DIR)) {
-      fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+      fs.mkdirSync(USER_DATA_DIR, { recursive: true, mode: 0o700 });
     }
-    fs.writeFileSync(LASTFM_CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
+    fs.writeFileSync(LASTFM_CONFIG_FILE, JSON.stringify(config, null, 2), { encoding: "utf-8", mode: 0o600 });
+    try { fs.chmodSync(LASTFM_CONFIG_FILE, 0o600); } catch {}
   } catch (err) {
     console.error("[Last.fm] Could not save config:", err);
   }
