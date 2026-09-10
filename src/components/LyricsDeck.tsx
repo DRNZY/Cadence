@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic2, Music, RefreshCw, Search, Sparkles } from "lucide-react";
+import { Mic2, Music, RefreshCw, Search, Sparkles, Check, Disc3 } from "lucide-react";
 import { Track, LyricLine, LyricsState } from "../types";
 
 export interface LyricsDeckHandle {
@@ -15,6 +15,19 @@ interface LyricsDeckProps {
   onLyricsLoaded?: (state: LyricsState) => void;
   isCompact?: boolean;
   hideHeader?: boolean;
+}
+
+interface LyricsCandidate {
+  id: number;
+  trackName: string;
+  artistName: string;
+  albumName?: string;
+  duration?: number;
+  synced: boolean;
+  instrumental: boolean;
+  score: number;
+  syncedLyrics?: string;
+  plainLyrics?: string;
 }
 
 export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
@@ -34,7 +47,8 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchArtist, setSearchArtist] = useState("");
   const [searchTitle, setSearchTitle] = useState("");
-  const [isSearchingOnline, setIsSearchingOnline] = useState(false);
+  const [candidates, setCandidates] = useState<LyricsCandidate[]>([]);
+  const [isSearchingCandidates, setIsSearchingCandidates] = useState(false);
 
   // Manual scroll lockout state
   const [isUserInteracting, setIsUserInteracting] = useState(false);
@@ -45,7 +59,7 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [containerHeight, setContainerHeight] = useState<number>(320);
 
-  // Dynamically observe container height from stable outer wrapper (zero layout feedback loop!)
+  // Dynamically observe container height in real time
   useEffect(() => {
     const el = outerWrapperRef.current;
     if (!el) return;
@@ -61,7 +75,7 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
     return () => ro.disconnect();
   }, []);
 
-  const fetchLyrics = useCallback((customArtist?: string, customTitle?: string) => {
+  const fetchLyrics = useCallback((customArtist?: string, customTitle?: string, forceRefresh?: boolean) => {
     if (!currentTrack) {
       setLyricsState({ synced: false, source: "none", lines: [] });
       return;
@@ -72,7 +86,7 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
     const title = customTitle !== undefined ? customTitle : currentTrack.title || "";
     const album = currentTrack.album || "";
     const duration = currentTrack.duration || 0;
-    const filePath = customArtist || customTitle ? "" : currentTrack.filePath || "";
+    const filePath = customArtist || customTitle || forceRefresh ? "" : currentTrack.filePath || "";
 
     const params = new URLSearchParams({
       path: filePath,
@@ -81,6 +95,9 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
       album,
       duration: duration.toString()
     });
+    if (forceRefresh) {
+      params.set("refresh", "true");
+    }
 
     fetch(`/api/lyrics?${params.toString()}`)
       .then(res => res.json())
@@ -89,6 +106,7 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
           synced: !!data.synced,
           source: data.source || "none",
           provider: data.provider || "LRCLIB",
+          isInstrumental: !!data.isInstrumental,
           lines: data.lines || []
         };
         setLyricsState(state);
@@ -102,19 +120,75 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
       })
       .finally(() => {
         setIsLoading(false);
-        setIsSearchingOnline(false);
       });
+  }, [currentTrack, onLyricsLoaded]);
+
+  // Online candidate search
+  const searchCandidates = useCallback(async (artistQuery: string, titleQuery: string) => {
+    setIsSearchingCandidates(true);
+    try {
+      const params = new URLSearchParams({
+        artist: artistQuery,
+        title: titleQuery,
+        duration: (currentTrack?.duration || 0).toString()
+      });
+      const res = await fetch(`/api/lyrics/search?${params.toString()}`);
+      const data = await res.json();
+      setCandidates(data.candidates || []);
+    } catch {
+      setCandidates([]);
+    } finally {
+      setIsSearchingCandidates(false);
+    }
   }, [currentTrack]);
+
+  // User manually selects a verified candidate match
+  const handleSelectCandidate = async (candidate: LyricsCandidate) => {
+    if (!currentTrack) return;
+    const targetArtist = currentTrack.artist || candidate.artistName;
+    const targetTitle = currentTrack.title || candidate.trackName;
+    try {
+      setIsLoading(true);
+      const res = await fetch("/api/lyrics/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artist: targetArtist,
+          title: targetTitle,
+          lrc: candidate.syncedLyrics,
+          plain: candidate.plainLyrics
+        })
+      });
+      const data = await res.json();
+      if (data.lines) {
+        const state: LyricsState = {
+          synced: !!data.synced,
+          source: "online",
+          provider: `LRCLIB (${candidate.trackName})`,
+          isInstrumental: candidate.instrumental,
+          lines: data.lines
+        };
+        setLyricsState(state);
+        onLyricsLoaded?.(state);
+        setIsSearchOpen(false);
+      }
+    } catch (err) {
+      console.error("Failed to save selected candidate:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useImperativeHandle(ref, () => ({
     toggleSearch: () => setIsSearchOpen(prev => !prev),
-    refresh: () => fetchLyrics()
+    refresh: () => fetchLyrics(undefined, undefined, true)
   }), [fetchLyrics]);
 
   // Fetch lyrics whenever track changes
   useEffect(() => {
     setIsUserInteracting(false);
     lineRefs.current = [];
+    setCandidates([]);
     if (userScrollTimeoutRef.current) {
       window.clearTimeout(userScrollTimeoutRef.current);
     }
@@ -126,6 +200,13 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
       setLyricsState({ synced: false, source: "none", lines: [] });
     }
   }, [currentTrack, fetchLyrics]);
+
+  // Auto-search candidates when search drawer opens if candidates list is empty
+  useEffect(() => {
+    if (isSearchOpen && candidates.length === 0 && (searchTitle || searchArtist)) {
+      searchCandidates(searchArtist, searchTitle);
+    }
+  }, [isSearchOpen, candidates.length, searchArtist, searchTitle, searchCandidates]);
 
   // Find active line index based on currentTime
   let activeIndex = -1;
@@ -143,7 +224,6 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
 
   const scrollAnimRef = useRef<number | null>(null);
 
-  // Easing function: easeInOutCubic for buttery smooth motion
   const easeInOutCubic = (t: number) => {
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   };
@@ -180,7 +260,6 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
     scrollAnimRef.current = requestAnimationFrame(frame);
   }, []);
 
-  // Cleanup animation frame on unmount
   useEffect(() => {
     return () => {
       if (scrollAnimRef.current !== null) {
@@ -189,29 +268,26 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
     };
   }, []);
 
-  // Smoothly scroll active line to center with layout-stable positioning
+  // Smoothly scroll active line to center
   const scrollToActive = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container || activeIndex < 0) return;
     const targetEl = lineRefs.current[activeIndex];
     if (!targetEl) return;
 
-    const containerHeight = container.clientHeight;
-    if (containerHeight === 0) return;
+    const containerH = container.clientHeight;
+    if (containerH === 0) return;
 
-    // Use stable layout offsets (completely immune to CSS transforms/transitions)
-    const targetScrollTop = targetEl.offsetTop - (containerHeight / 2) + (targetEl.offsetHeight / 2);
+    const targetScrollTop = targetEl.offsetTop - (containerH / 2) + (targetEl.offsetHeight / 2);
     smoothScrollTo(Math.max(0, targetScrollTop), 400);
   }, [activeIndex, smoothScrollTo]);
 
-  // Trigger auto-scroll on activeIndex change or resize if not in manual interaction
   useEffect(() => {
     if (!isUserInteracting && lyricsState.synced && activeIndex >= 0) {
       scrollToActive();
     }
   }, [activeIndex, isUserInteracting, lyricsState.synced, scrollToActive, containerHeight]);
 
-  // Detect user manual scroll/drag
   const handleUserWheelOrTouch = () => {
     if (scrollAnimRef.current !== null) {
       cancelAnimationFrame(scrollAnimRef.current);
@@ -221,7 +297,6 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
     if (userScrollTimeoutRef.current) {
       window.clearTimeout(userScrollTimeoutRef.current);
     }
-    // Auto-resume after 4 seconds of idle
     userScrollTimeoutRef.current = window.setTimeout(() => {
       setIsUserInteracting(false);
     }, 4000);
@@ -246,20 +321,21 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
       const container = scrollContainerRef.current;
       const targetEl = lineRefs.current[idx];
       if (container && targetEl) {
-        const containerHeight = container.clientHeight;
-        const targetScrollTop = targetEl.offsetTop - (containerHeight / 2) + (targetEl.offsetHeight / 2);
+        const containerH = container.clientHeight;
+        const targetScrollTop = targetEl.offsetTop - (containerH / 2) + (targetEl.offsetHeight / 2);
         smoothScrollTo(Math.max(0, targetScrollTop), 320);
       }
     }
   };
 
-  const handleManualSearch = (e: React.FormEvent) => {
+  const handleManualSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchTitle.trim()) return;
-    setIsSearchingOnline(true);
-    fetchLyrics(searchArtist.trim(), searchTitle.trim());
-    setIsSearchOpen(false);
+    searchCandidates(searchArtist.trim(), searchTitle.trim());
   };
+
+  // Real-time typography sizing based on container height
+  const lyricFontSize = Math.max(16, Math.min(Math.round(containerHeight * 0.05), 32));
 
   return (
     <div ref={outerWrapperRef} className={`flex flex-col h-full w-full select-none relative overflow-hidden ${hideHeader ? "p-2 md:p-3" : "p-4 md:p-6"}`}>
@@ -296,16 +372,16 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
                   ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
                   : "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-300 hover:text-white"
               }`}
-              title="Search lyrics"
+              title="Search Lyrics Online"
             >
               <Search className="w-3.5 h-3.5" />
             </button>
 
             <button
-              onClick={() => fetchLyrics()}
+              onClick={() => fetchLyrics(undefined, undefined, true)}
               disabled={isLoading}
               className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-all disabled:opacity-50"
-              title="Refresh lyrics"
+              title="Force Refresh Lyrics (Purge Cache)"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-primary" : ""}`} />
             </button>
@@ -313,17 +389,16 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
         </div>
       )}
 
-      {/* Manual Search Drawer */}
+      {/* Manual Search & Candidate Matcher Drawer */}
       <AnimatePresence>
         {isSearchOpen && (
-          <motion.form
+          <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            onSubmit={handleManualSearch}
-            className="z-20 py-3 border-b border-white/10 flex flex-col gap-2 shrink-0 bg-neutral-900/90 backdrop-blur-md -mx-4 px-4"
+            className="z-20 py-3 border-b border-white/10 flex flex-col gap-2 shrink-0 bg-neutral-900/95 backdrop-blur-xl -mx-4 px-4 shadow-2xl"
           >
-            <div className="flex items-center gap-2">
+            <form onSubmit={handleManualSearchSubmit} className="flex items-center gap-2">
               <input
                 type="text"
                 placeholder="Artist..."
@@ -340,17 +415,72 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
               />
               <button
                 type="submit"
-                className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-all shadow-md shadow-primary/20"
+                className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-all shadow-md shadow-primary/20 shrink-0"
               >
                 <Search className="w-3 h-3" />
-                <span>Search</span>
+                <span>Find</span>
               </button>
-            </div>
-          </motion.form>
+            </form>
+
+            {/* Candidates Results List */}
+            {isSearchingCandidates ? (
+              <div className="flex items-center justify-center py-3 gap-2 text-neutral-400 text-xs font-mono">
+                <RefreshCw className="w-3 h-3 animate-spin text-primary" />
+                <span>Searching verified online lyrics...</span>
+              </div>
+            ) : candidates.length > 0 ? (
+              <div className="max-h-48 overflow-y-auto space-y-1 pr-1 mt-1 no-scrollbar">
+                <div className="text-[10px] font-mono text-neutral-400 uppercase px-1 pb-1">
+                  Verified Matches ({candidates.length})
+                </div>
+                {candidates.map(candidate => (
+                  <div
+                    key={candidate.id}
+                    onClick={() => handleSelectCandidate(candidate)}
+                    className="flex items-center justify-between p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 cursor-pointer transition-all group text-left"
+                  >
+                    <div className="min-w-0 flex-1 pr-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-white truncate group-hover:text-primary transition-colors">
+                          {candidate.trackName}
+                        </span>
+                        <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
+                          candidate.synced
+                            ? "bg-primary/20 text-primary border-primary/30"
+                            : "bg-neutral-800 text-neutral-400 border-white/10"
+                        }`}>
+                          {candidate.synced ? "Synced" : "Plain"}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-neutral-400 truncate">
+                        {candidate.artistName} {candidate.albumName ? `• ${candidate.albumName}` : ""}
+                      </div>
+                    </div>
+                    {candidate.duration && (
+                      <span className="text-[10px] font-mono text-neutral-500 shrink-0 mr-2">
+                        {Math.floor(candidate.duration / 60)}:{(Math.round(candidate.duration) % 60).toString().padStart(2, "0")}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectCandidate(candidate);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-primary/20 hover:bg-primary text-primary hover:text-white text-[10px] font-semibold transition-all shrink-0 flex items-center gap-1"
+                    >
+                      <Check className="w-3 h-3" />
+                      <span>Sync</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Lyrics Scrollable Body with precision native scrolling & interaction listeners */}
+      {/* Lyrics Scrollable Body with fluid responsive scaling */}
       <div
         ref={scrollContainerRef}
         onWheel={handleUserWheelOrTouch}
@@ -384,7 +514,8 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
                 }`}
               >
                 <div
-                  className={`text-xl md:text-2xl lg:text-3xl leading-relaxed tracking-tight origin-left transition-all duration-300 ease-out ${
+                  style={{ fontSize: `${lyricFontSize}px` }}
+                  className={`leading-relaxed tracking-tight origin-left transition-all duration-300 ease-out ${
                     !lyricsState.synced
                       ? "text-neutral-300 font-medium opacity-80 hover:opacity-100"
                       : isActive
@@ -401,6 +532,26 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
               </div>
             );
           })
+        ) : lyricsState.isInstrumental ? (
+          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 px-6 my-auto">
+            <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-primary shadow-lg shadow-primary/10">
+              <Disc3 className="w-7 h-7 animate-spin-vinyl text-primary" />
+            </div>
+            <div className="space-y-1 max-w-xs">
+              <p className="text-sm font-bold text-white tracking-tight">Instrumental / Ambient Master</p>
+              <p className="text-xs text-neutral-400 leading-relaxed">No vocal lyrics registered for this track. Pure acoustics active.</p>
+            </div>
+            <button
+              onClick={() => {
+                setIsSearchOpen(true);
+                searchCandidates(searchArtist, searchTitle);
+              }}
+              className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-neutral-300 hover:text-white border border-white/10 text-xs font-semibold transition-all active:scale-95"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Search Online</span>
+            </button>
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4 px-6">
             <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500">
@@ -409,12 +560,14 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
             <div className="space-y-3">
               <p className="text-sm font-semibold text-neutral-300">No synced lyrics</p>
               <button
-                onClick={() => setIsSearchOpen(true)}
-                disabled={isSearchingOnline}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-xs font-semibold hover:bg-primary/30 transition-all"
+                onClick={() => {
+                  setIsSearchOpen(true);
+                  searchCandidates(searchArtist, searchTitle);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-xs font-semibold hover:bg-primary/30 transition-all active:scale-95"
               >
                 <Search className="w-3.5 h-3.5" />
-                <span>{isSearchingOnline ? "Searching..." : "Search Lyrics"}</span>
+                <span>Search Online</span>
               </button>
             </div>
           </div>

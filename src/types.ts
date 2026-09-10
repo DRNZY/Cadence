@@ -7,6 +7,7 @@ export interface LyricsState {
   synced: boolean;
   source: "local" | "online" | "cache" | "none";
   provider?: string;
+  isInstrumental?: boolean;
   lines: LyricLine[];
 }
 

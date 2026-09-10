@@ -66,6 +66,28 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   const smoothVelocityRef = useRef<number>(0);
   const isScratchingRef = useRef<boolean>(false);
 
+  // Real-time container dimensions observer for fluid dynamic scaling
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({
+    width: 800,
+    height: 600
+  });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setContainerSize({ width, height });
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // High-performance DOM-level continuous rotation for Vinyl & CD (0 React re-renders while spinning!)
   useEffect(() => {
     let animId: number;
@@ -106,6 +128,27 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     : currentTrack
     ? `/covers?artist=${encodeURIComponent(currentTrack.artist)}&album=${encodeURIComponent(currentTrack.album)}&title=${encodeURIComponent(currentTrack.title)}`
     : `/covers?accent=${encodeURIComponent(accentColor || "#38bdf8")}`;
+
+  // Real-time dynamic dimensional scaling based on exact container dimensions
+  const availableHeight = Math.max(containerSize.height - 230, 180);
+  const availableWidth = Math.max(containerSize.width - 48, 180);
+
+  // 1. Cover Mode:
+  const maxSleeveWidth = Math.floor(availableWidth / 1.42);
+  const dynamicSleeveSize = Math.max(180, Math.min(availableHeight, maxSleeveWidth, 780));
+
+  // 2. Vinyl Mode (Analog Turntable Platter):
+  const dynamicPlatterSize = Math.max(220, Math.min(availableWidth * 0.94, availableHeight * 0.94, 780));
+
+  // 3. CD Mode (Holographic Compact Disc Jewel Case):
+  const dynamicCdSize = Math.max(200, Math.min(availableWidth / 1.45, availableHeight, 740));
+
+  // 4. Zen Mode (Breathing Minimal Aura):
+  const dynamicZenSize = Math.max(180, Math.min(availableWidth * 0.65, availableHeight * 0.65, 520));
+
+  // 5. Responsive dynamic typography
+  const titleFontSize = Math.max(18, Math.min(Math.round(containerSize.width * 0.034), 44));
+  const subtitleFontSize = Math.max(12, Math.min(Math.round(containerSize.width * 0.016), 18));
 
   // Real-time DJ Vinyl Scratch handlers
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -187,7 +230,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   };
 
   return (
-    <div className="flex flex-col items-center justify-between h-full w-full p-4 md:p-6 select-none relative overflow-hidden">
+    <div ref={containerRef} className="flex flex-col items-center justify-between h-full w-full p-4 md:p-6 select-none relative overflow-hidden">
       {/* Top Deck Mode Apple-Style Segmented Control */}
       <div className="w-full flex items-center justify-between z-20 shrink-0 mb-3 gap-3">
         <div className="flex items-center space-x-2 shrink-0">
@@ -341,21 +384,27 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               transition={{ type: "spring", stiffness: 380, damping: 28 }}
               className="relative flex flex-col items-center justify-center w-full max-w-5xl 2xl:max-w-6xl my-auto px-4 z-10"
             >
-              {/* Sleeve + Peeking Vinyl Record Presentation */}
+              {/* Sleeve + Peeking Vinyl Record Presentation (Fluid Dynamic Scaling) */}
               <div 
-                className="relative flex items-center justify-center"
+                className="relative flex items-center justify-center transition-all duration-300"
                 onMouseMove={handleCoverMouseMove}
                 onMouseLeave={handleCoverMouseLeave}
-                style={{ perspective: 1000 }}
+                style={{
+                  perspective: 1000,
+                  width: `${isPlaying ? Math.round(dynamicSleeveSize * 1.38) : dynamicSleeveSize}px`,
+                  height: `${dynamicSleeveSize}px`
+                }}
               >
                 {/* Vinyl Record that slides out smoothly from behind sleeve */}
                 <div
                   className={`absolute right-0 top-1/2 -translate-y-1/2 aspect-square rounded-full shadow-2xl z-0 pointer-events-none transition-all duration-700 ease-out ${
                     isPlaying 
-                      ? "w-[94%] translate-x-[38%] rotate-12 opacity-100" 
-                      : "w-[94%] translate-x-0 rotate-0 opacity-0"
+                      ? "translate-x-[38%] rotate-12 opacity-100" 
+                      : "translate-x-0 rotate-0 opacity-0"
                   }`}
                   style={{
+                    width: `${Math.round(dynamicSleeveSize * 0.94)}px`,
+                    height: `${Math.round(dynamicSleeveSize * 0.94)}px`,
                     background: "radial-gradient(circle, #25252a 0%, #16161a 50%, #0a0a0c 100%)",
                     boxShadow: "0 25px 60px rgba(0,0,0,0.8), 0 0 35px rgba(0,0,0,0.6)",
                     border: "2px solid rgba(255,255,255,0.08)"
@@ -374,16 +423,18 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                   </div>
                 </div>
 
-                {/* Main Album Jacket Card Frame with 3D Tilt (Scaled ~25-30% for Large & 32:9 Displays) */}
+                {/* Main Album Jacket Card Frame with 3D Tilt (Real-Time Proportional Size) */}
                 <motion.div
                   style={{
+                    width: `${dynamicSleeveSize}px`,
+                    height: `${dynamicSleeveSize}px`,
                     rotateX: tilt.y,
                     rotateY: tilt.x,
                     transformStyle: "preserve-3d"
                   }}
                   transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  className={`w-[280px] sm:w-[340px] md:w-[400px] lg:w-[450px] xl:w-[500px] 2xl:w-[560px] aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 transition-transform duration-700 ease-out ${
-                    isPlaying ? "-translate-x-10 sm:-translate-x-14 md:-translate-x-16" : "translate-x-0"
+                  className={`aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 transition-transform duration-700 ease-out ${
+                    isPlaying ? "-translate-x-8 sm:-translate-x-12 md:-translate-x-14" : "translate-x-0"
                   }`}
                 >
                   <img
@@ -397,22 +448,29 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
 
                 {/* Ambient Floor Shadow / Reflection */}
                 <div 
-                  className={`absolute -bottom-10 left-1/2 -translate-x-1/2 w-full h-16 rounded-full blur-2xl pointer-events-none transition-all duration-700 ${
+                  className={`absolute -bottom-8 left-1/2 -translate-x-1/2 h-14 rounded-full blur-2xl pointer-events-none transition-all duration-700 ${
                     isPlaying ? "opacity-80 scale-105" : "opacity-35 scale-95"
                   }`}
                   style={{
+                    width: `${Math.round(dynamicSleeveSize * 1.1)}px`,
                     background: "radial-gradient(ellipse at center, var(--primary-glow, rgba(255,255,255,0.35)) 0%, rgba(0,0,0,0.9) 60%, transparent 80%)"
                   }}
                 />
               </div>
 
-              {/* Prominent Studio Master Typography & Metadata (Scaled for Room & Ultrawide Legibility) */}
-              <div className="mt-7 sm:mt-8 flex flex-col items-center text-center max-w-2xl w-full px-2 z-10">
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl 2xl:text-5xl font-extrabold tracking-tight text-white drop-shadow-md truncate max-w-full leading-snug">
+              {/* Prominent Studio Master Typography & Metadata (Fluid Dynamic Typography) */}
+              <div className="mt-5 sm:mt-6 flex flex-col items-center text-center max-w-3xl w-full px-2 z-10">
+                <h1 
+                  style={{ fontSize: `${titleFontSize}px` }}
+                  className="font-extrabold tracking-tight text-white drop-shadow-md truncate max-w-full leading-snug transition-all"
+                >
                   {currentTrack.title}
                 </h1>
 
-                <div className="flex items-center justify-center gap-2 mt-2 text-sm sm:text-base text-neutral-300 font-medium flex-wrap">
+                <div 
+                  style={{ fontSize: `${subtitleFontSize}px` }}
+                  className="flex items-center justify-center gap-2 mt-1.5 text-neutral-300 font-medium flex-wrap transition-all"
+                >
                   <span 
                     onClick={onOpenLibrary}
                     className="hover:text-white transition-colors cursor-pointer"
@@ -476,7 +534,11 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            className="relative w-full aspect-square max-w-[440px] md:max-w-[520px] lg:max-w-[600px] xl:max-w-[680px] 2xl:max-w-[760px] flex items-center justify-center cursor-grab active:cursor-grabbing my-auto"
+            style={{
+              width: `${dynamicPlatterSize}px`,
+              height: `${dynamicPlatterSize}px`
+            }}
+            className="relative aspect-square flex items-center justify-center cursor-grab active:cursor-grabbing my-auto transition-all duration-300"
           >
             {/* Real-time DJ Scratch HUD Indicator */}
             <AnimatePresence>
@@ -538,22 +600,37 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               </div>
             </div>
 
-            {/* Realistic Physical Tone-Arm (Scaled to match larger platter) */}
+            {/* Realistic Physical Tone-Arm (Proportionally scaled to platter) */}
             <div
-              className="absolute top-2 right-4 w-32 sm:w-36 h-72 sm:h-80 pointer-events-none z-30 origin-top-right transition-transform duration-700 ease-out"
+              className="absolute pointer-events-none z-30 origin-top-right transition-transform duration-700 ease-out"
               style={{
+                top: `${Math.round(dynamicPlatterSize * 0.015)}px`,
+                right: `${Math.round(dynamicPlatterSize * 0.025)}px`,
+                width: `${Math.round(dynamicPlatterSize * 0.28)}px`,
+                height: `${Math.round(dynamicPlatterSize * 0.62)}px`,
                 transform: `rotate(${isScratching ? toneArmAngle + (smoothVelocityRef.current / 300) : toneArmAngle}deg)`,
                 transformOrigin: "85% 15%",
                 willChange: "transform"
               }}
             >
               {/* Tone-Arm Base Pivot Gimbal */}
-              <div className="absolute top-4 right-3 w-11 h-11 rounded-full bg-gradient-to-b from-neutral-300 via-neutral-500 to-neutral-700 border border-white/40 shadow-xl flex items-center justify-center">
+              <div 
+                style={{
+                  width: `${Math.max(28, Math.round(dynamicPlatterSize * 0.08))}px`,
+                  height: `${Math.max(28, Math.round(dynamicPlatterSize * 0.08))}px`
+                }}
+                className="absolute top-4 right-3 rounded-full bg-gradient-to-b from-neutral-300 via-neutral-500 to-neutral-700 border border-white/40 shadow-xl flex items-center justify-center"
+              >
                 <div className="w-5 h-5 rounded-full bg-neutral-900 border border-neutral-400" />
               </div>
 
               {/* Tone-Arm Metallic Tube Shaft */}
-              <div className="absolute top-8 right-7 w-2 h-52 sm:h-60 bg-gradient-to-r from-neutral-200 via-white to-neutral-400 rounded-full shadow-lg origin-top transform -rotate-12">
+              <div 
+                style={{
+                  height: `${Math.round(dynamicPlatterSize * 0.46)}px`
+                }}
+                className="absolute top-8 right-7 w-2 bg-gradient-to-r from-neutral-200 via-white to-neutral-400 rounded-full shadow-lg origin-top transform -rotate-12"
+              >
                 {/* Cartridge Head Shell & Stylus Needle */}
                 <div className="absolute -bottom-3 -left-2 w-5 h-8 bg-neutral-900 rounded-sm border border-neutral-400 shadow-md transform rotate-12 flex flex-col items-center justify-end pb-0.5">
                   <div className="w-1 h-2 bg-red-500 rounded-full mb-0.5" />
@@ -571,7 +648,11 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.94 }}
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="relative w-full aspect-square max-w-[440px] md:max-w-[520px] lg:max-w-[620px] xl:max-w-[720px] 2xl:max-w-[800px] flex items-center justify-center my-auto"
+            style={{
+              width: `${dynamicCdSize}px`,
+              height: `${dynamicCdSize}px`
+            }}
+            className="relative aspect-square flex items-center justify-center my-auto transition-all duration-300"
           >
             {/* Jewel Case Crystal Tray */}
             <div className="w-full h-full rounded-3xl bg-white/[0.03] border border-white/15 p-4 shadow-2xl backdrop-blur-2xl flex items-center justify-center relative overflow-hidden">
@@ -613,17 +694,23 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
           </motion.div>
         )}
 
-        {/* ─── MODE 4: ZEN MINIMAL (Scaled) ─── */}
+        {/* ─── MODE 4: ZEN MINIMAL (Fluid Scaling) ─── */}
         {deckMode === "minimal" && (
           <motion.div
             initial={{ opacity: 0, scale: 0.94 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.94 }}
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="w-full max-w-[500px] md:max-w-[600px] lg:max-w-[720px] flex flex-col items-center justify-center text-center p-6 space-y-5"
+            className="w-full flex flex-col items-center justify-center text-center p-4 space-y-5 my-auto"
           >
             {/* Soft Ambient Album Aura */}
-            <div className="relative w-56 h-56 md:w-64 md:h-64 rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-black/40 backdrop-blur-xl">
+            <div 
+              style={{
+                width: `${dynamicZenSize}px`,
+                height: `${dynamicZenSize}px`
+              }}
+              className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-black/40 backdrop-blur-xl transition-all duration-300"
+            >
               <img
                 src={coverUrl}
                 alt={currentTrack?.album || "Cover"}
@@ -633,10 +720,16 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             </div>
 
             <div className="space-y-1.5 max-w-full">
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight truncate">
+              <h2 
+                style={{ fontSize: `${Math.min(titleFontSize, 32)}px` }}
+                className="font-extrabold text-white tracking-tight truncate transition-all"
+              >
                 {currentTrack ? currentTrack.title : "No Track Selected"}
               </h2>
-              <p className="text-sm sm:text-base font-medium text-neutral-300 truncate">
+              <p 
+                style={{ fontSize: `${subtitleFontSize}px` }}
+                className="font-medium text-neutral-300 truncate transition-all"
+              >
                 {currentTrack ? `${currentTrack.artist} • ${currentTrack.album}` : "Choose music from your library"}
               </p>
             </div>

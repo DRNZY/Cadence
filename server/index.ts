@@ -6,7 +6,7 @@ import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import crypto from "crypto";
-import { getLyricsForTrack } from "./lyricsFetcher.ts";
+import { getLyricsForTrack, searchLyricsCandidates, getCacheKey, parseLrc } from "./lyricsFetcher.ts";
 import { lastFmRouter } from "./lastfm.ts";
 
 const execFileAsync = promisify(execFile);
@@ -869,12 +869,13 @@ app.get("/api/lyrics", async (req, res) => {
   const artist = (req.query.artist as string) || "";
   const album = (req.query.album as string) || "";
   const duration = parseFloat(req.query.duration as string) || 0;
+  const forceRefresh = req.query.refresh === "true" || req.query.force === "true";
 
   // Validate filePath to prevent path traversal outside music collection
   const safePath = (filePath && isAudioPathAllowed(filePath)) ? filePath : "";
 
   try {
-    const result = await getLyricsForTrack(safePath, artist, title, album, duration);
+    const result = await getLyricsForTrack(safePath, artist, title, album, duration, forceRefresh);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message, synced: false, lines: [] });
@@ -886,10 +887,40 @@ app.get("/api/lyrics/online", async (req, res) => {
   const artist = (req.query.artist as string) || "";
   const album = (req.query.album as string) || "";
   const duration = parseFloat(req.query.duration as string) || 0;
+  const forceRefresh = req.query.refresh === "true" || req.query.force === "true";
 
   try {
-    const result = await getLyricsForTrack("", artist, title, album, duration);
+    const result = await getLyricsForTrack("", artist, title, album, duration, forceRefresh);
     res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/lyrics/search", async (req, res) => {
+  const title = (req.query.title as string) || "";
+  const artist = (req.query.artist as string) || "";
+  const duration = parseFloat(req.query.duration as string) || 0;
+
+  try {
+    const candidates = await searchLyricsCandidates(artist, title, duration);
+    res.json({ candidates });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, candidates: [] });
+  }
+});
+
+app.post("/api/lyrics/save", async (req, res) => {
+  const { artist, title, lrc, plain } = req.body;
+  if (!artist || !title || (!lrc && !plain)) {
+    return res.status(400).json({ error: "Missing required artist, title, or lyrics content" });
+  }
+
+  try {
+    const cacheFile = getCacheKey(artist, title);
+    fs.writeFileSync(cacheFile, lrc || plain, "utf-8");
+    const lines = lrc ? parseLrc(lrc) : plain.split(/\r?\n/).map((text: string, idx: number) => ({ time: idx * 4, text }));
+    res.json({ status: "ok", cached: true, synced: !!lrc, lines });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

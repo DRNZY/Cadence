@@ -111,95 +111,102 @@ export const App: React.FC = () => {
     } catch {}
   }, [isRightPanelCollapsed]);
 
-  // Calculate responsive ideal panel widths based on viewport size
-  const getIdealPanelWidths = (winWidth: number) => {
-    if (winWidth >= 2800) {
-      return { left: Math.round(winWidth * 0.22), right: Math.round(winWidth * 0.26) };
+  // Proportional custom ratios ref (if user drags dividers manually)
+  const userRatioRef = useRef<{ left?: number; right?: number }>({});
+  const [isDraggingPanel, setIsDraggingPanel] = useState<boolean>(false);
+  const [isWindowResizing, setIsWindowResizing] = useState<boolean>(false);
+  const resizeDebounceTimerRef = useRef<number | null>(null);
+
+  // Calculate responsive ideal panel widths based on real-time viewport resolution
+  const getIdealPanelWidths = useCallback((winWidth: number) => {
+    if (winWidth >= 3000) {
+      return { left: Math.round(winWidth * 0.22), right: Math.round(winWidth * 0.25) };
     }
-    if (winWidth >= 2000) {
-      return { left: Math.round(winWidth * 0.23), right: Math.round(winWidth * 0.26) };
+    if (winWidth >= 2200) {
+      return { left: Math.round(winWidth * 0.22), right: Math.round(winWidth * 0.25) };
     }
     if (winWidth >= 1600) {
-      return { left: 380, right: 400 };
+      return { left: Math.round(winWidth * 0.22), right: Math.round(winWidth * 0.24) };
     }
-    return { left: 340, right: 360 };
-  };
+    return {
+      left: Math.min(Math.max(Math.round(winWidth * 0.24), 260), 380),
+      right: Math.min(Math.max(Math.round(winWidth * 0.26), 280), 400)
+    };
+  }, []);
 
-  // Draggable panel widths state (persisted to localStorage)
+  // Draggable panel widths state
   const [leftPanelWidth, setLeftPanelWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem("cadence_panel_widths");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.left === "number") {
-          const maxAllowed = Math.round(window.innerWidth * 0.55);
-          return Math.min(Math.max(parsed.left, 180), maxAllowed);
-        }
-      }
-    } catch {}
-    return getIdealPanelWidths(window.innerWidth).left;
+    return getIdealPanelWidths(typeof window !== "undefined" ? window.innerWidth : 1920).left;
   });
 
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem("cadence_panel_widths");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.right === "number") {
-          const maxAllowed = Math.round(window.innerWidth * 0.55);
-          return Math.min(Math.max(parsed.right, 180), maxAllowed);
-        }
-      }
-    } catch {}
-    return getIdealPanelWidths(window.innerWidth).right;
+    return getIdealPanelWidths(typeof window !== "undefined" ? window.innerWidth : 1920).right;
   });
 
   // Auto-balance reset handler
   const handleResetPanelWidths = useCallback(() => {
+    userRatioRef.current = {};
     const ideal = getIdealPanelWidths(window.innerWidth);
     setLeftPanelWidth(ideal.left);
     setRightPanelWidth(ideal.right);
-  }, []);
+  }, [getIdealPanelWidths]);
 
+  // Real-time window resize handler: dynamically adapt layout continuously
   useEffect(() => {
-    try {
-      localStorage.setItem("cadence_panel_widths", JSON.stringify({ left: leftPanelWidth, right: rightPanelWidth }));
-    } catch {}
-  }, [leftPanelWidth, rightPanelWidth]);
+    const handleResize = () => {
+      setIsWindowResizing(true);
+      if (resizeDebounceTimerRef.current) {
+        window.clearTimeout(resizeDebounceTimerRef.current);
+      }
+      resizeDebounceTimerRef.current = window.setTimeout(() => {
+        setIsWindowResizing(false);
+      }, 150);
 
-  // Load persistent settings from disk API on mount
-  useEffect(() => {
-    fetch("/api/settings")
-      .then(res => res.json())
-      .then(data => {
-        if (data.settings) {
-          setSettings(prev => ({ ...prev, ...data.settings }));
-        }
-      })
-      .catch(() => {});
-  }, []);
+      const winW = window.innerWidth;
+      const ideal = getIdealPanelWidths(winW);
 
-  // Theme mode effect (Dark vs Light)
-  useEffect(() => {
-    const isLight = settings.themeMode === "light";
-    document.documentElement.classList.toggle("light", isLight);
-    document.body.classList.toggle("light", isLight);
-  }, [settings.themeMode]);
+      if (userRatioRef.current.left !== undefined) {
+        const maxW = Math.round(winW * 0.45);
+        setLeftPanelWidth(Math.min(Math.max(Math.round(winW * userRatioRef.current.left), 220), maxW));
+      } else {
+        setLeftPanelWidth(ideal.left);
+      }
 
-  // Divider drag handlers with extended bounds
+      if (userRatioRef.current.right !== undefined) {
+        const maxW = Math.round(winW * 0.45);
+        setRightPanelWidth(Math.min(Math.max(Math.round(winW * userRatioRef.current.right), 240), maxW));
+      } else {
+        setRightPanelWidth(ideal.right);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (resizeDebounceTimerRef.current) {
+        window.clearTimeout(resizeDebounceTimerRef.current);
+      }
+    };
+  }, [getIdealPanelWidths]);
+
+  // Divider drag handlers with ratio tracking
   const handleLeftDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    setIsDraggingPanel(true);
     const startX = e.clientX;
     const startWidth = leftPanelWidth;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      const maxW = Math.round(window.innerWidth * 0.55);
-      const newWidth = Math.min(Math.max(startWidth + deltaX, 180), maxW);
+      const winW = window.innerWidth;
+      const maxW = Math.round(winW * 0.45);
+      const newWidth = Math.min(Math.max(startWidth + deltaX, 220), maxW);
+      userRatioRef.current.left = newWidth / winW;
       setLeftPanelWidth(newWidth);
     };
 
     const onMouseUp = () => {
+      setIsDraggingPanel(false);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -210,17 +217,21 @@ export const App: React.FC = () => {
 
   const handleRightDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    setIsDraggingPanel(true);
     const startX = e.clientX;
     const startWidth = rightPanelWidth;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = startX - moveEvent.clientX;
-      const maxW = Math.round(window.innerWidth * 0.55);
-      const newWidth = Math.min(Math.max(startWidth + deltaX, 180), maxW);
+      const winW = window.innerWidth;
+      const maxW = Math.round(winW * 0.45);
+      const newWidth = Math.min(Math.max(startWidth + deltaX, 240), maxW);
+      userRatioRef.current.right = newWidth / winW;
       setRightPanelWidth(newWidth);
     };
 
     const onMouseUp = () => {
+      setIsDraggingPanel(false);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -867,8 +878,11 @@ export const App: React.FC = () => {
                 <>
                   {/* Left Library Panel */}
                   <div
-                    style={isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }}
-                    className="h-full overflow-hidden shrink-0 transition-all duration-500 ease-out min-w-0"
+                    style={{
+                      ...(isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }),
+                      transition: (isDraggingPanel || isWindowResizing) ? "none" : "width 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out"
+                    }}
+                    className="h-full overflow-hidden shrink-0 min-w-0"
                   >
                     {renderLibraryPanel()}
                   </div>
@@ -886,7 +900,7 @@ export const App: React.FC = () => {
                   )}
 
                   {/* Center Hero Player Deck */}
-                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2 transition-all duration-500">
+                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2 transition-all duration-300">
                     {renderHeroDeck()}
                   </div>
 
@@ -904,8 +918,11 @@ export const App: React.FC = () => {
 
                   {/* Right Sidebar Stack */}
                   <div
-                    style={isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isRightPanelCollapsed ? { width: 0, opacity: 0, pointerEvents: "none" } : { width: rightPanelWidth }}
-                    className="h-full overflow-hidden shrink-0 transition-all duration-500 ease-out min-w-0"
+                    style={{
+                      ...(isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isRightPanelCollapsed ? { width: 0, opacity: 0, pointerEvents: "none" } : { width: rightPanelWidth }),
+                      transition: (isDraggingPanel || isWindowResizing) ? "none" : "width 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out"
+                    }}
+                    className="h-full overflow-hidden shrink-0 min-w-0"
                   >
                     {renderSidebarStack()}
                   </div>
@@ -914,8 +931,11 @@ export const App: React.FC = () => {
                 <>
                   {/* Right Sidebar Stack on Left */}
                   <div
-                    style={isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isRightPanelCollapsed ? { width: 0, opacity: 0, pointerEvents: "none" } : { width: rightPanelWidth }}
-                    className="h-full overflow-hidden shrink-0 transition-all duration-500 ease-out min-w-0"
+                    style={{
+                      ...(isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isRightPanelCollapsed ? { width: 0, opacity: 0, pointerEvents: "none" } : { width: rightPanelWidth }),
+                      transition: (isDraggingPanel || isWindowResizing) ? "none" : "width 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out"
+                    }}
+                    className="h-full overflow-hidden shrink-0 min-w-0"
                   >
                     {renderSidebarStack()}
                   </div>
@@ -932,7 +952,7 @@ export const App: React.FC = () => {
                   )}
 
                   {/* Center Hero Player Deck */}
-                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2 transition-all duration-500">
+                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2 transition-all duration-300">
                     {renderHeroDeck()}
                   </div>
 
@@ -950,8 +970,11 @@ export const App: React.FC = () => {
 
                   {/* Library on Right */}
                   <div
-                    style={isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }}
-                    className="h-full overflow-hidden shrink-0 transition-all duration-500 ease-out min-w-0"
+                    style={{
+                      ...(isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }),
+                      transition: (isDraggingPanel || isWindowResizing) ? "none" : "width 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out"
+                    }}
+                    className="h-full overflow-hidden shrink-0 min-w-0"
                   >
                     {renderLibraryPanel()}
                   </div>
