@@ -112,11 +112,10 @@ body.no-glow .ambient-glow {
 
 /* Dynamic Ambient Glow */
 .ambient-glow {
-  background: radial-gradient(
-    circle at 50% 30%,
-    var(--primary-glow) 0%,
-    var(--secondary-glow) 35%,
-    transparent 70%
-  );
-  transition: background 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+  background:
+    radial-gradient(ellipse 75% 60% at 50% 35%, var(--ambient-1, var(--primary-glow)) 0%, transparent 65%),
+    radial-gradient(ellipse 65% 50% at 20% 65%, var(--ambient-2, var(--secondary-glow)) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 80% 70%, var(--ambient-3, var(--theme-tertiary)) 0%, transparent 75%);
+  filter: blur(50px);
+  transition: background 1.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.8s ease;
 }

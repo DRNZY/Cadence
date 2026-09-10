@@ -11,6 +11,7 @@ export interface KeyboardShortcutsHandlers {
   onCloseModals?: () => void;
   onToggleLibrary?: () => void;
   onToggleSidebar?: () => void;
+  onToggleCinemaMode?: () => void;
   enabled?: boolean;
 }
 
@@ -25,6 +26,7 @@ export function useKeyboardShortcuts({
   onCloseModals,
   onToggleLibrary,
   onToggleSidebar,
+  onToggleCinemaMode,
   enabled = true,
 }: KeyboardShortcutsHandlers) {
   useEffect(() => {
@@ -100,6 +102,13 @@ export function useKeyboardShortcuts({
           }
           break;
         }
+        case "KeyC": {
+          if (!e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            onToggleCinemaMode?.();
+          }
+          break;
+        }
         case "KeyF": {
           if (!e.metaKey && !e.ctrlKey) {
             e.preventDefault();
@@ -130,6 +139,7 @@ export function useKeyboardShortcuts({
     onToggleFullscreen,
     onCloseModals,
     onToggleLibrary,
-    onToggleSidebar
+    onToggleSidebar,
+    onToggleCinemaMode
   ]);
 }

@@ -26,6 +26,7 @@ interface ControlBarProps {
   repeatMode: "off" | "all" | "one";
   isEqualizerOpen: boolean;
   position?: PlayerBarPosition;
+  isCinemaMode?: boolean;
   onTogglePlay: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -48,6 +49,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   repeatMode,
   isEqualizerOpen,
   position = "bottom",
+  isCinemaMode = false,
   onTogglePlay,
   onPrevious,
   onNext,
@@ -186,10 +188,14 @@ export const ControlBar: React.FC<ControlBarProps> = ({
     <footer
       className={`w-full dock-integrated ${
         position === "top" ? "border-b" : "border-t"
-      } border-white/10 px-6 py-2.5 flex items-center justify-between z-30 select-none shrink-0 transition-colors`}
+      } ${
+        isCinemaMode
+          ? "border-transparent bg-transparent py-3"
+          : "border-white/10 bg-neutral-950/70 backdrop-blur-xl py-2.5"
+      } px-6 flex items-center justify-between z-30 select-none shrink-0 transition-all duration-500`}
     >
       {/* Left: Track Info & Mini Art */}
-      <div className="flex items-center space-x-3 w-72 md:w-80 min-w-0">
+      <div className={`flex items-center space-x-3 w-72 md:w-80 min-w-0 transition-opacity duration-500 ${isCinemaMode ? "opacity-75 hover:opacity-100" : "opacity-100"}`}>
         <div className="relative w-11 h-11 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0 shadow-md">
           <img src={coverUrl} alt="" className="w-full h-full object-cover" />
           {isPlaying && (

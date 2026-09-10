@@ -370,7 +370,7 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
           lines.map((line, idx) => {
             const isActive = lyricsState.synced && idx === activeIndex;
             const isPast = lyricsState.synced && idx < activeIndex;
-            const distance = Math.abs(idx - activeIndex);
+            const isNext = lyricsState.synced && idx === activeIndex + 1;
 
             return (
               <div
@@ -384,14 +384,16 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
                 }`}
               >
                 <div
-                  className={`text-xl md:text-2xl font-bold leading-relaxed tracking-tight origin-left transition-[color,opacity,transform] duration-200 ease-out ${
-                    isActive
-                      ? "text-white opacity-100 translate-x-1.5 drop-shadow-[0_2px_16px_var(--primary-glow)]"
+                  className={`text-xl md:text-2xl lg:text-3xl leading-relaxed tracking-tight origin-left transition-all duration-300 ease-out ${
+                    !lyricsState.synced
+                      ? "text-neutral-300 font-medium opacity-80 hover:opacity-100"
+                      : isActive
+                      ? "text-white font-extrabold opacity-100 translate-x-2 scale-[1.02] drop-shadow-[0_0_18px_rgba(255,255,255,0.45)] drop-shadow-[0_0_30px_var(--primary-glow)]"
+                      : isNext
+                      ? "text-neutral-400 font-medium opacity-40 hover:opacity-75 translate-x-0"
                       : isPast
-                      ? "text-neutral-400 opacity-30 hover:opacity-65 translate-x-0"
-                      : distance > 3
-                      ? "text-neutral-400 opacity-20 hover:opacity-55 translate-x-0"
-                      : "text-neutral-400 opacity-45 hover:opacity-75 translate-x-0"
+                      ? "text-neutral-500 font-medium opacity-30 hover:opacity-60 translate-x-0"
+                      : "text-neutral-500 font-medium opacity-30 hover:opacity-60 translate-x-0"
                   }`}
                 >
                   {line.text}

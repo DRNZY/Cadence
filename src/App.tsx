@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Disc3, LayoutGrid, BookOpen,
   Music2, Maximize2, Minimize2, Settings2,
   Minus, Square, X, Moon, PanelLeftClose, PanelLeft,
-  PanelRightClose, PanelRight, Search, FolderSync
+  PanelRightClose, PanelRight, Search, FolderSync, Film
 } from "lucide-react";
 import type { Track, DeckMode, VisualizerMode, LayoutMode } from "./types";
 import { useAudioEngine } from "./hooks/useAudioEngine";
@@ -84,6 +85,19 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
   const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null);
+  const [isCinemaMode, setIsCinemaMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("cadence_cinema_mode") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("cadence_cinema_mode", isCinemaMode ? "true" : "false");
+    } catch {}
+  }, [isCinemaMode]);
 
   useEffect(() => {
     try {
@@ -483,6 +497,7 @@ export const App: React.FC = () => {
     onToggleQueue: () => setIsRightPanelCollapsed(prev => !prev),
     onToggleLibrary: () => setIsLibraryCollapsed(prev => !prev),
     onToggleSidebar: () => setIsRightPanelCollapsed(prev => !prev),
+    onToggleCinemaMode: () => setIsCinemaMode(prev => !prev),
     onToggleFullscreen: () => toggleFullscreen(),
     onCloseModals: () => {
       setIsEqualizerOpen(false);
@@ -611,12 +626,34 @@ export const App: React.FC = () => {
     <div
       className="flex h-screen w-screen text-white relative overflow-hidden select-none"
       style={{
-        background: settings.themeMode === "light" ? "#f1f5f9" : "var(--theme-bg-gradient, #06070b)",
+        background: isCinemaMode
+          ? "#000000"
+          : settings.themeMode === "light"
+          ? "#f1f5f9"
+          : "var(--theme-bg-gradient, #06070b)",
         transition: "background 0.8s cubic-bezier(0.4, 0, 0.2, 1)"
       }}
     >
       {/* Dynamic Ambient Mesh Backdrop */}
-      <div className="absolute inset-0 pointer-events-none z-0 ambient-glow opacity-25" />
+      <div className={`absolute inset-0 pointer-events-none z-0 ambient-glow ${isCinemaMode ? "opacity-50" : "opacity-30"} transition-opacity duration-700`} />
+
+      {/* Floating Cinema Mode Exit Button */}
+      <AnimatePresence>
+        {isCinemaMode && (
+          <motion.button
+            initial={{ opacity: 0, y: -16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -16, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 420, damping: 28 }}
+            onClick={() => setIsCinemaMode(false)}
+            className="absolute top-4 right-5 z-50 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-neutral-900/85 hover:bg-neutral-800 border border-white/15 text-neutral-300 hover:text-white text-xs font-mono shadow-2xl backdrop-blur-xl transition-all active:scale-95 group"
+            title="Exit Cinema Mode (C)"
+          >
+            <Film className="w-3.5 h-3.5 text-primary group-hover:scale-110 transition-transform" />
+            <span>Exit Cinema (C)</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Left Sidebar Player Bar Position (Optional) */}
       {settings.playerBarPosition === "left" && (
@@ -630,6 +667,7 @@ export const App: React.FC = () => {
           isShuffle={isShuffle}
           repeatMode={repeatMode}
           isEqualizerOpen={isEqualizerOpen}
+          isCinemaMode={isCinemaMode}
           position="left"
           onTogglePlay={audioEngine.togglePlay}
           onPrevious={handlePrevious}
@@ -646,7 +684,9 @@ export const App: React.FC = () => {
       <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         {/* Top Header Bar */}
         <header
-          className="h-12 w-full px-4 flex items-center justify-between border-b border-white/5 z-20 bg-neutral-950/70 backdrop-blur-xl shrink-0 select-none"
+          className={`h-12 w-full px-4 flex items-center justify-between border-b border-white/5 z-20 bg-neutral-950/70 backdrop-blur-xl shrink-0 select-none transition-all duration-500 ${
+            isCinemaMode ? "-mt-12 opacity-0 pointer-events-none" : "mt-0 opacity-100"
+          }`}
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
           {/* Logo & Brand + Quick Library Toggle */}
@@ -722,6 +762,19 @@ export const App: React.FC = () => {
               ) : (
                 <span className="hidden sm:inline">Timer</span>
               )}
+            </button>
+
+            {/* Cinema Mode Toggle */}
+            <button
+              onClick={() => setIsCinemaMode(prev => !prev)}
+              className={`p-1.5 rounded-full border transition-all active:scale-95 ${
+                isCinemaMode
+                  ? "bg-primary/30 border-primary/50 text-primary shadow-lg shadow-primary/25"
+                  : "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-300 hover:text-white"
+              }`}
+              title="Cinema Mode (C)"
+            >
+              <Film className="w-3.5 h-3.5" />
             </button>
 
             <button
@@ -813,16 +866,15 @@ export const App: React.FC = () => {
               {settings.libraryPosition === "left" ? (
                 <>
                   {/* Left Library Panel */}
-                  {/* Left Library Panel */}
                   <div
-                    style={isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }}
-                    className="h-full overflow-hidden shrink-0 transition-[width] duration-150 ease-out min-w-0"
+                    style={isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }}
+                    className="h-full overflow-hidden shrink-0 transition-all duration-500 ease-out min-w-0"
                   >
                     {renderLibraryPanel()}
                   </div>
 
                   {/* Drag Handle 1: Library ⟷ Center Deck */}
-                  {!isLibraryCollapsed && (
+                  {!isLibraryCollapsed && !isCinemaMode && (
                     <div
                       onMouseDown={handleLeftDividerMouseDown}
                       onDoubleClick={handleResetPanelWidths}
@@ -834,12 +886,12 @@ export const App: React.FC = () => {
                   )}
 
                   {/* Center Hero Player Deck */}
-                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2">
+                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2 transition-all duration-500">
                     {renderHeroDeck()}
                   </div>
 
                   {/* Drag Handle 2: Center Deck ⟷ Widgets Sidebar */}
-                  {!isRightPanelCollapsed && (
+                  {!isRightPanelCollapsed && !isCinemaMode && (
                     <div
                       onMouseDown={handleRightDividerMouseDown}
                       onDoubleClick={handleResetPanelWidths}
@@ -851,28 +903,24 @@ export const App: React.FC = () => {
                   )}
 
                   {/* Right Sidebar Stack */}
-                  {!isRightPanelCollapsed && (
-                    <div
-                      style={{ width: rightPanelWidth }}
-                      className="h-full overflow-hidden shrink-0 min-w-0"
-                    >
-                      {renderSidebarStack()}
-                    </div>
-                  )}
+                  <div
+                    style={isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isRightPanelCollapsed ? { width: 0, opacity: 0, pointerEvents: "none" } : { width: rightPanelWidth }}
+                    className="h-full overflow-hidden shrink-0 transition-all duration-500 ease-out min-w-0"
+                  >
+                    {renderSidebarStack()}
+                  </div>
                 </>
               ) : (
                 <>
                   {/* Right Sidebar Stack on Left */}
-                  {!isRightPanelCollapsed && (
-                    <div
-                      style={{ width: rightPanelWidth }}
-                      className="h-full overflow-hidden shrink-0 min-w-0"
-                    >
-                      {renderSidebarStack()}
-                    </div>
-                  )}
+                  <div
+                    style={isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isRightPanelCollapsed ? { width: 0, opacity: 0, pointerEvents: "none" } : { width: rightPanelWidth }}
+                    className="h-full overflow-hidden shrink-0 transition-all duration-500 ease-out min-w-0"
+                  >
+                    {renderSidebarStack()}
+                  </div>
 
-                  {!isRightPanelCollapsed && (
+                  {!isRightPanelCollapsed && !isCinemaMode && (
                     <div
                       onMouseDown={handleRightDividerMouseDown}
                       onDoubleClick={handleResetPanelWidths}
@@ -884,12 +932,12 @@ export const App: React.FC = () => {
                   )}
 
                   {/* Center Hero Player Deck */}
-                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2">
+                  <div className="flex-1 h-full overflow-hidden min-w-0 px-2 transition-all duration-500">
                     {renderHeroDeck()}
                   </div>
 
                   {/* Drag Handle: Center Deck ⟷ Library */}
-                  {!isLibraryCollapsed && (
+                  {!isLibraryCollapsed && !isCinemaMode && (
                     <div
                       onMouseDown={handleLeftDividerMouseDown}
                       onDoubleClick={handleResetPanelWidths}
@@ -902,8 +950,8 @@ export const App: React.FC = () => {
 
                   {/* Library on Right */}
                   <div
-                    style={isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }}
-                    className="h-full overflow-hidden shrink-0 transition-[width] duration-150 ease-out min-w-0"
+                    style={isCinemaMode ? { width: 0, opacity: 0, pointerEvents: "none" } : isLibraryCollapsed ? { width: 56 } : { width: leftPanelWidth }}
+                    className="h-full overflow-hidden shrink-0 transition-all duration-500 ease-out min-w-0"
                   >
                     {renderLibraryPanel()}
                   </div>
@@ -912,29 +960,33 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* 3. STAGE MODE (Hero Focus + Lyrics) */}
+          {/* 2. STAGE MODE (Hero Focus + Lyrics) */}
           {layoutMode === "stage" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-full w-full overflow-hidden">
-              <div className="lg:col-span-7 h-full overflow-hidden min-w-0">
+              <div className={`${isCinemaMode ? "lg:col-span-12" : "lg:col-span-7"} h-full overflow-hidden min-w-0 transition-all duration-500`}>
                 {renderHeroDeck()}
               </div>
-              <div className="lg:col-span-5 h-full glass-panel rounded-3xl overflow-hidden shadow-xl min-w-0">
-                <LyricsDeck
-                  currentTrack={audioEngine.currentTrack}
-                  currentTime={audioEngine.currentTime}
-                  onSeek={audioEngine.seek}
-                />
-              </div>
+              {!isCinemaMode && (
+                <div className="lg:col-span-5 h-full glass-panel rounded-3xl overflow-hidden shadow-xl min-w-0 transition-all duration-500">
+                  <LyricsDeck
+                    currentTrack={audioEngine.currentTrack}
+                    currentTime={audioEngine.currentTime}
+                    onSeek={audioEngine.seek}
+                  />
+                </div>
+              )}
             </div>
           )}
 
-          {/* 4. BROWSER MODE (Full Library Focus) */}
+          {/* 3. BROWSER MODE (Full Library Focus) */}
           {layoutMode === "browser" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-full w-full overflow-hidden">
-              <div className="lg:col-span-8 h-full overflow-hidden min-w-0">
-                {renderLibraryPanel()}
-              </div>
-              <div className="lg:col-span-4 h-full overflow-hidden min-w-0">
+              {!isCinemaMode && (
+                <div className="lg:col-span-8 h-full overflow-hidden min-w-0 transition-all duration-500">
+                  {renderLibraryPanel()}
+                </div>
+              )}
+              <div className={`${isCinemaMode ? "lg:col-span-12" : "lg:col-span-4"} h-full overflow-hidden min-w-0 transition-all duration-500`}>
                 {renderHeroDeck()}
               </div>
             </div>
@@ -953,6 +1005,7 @@ export const App: React.FC = () => {
             isShuffle={isShuffle}
             repeatMode={repeatMode}
             isEqualizerOpen={isEqualizerOpen}
+            isCinemaMode={isCinemaMode}
             position="bottom"
             onTogglePlay={audioEngine.togglePlay}
             onPrevious={handlePrevious}

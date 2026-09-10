@@ -234,30 +234,30 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
       {/* Main Deck Hero Surface */}
       <div className="flex-1 w-full flex items-center justify-center relative my-auto min-h-0 overflow-hidden">
 
-        {/* Dynamic Multi-Layer Full-Panel Ambient Canvas */}
+        {/* Dynamic Multi-Layer Full-Panel Ambient Canvas with Enhanced Dynamic Range */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
           <div 
-            className={`absolute -top-1/4 -left-1/4 w-[85%] h-[85%] rounded-full blur-[110px] transform-gpu transition-all duration-1000 ${
-              isPlaying ? "opacity-45 scale-105 animate-ambient-1" : "opacity-20 scale-95"
+            className={`absolute -top-1/4 -left-1/4 w-[90%] h-[90%] rounded-full blur-[160px] transform-gpu transition-all duration-1000 ${
+              isPlaying ? "opacity-70 scale-110 animate-ambient-1" : "opacity-25 scale-95"
             }`}
             style={{
-              background: "radial-gradient(circle, var(--ambient-1, rgba(99, 102, 241, 0.35)) 0%, transparent 70%)"
+              background: "radial-gradient(circle, var(--ambient-1, var(--primary-glow)) 0%, transparent 70%)"
             }}
           />
           <div 
-            className={`absolute -bottom-1/4 -right-1/4 w-[85%] h-[85%] rounded-full blur-[130px] transform-gpu transition-all duration-1000 ${
-              isPlaying ? "opacity-40 scale-105 animate-ambient-2" : "opacity-20 scale-95"
+            className={`absolute -bottom-1/4 -right-1/4 w-[90%] h-[90%] rounded-full blur-[180px] transform-gpu transition-all duration-1000 ${
+              isPlaying ? "opacity-65 scale-110 animate-ambient-2" : "opacity-25 scale-95"
             }`}
             style={{
-              background: "radial-gradient(circle, var(--ambient-2, rgba(168, 85, 247, 0.3)) 0%, transparent 70%)"
+              background: "radial-gradient(circle, var(--ambient-2, var(--secondary-glow)) 0%, transparent 70%)"
             }}
           />
           <div 
-            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95%] max-w-5xl h-[85%] rounded-full blur-[80px] transform-gpu transition-all duration-700 ${
-              isPlaying ? "opacity-60 scale-105" : "opacity-25 scale-95"
+            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl h-[90%] rounded-full blur-[130px] transform-gpu transition-all duration-700 ${
+              isPlaying ? "opacity-75 scale-105" : "opacity-30 scale-95"
             }`}
             style={{
-              background: "radial-gradient(circle, var(--primary-glow, rgba(255,255,255,0.22)) 0%, var(--secondary-glow, rgba(56,189,248,0.12)) 45%, transparent 75%)"
+              background: "radial-gradient(circle, var(--ambient-1, var(--primary-glow)) 0%, var(--ambient-2, var(--secondary-glow)) 45%, var(--ambient-3, transparent) 70%, transparent 85%)"
             }}
           />
         </div>
@@ -339,7 +339,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.94 }}
               transition={{ type: "spring", stiffness: 380, damping: 28 }}
-              className="relative flex flex-col items-center justify-center w-full max-w-4xl my-auto px-4 z-10"
+              className="relative flex flex-col items-center justify-center w-full max-w-5xl 2xl:max-w-6xl my-auto px-4 z-10"
             >
               {/* Sleeve + Peeking Vinyl Record Presentation */}
               <div 
@@ -352,12 +352,12 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                 <div
                   className={`absolute right-0 top-1/2 -translate-y-1/2 aspect-square rounded-full shadow-2xl z-0 pointer-events-none transition-all duration-700 ease-out ${
                     isPlaying 
-                      ? "w-[92%] translate-x-[36%] rotate-12 opacity-100" 
-                      : "w-[92%] translate-x-0 rotate-0 opacity-0"
+                      ? "w-[94%] translate-x-[38%] rotate-12 opacity-100" 
+                      : "w-[94%] translate-x-0 rotate-0 opacity-0"
                   }`}
                   style={{
                     background: "radial-gradient(circle, #25252a 0%, #16161a 50%, #0a0a0c 100%)",
-                    boxShadow: "0 20px 50px rgba(0,0,0,0.7), 0 0 30px rgba(0,0,0,0.5)",
+                    boxShadow: "0 25px 60px rgba(0,0,0,0.8), 0 0 35px rgba(0,0,0,0.6)",
                     border: "2px solid rgba(255,255,255,0.08)"
                   }}
                 >
@@ -374,7 +374,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                   </div>
                 </div>
 
-                {/* Main Album Jacket Card Frame with 3D Tilt */}
+                {/* Main Album Jacket Card Frame with 3D Tilt (Scaled ~25-30% for Large & 32:9 Displays) */}
                 <motion.div
                   style={{
                     rotateX: tilt.y,
@@ -382,8 +382,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                     transformStyle: "preserve-3d"
                   }}
                   transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  className={`w-[230px] sm:w-[280px] md:w-[320px] lg:w-[360px] xl:w-[400px] 2xl:w-[440px] aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 transition-transform duration-700 ease-out ${
-                    isPlaying ? "-translate-x-8 sm:-translate-x-12" : "translate-x-0"
+                  className={`w-[280px] sm:w-[340px] md:w-[400px] lg:w-[450px] xl:w-[500px] 2xl:w-[560px] aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 transition-transform duration-700 ease-out ${
+                    isPlaying ? "-translate-x-10 sm:-translate-x-14 md:-translate-x-16" : "translate-x-0"
                   }`}
                 >
                   <img
@@ -397,22 +397,22 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
 
                 {/* Ambient Floor Shadow / Reflection */}
                 <div 
-                  className={`absolute -bottom-8 left-1/2 -translate-x-1/2 w-4/5 h-12 rounded-full blur-2xl pointer-events-none transition-all duration-700 ${
-                    isPlaying ? "opacity-75 scale-105" : "opacity-35 scale-95"
+                  className={`absolute -bottom-10 left-1/2 -translate-x-1/2 w-full h-16 rounded-full blur-2xl pointer-events-none transition-all duration-700 ${
+                    isPlaying ? "opacity-80 scale-105" : "opacity-35 scale-95"
                   }`}
                   style={{
-                    background: "radial-gradient(ellipse at center, var(--primary-glow, rgba(255,255,255,0.3)) 0%, rgba(0,0,0,0.85) 60%, transparent 80%)"
+                    background: "radial-gradient(ellipse at center, var(--primary-glow, rgba(255,255,255,0.35)) 0%, rgba(0,0,0,0.9) 60%, transparent 80%)"
                   }}
                 />
               </div>
 
-              {/* Prominent Studio Master Typography & Metadata */}
-              <div className="mt-6 sm:mt-7 flex flex-col items-center text-center max-w-lg w-full px-2 z-10">
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-white drop-shadow-md truncate max-w-full leading-snug">
+              {/* Prominent Studio Master Typography & Metadata (Scaled for Room & Ultrawide Legibility) */}
+              <div className="mt-7 sm:mt-8 flex flex-col items-center text-center max-w-2xl w-full px-2 z-10">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl 2xl:text-5xl font-extrabold tracking-tight text-white drop-shadow-md truncate max-w-full leading-snug">
                   {currentTrack.title}
                 </h1>
 
-                <div className="flex items-center justify-center gap-2 mt-1.5 text-xs sm:text-sm text-neutral-300 font-medium flex-wrap">
+                <div className="flex items-center justify-center gap-2 mt-2 text-sm sm:text-base text-neutral-300 font-medium flex-wrap">
                   <span 
                     onClick={onOpenLibrary}
                     className="hover:text-white transition-colors cursor-pointer"
@@ -423,20 +423,20 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                   {currentTrack.album && (
                     <>
                       <span className="text-neutral-500">•</span>
-                      <span className="text-neutral-400 truncate max-w-[240px]">{currentTrack.album}</span>
+                      <span className="text-neutral-400 truncate max-w-[320px]">{currentTrack.album}</span>
                     </>
                   )}
                   {currentTrack.year && (
                     <>
                       <span className="text-neutral-500">•</span>
-                      <span className="text-neutral-500 font-mono text-xs">{currentTrack.year}</span>
+                      <span className="text-neutral-500 font-mono text-xs sm:text-sm">{currentTrack.year}</span>
                     </>
                   )}
                 </div>
 
                 {/* Studio Quality Specs Badges */}
-                <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-sm text-[11px] font-mono text-neutral-300">
+                <div className="flex items-center justify-center gap-2 mt-3.5 flex-wrap">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-sm text-xs font-mono text-neutral-300">
                     <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? "bg-primary animate-pulse" : "bg-neutral-500"}`} />
                     <span className="font-bold text-white uppercase">{currentTrack.format || "FLAC"}</span>
                     {currentTrack.bitrate && (
@@ -454,7 +454,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                   </div>
 
                   {currentTrack.replayGain !== undefined && (
-                    <div className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-neutral-400">
+                    <div className="hidden sm:inline-flex items-center px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-neutral-400">
                       <span>{currentTrack.replayGain > 0 ? "+" : ""}{currentTrack.replayGain.toFixed(1)} dB</span>
                     </div>
                   )}
@@ -476,7 +476,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            className="relative w-full aspect-square max-w-[360px] md:max-w-[420px] lg:max-w-[480px] xl:max-w-[540px] 2xl:max-w-[620px] flex items-center justify-center cursor-grab active:cursor-grabbing my-auto"
+            className="relative w-full aspect-square max-w-[440px] md:max-w-[520px] lg:max-w-[600px] xl:max-w-[680px] 2xl:max-w-[760px] flex items-center justify-center cursor-grab active:cursor-grabbing my-auto"
           >
             {/* Real-time DJ Scratch HUD Indicator */}
             <AnimatePresence>
@@ -499,7 +499,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             </AnimatePresence>
 
             {/* Turntable Outer Chassis Plate */}
-            <div className="absolute inset-0 rounded-full bg-gradient-to-b from-neutral-900 via-neutral-950 to-black p-3 shadow-2xl border border-white/10">
+            <div className="absolute inset-0 rounded-full bg-gradient-to-b from-neutral-900 via-neutral-950 to-black p-3.5 shadow-2xl border border-white/10">
               <div className="w-full h-full rounded-full bg-neutral-950/80 border border-white/5 flex items-center justify-center relative overflow-hidden">
                 {/* Platter Strobe Dots Rim */}
                 <div className="absolute inset-2 rounded-full border border-dashed border-neutral-700/40" />
@@ -538,9 +538,9 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               </div>
             </div>
 
-            {/* Realistic Physical Tone-Arm (ONLY rendered in Vinyl mode!) */}
+            {/* Realistic Physical Tone-Arm (Scaled to match larger platter) */}
             <div
-              className="absolute top-2 right-4 w-28 h-64 pointer-events-none z-30 origin-top-right transition-transform duration-700 ease-out"
+              className="absolute top-2 right-4 w-32 sm:w-36 h-72 sm:h-80 pointer-events-none z-30 origin-top-right transition-transform duration-700 ease-out"
               style={{
                 transform: `rotate(${isScratching ? toneArmAngle + (smoothVelocityRef.current / 300) : toneArmAngle}deg)`,
                 transformOrigin: "85% 15%",
@@ -548,12 +548,12 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               }}
             >
               {/* Tone-Arm Base Pivot Gimbal */}
-              <div className="absolute top-4 right-3 w-10 h-10 rounded-full bg-gradient-to-b from-neutral-300 via-neutral-500 to-neutral-700 border border-white/40 shadow-xl flex items-center justify-center">
+              <div className="absolute top-4 right-3 w-11 h-11 rounded-full bg-gradient-to-b from-neutral-300 via-neutral-500 to-neutral-700 border border-white/40 shadow-xl flex items-center justify-center">
                 <div className="w-5 h-5 rounded-full bg-neutral-900 border border-neutral-400" />
               </div>
 
               {/* Tone-Arm Metallic Tube Shaft */}
-              <div className="absolute top-8 right-7 w-1.5 h-44 bg-gradient-to-r from-neutral-200 via-white to-neutral-400 rounded-full shadow-lg origin-top transform -rotate-12">
+              <div className="absolute top-8 right-7 w-2 h-52 sm:h-60 bg-gradient-to-r from-neutral-200 via-white to-neutral-400 rounded-full shadow-lg origin-top transform -rotate-12">
                 {/* Cartridge Head Shell & Stylus Needle */}
                 <div className="absolute -bottom-3 -left-2 w-5 h-8 bg-neutral-900 rounded-sm border border-neutral-400 shadow-md transform rotate-12 flex flex-col items-center justify-end pb-0.5">
                   <div className="w-1 h-2 bg-red-500 rounded-full mb-0.5" />
@@ -571,7 +571,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.94 }}
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="relative w-full aspect-square max-w-[340px] md:max-w-[420px] lg:max-w-[500px] xl:max-w-[580px] 2xl:max-w-[660px] flex items-center justify-center my-auto"
+            className="relative w-full aspect-square max-w-[440px] md:max-w-[520px] lg:max-w-[620px] xl:max-w-[720px] 2xl:max-w-[800px] flex items-center justify-center my-auto"
           >
             {/* Jewel Case Crystal Tray */}
             <div className="w-full h-full rounded-3xl bg-white/[0.03] border border-white/15 p-4 shadow-2xl backdrop-blur-2xl flex items-center justify-center relative overflow-hidden">
@@ -580,30 +580,32 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                 <div className="absolute inset-x-8 top-1/2 h-0.5 bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent blur-[1px] animate-pulse pointer-events-none" />
               )}
 
-              {/* Holographic Spinning CD Disc */}
+              {/* Optical CD Disc with Hologram */}
               <div
                 ref={cdDiscRef}
-                style={{ willChange: "transform" }}
-                className="w-[92%] h-[92%] rounded-full bg-gradient-to-tr from-neutral-600 via-neutral-200 to-neutral-500 shadow-2xl relative flex items-center justify-center overflow-hidden border border-neutral-300"
+                style={{ willChange: "transform", transform: "rotate(0deg)" }}
+                className="w-[90%] h-[90%] rounded-full relative flex items-center justify-center shadow-2xl cd-hologram overflow-hidden border border-white/30"
               >
-                {/* Holographic Prismatic Rainbow Sheen */}
-                <div className="absolute inset-0 rounded-full cd-hologram opacity-90 mix-blend-color-dodge pointer-events-none" />
-                <div className="absolute inset-0 rounded-full vinyl-sheen opacity-60 pointer-events-none" />
+                {/* CD Mirror Surface & Data Rings */}
+                <div className="absolute inset-3 rounded-full border border-white/10 opacity-70" />
+                <div className="absolute inset-8 rounded-full border border-white/10 opacity-50" />
+                <div className="absolute inset-16 rounded-full border border-white/10 opacity-40" />
 
-                {/* Center CD Clear Plastic Acrylic Hub */}
-                <div className="w-[36%] h-[36%] rounded-full bg-black/60 backdrop-blur-md p-1 border-2 border-white/50 shadow-inner relative flex items-center justify-center z-10">
-                  <div className="w-[62%] h-[62%] rounded-full overflow-hidden relative border border-white/30">
+                {/* Center Hub & Album Art Miniature */}
+                <div className="w-[42%] h-[42%] rounded-full p-1 bg-black/40 backdrop-blur-md relative flex items-center justify-center border border-white/25 shadow-inner">
+                  <div className="w-full h-full rounded-full overflow-hidden relative shadow-md">
                     <img
                       src={coverUrl}
-                      alt={currentTrack?.album || "Cover"}
+                      alt=""
                       loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-cover select-none pointer-events-none"
+                      className="w-full h-full object-cover"
                     />
+                    <div className="absolute inset-0 bg-black/20" />
                   </div>
-                  {/* Spindle hole */}
-                  <div className="absolute w-5 h-5 rounded-full bg-neutral-950 border border-neutral-300 flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full bg-neutral-800" />
+
+                  {/* CD Clear Center Ring & Clamping Spindle */}
+                  <div className="absolute w-7 h-7 rounded-full bg-neutral-900/90 border-2 border-white/50 flex items-center justify-center shadow-lg">
+                    <div className="w-2.5 h-2.5 rounded-full bg-neutral-950" />
                   </div>
                 </div>
               </div>
@@ -611,17 +613,17 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
           </motion.div>
         )}
 
-        {/* ─── MODE 4: MINIMAL ZEN MODE ─── */}
+        {/* ─── MODE 4: ZEN MINIMAL (Scaled) ─── */}
         {deckMode === "minimal" && (
           <motion.div
             initial={{ opacity: 0, scale: 0.94 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.94 }}
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="w-full max-w-[420px] md:max-w-[500px] lg:max-w-[620px] flex flex-col items-center justify-center text-center p-6 space-y-4"
+            className="w-full max-w-[500px] md:max-w-[600px] lg:max-w-[720px] flex flex-col items-center justify-center text-center p-6 space-y-5"
           >
             {/* Soft Ambient Album Aura */}
-            <div className="relative w-44 h-44 rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-black/40 backdrop-blur-xl">
+            <div className="relative w-56 h-56 md:w-64 md:h-64 rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-black/40 backdrop-blur-xl">
               <img
                 src={coverUrl}
                 alt={currentTrack?.album || "Cover"}
@@ -630,11 +632,11 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             </div>
 
-            <div className="space-y-1 max-w-full">
-              <h2 className="text-xl font-bold text-white tracking-tight truncate">
+            <div className="space-y-1.5 max-w-full">
+              <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight truncate">
                 {currentTrack ? currentTrack.title : "No Track Selected"}
               </h2>
-              <p className="text-sm font-medium text-neutral-400 truncate">
+              <p className="text-sm sm:text-base font-medium text-neutral-300 truncate">
                 {currentTrack ? `${currentTrack.artist} • ${currentTrack.album}` : "Choose music from your library"}
               </p>
             </div>
