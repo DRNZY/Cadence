@@ -59,6 +59,7 @@ export type VisualizerMode = "bars" | "wave" | "radial" | "oscilloscope";
 export type LayoutMode = "studio" | "stage" | "browser";
 export type ThemeMode = "dark" | "light";
 export type PlayerBarPosition = "bottom" | "top" | "left";
+export type PlayerBarStyle = "floating" | "full" | "minimal";
 export type LibraryPosition = "left" | "right";
 export type SidebarPosition = "right" | "left";
 

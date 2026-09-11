@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { VisualizerMode } from "../types";
 import { Activity, Radio, Waves, Zap } from "lucide-react";
 
@@ -21,18 +21,52 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
   accentColor,
   hideHeader = false
 }) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [size, setSize] = useState({ width: 360, height: 140 });
+
+  // Dynamically observe real container dimensions for true HiDPI rendering
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setSize(prev => {
+            const w = Math.round(width);
+            const h = Math.round(height);
+            if (Math.abs(prev.width - w) > 2 || Math.abs(prev.height - h) > 2) {
+              return { width: w, height: h };
+            }
+            return prev;
+          });
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     let animId: number;
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const displayWidth = size.width;
+    const displayHeight = size.height;
+
+    canvas.width = Math.round(displayWidth * dpr);
+    canvas.height = Math.round(displayHeight * dpr);
+
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
+    ctx.scale(dpr, dpr);
 
-    const width = canvas.width;
-    const height = canvas.height;
-    const peaks: number[] = new Array(48).fill(0);
+    const width = displayWidth;
+    const height = displayHeight;
+    const peaks: number[] = new Array(128).fill(0);
     let lastRenderTime = performance.now();
 
     // Helper to get active theme accent color
@@ -64,14 +98,15 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
 
       if (visualizerMode === "bars") {
         const freqData = getFrequencyData() || new Uint8Array(128);
-        const numBars = 40;
-        const barWidth = (width / numBars) * 0.7;
-        const gap = (width / numBars) * 0.3;
+        const numBars = Math.min(64, Math.max(28, Math.floor(width / 11)));
+        const barWidth = (width / numBars) * 0.68;
+        const gap = (width / numBars) * 0.32;
 
         for (let i = 0; i < numBars; i++) {
-          let val = freqData[i * 2] || 0;
+          const freqIndex = Math.floor((i / numBars) * (freqData.length * 0.85));
+          let val = freqData[freqIndex] || 0;
           if (!isPlaying) {
-            val = Math.max(3, Math.round((Math.sin(now * 0.002 + i * 0.25) * 0.5 + 0.5) * 25));
+            val = Math.max(3, Math.round((Math.sin(now * 0.002 + i * 0.22) * 0.5 + 0.5) * 25));
           }
           const barHeight = Math.max(3, (val / 255) * (height - 10));
           const x = i * (barWidth + gap) + gap / 2;
@@ -91,12 +126,12 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
 
           // Peak cap indicator
           const peakY = height - Math.max(3, ((peaks[i] || 0) / 255) * (height - 10)) - 2;
-          ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
           ctx.fillRect(x, peakY, barWidth, 1.5);
         }
       } else if (visualizerMode === "wave") {
         const timeData = getTimeDomainData() || new Uint8Array(128);
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.strokeStyle = activeColor;
         ctx.shadowColor = activeColor;
         ctx.shadowBlur = 8;
@@ -120,7 +155,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         ctx.shadowBlur = 0;
       } else if (visualizerMode === "oscilloscope") {
         const timeData = getTimeDomainData() || new Uint8Array(128);
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.8;
         ctx.strokeStyle = activeColor;
         ctx.shadowColor = activeColor;
         ctx.shadowBlur = 6;
@@ -143,15 +178,16 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         const centerX = width / 2;
         const centerY = height / 2;
         const radius = Math.min(width, height) * 0.28;
-        const bars = 48;
+        const bars = 54;
 
         for (let i = 0; i < bars; i++) {
           const rad = (i * 2 * Math.PI) / bars;
-          let val = freqData[i * 2] || 0;
+          const freqIndex = Math.floor((i / bars) * (freqData.length * 0.8));
+          let val = freqData[freqIndex] || 0;
           if (!isPlaying) {
             val = Math.round((Math.sin(now * 0.002 + i * 0.25) * 0.5 + 0.5) * 20);
           }
-          const barLen = (val / 255) * 28 + 3;
+          const barLen = (val / 255) * (Math.min(width, height) * 0.2) + 3;
 
           const x1 = centerX + Math.cos(rad) * radius;
           const y1 = centerY + Math.sin(rad) * radius;
@@ -172,7 +208,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying, visualizerMode, getFrequencyData, getTimeDomainData, accentColor]);
+  }, [isPlaying, visualizerMode, getFrequencyData, getTimeDomainData, accentColor, size]);
 
   return (
     <div className={`flex flex-col h-full w-full select-none relative ${hideHeader ? "p-2" : "p-3.5"}`}>
@@ -208,13 +244,15 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         </div>
       )}
 
-      {/* Canvas Area */}
-      <div className={`flex-1 flex items-center justify-center relative overflow-hidden min-h-0 ${hideHeader ? "pt-0" : "pt-2"}`}>
+      {/* Canvas Area with dynamic HiDPI sizing */}
+      <div 
+        ref={containerRef}
+        className={`flex-1 w-full h-full relative overflow-hidden min-h-0 ${hideHeader ? "pt-0" : "pt-2"}`}
+      >
         <canvas
           ref={canvasRef}
-          width={320}
-          height={120}
-          className="w-full h-full object-contain rounded-xl"
+          style={{ width: "100%", height: "100%" }}
+          className="rounded-xl block"
         />
       </div>
     </div>

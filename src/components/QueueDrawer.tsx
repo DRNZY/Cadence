@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from "react";
 import { ListMusic, Trash2, ArrowUp, ArrowDown, X, Play, Music } from "lucide-react";
 import { Track } from "../types";
+import { formatBitrate } from "../utils/formatters";
 
 interface QueueDrawerProps {
   queue: Track[];
@@ -104,7 +105,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
           {/* Track Metadata */}
           <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px] font-mono text-neutral-400 bg-black/30 p-2 rounded-xl border border-white/5">
             <div>Sample: <span className="text-white">{currentTrack.sampleRate ? `${currentTrack.sampleRate} Hz` : "44.1 kHz"}</span></div>
-            <div>Bitrate: <span className="text-white">{currentTrack.bitrate ? `${Math.round(currentTrack.bitrate / 1000)} kbps` : "Lossless"}</span></div>
+            <div>Bitrate: <span className="text-white">{formatBitrate(currentTrack.bitrate)}</span></div>
             <div>Size: <span className="text-white">{formatBytes(currentTrack.size)}</span></div>
             <div>Duration: <span className="text-white">{formatSeconds(currentTrack.duration)}</span></div>
           </div>

@@ -455,7 +455,13 @@ async function extractMetadata(filePath: string): Promise<Partial<Track>> {
     const title = tagsLower.title;
     const year = tagsLower.date || tagsLower.year || tagsLower.originalyear;
     const trackNumber = parseInt(tagsLower.track || "1", 10);
-    const bitrate = parseInt(format.bit_rate || "0", 10);
+    let bitrate = parseInt(format.bit_rate || "0", 10);
+    if ((!bitrate || isNaN(bitrate) || bitrate <= 0) && duration > 0) {
+      try {
+        const stat = await fs.promises.stat(filePath);
+        bitrate = Math.round((stat.size * 8) / duration);
+      } catch {}
+    }
     const sampleRate = parseInt(stream.sample_rate || "44100", 10);
 
     const replayGain = parseReplayGain(
@@ -854,12 +860,12 @@ app.post("/api/settings", (req, res) => {
 // Update Checker API
 app.get("/api/update-check", (_req, res) => {
   res.json({
-    currentVersion: "2.2.0",
-    latestVersion: "2.2.0",
+    currentVersion: "3.0.0",
+    latestVersion: "3.0.0",
     updateAvailable: false,
     channel: "stable",
     lastChecked: Date.now(),
-    releaseNotes: "Cadence 2.2: Ultra-smooth jitter-free lyrics, 120 FPS real-time color customizer, 99.3% faster library disk cache, atomic data persistence, and performance enhancements."
+    releaseNotes: "Cadence 3.0: Apple Inset Grouped Settings, zero-latency synchronized lyrics engine, high-resolution vector spectrum analyzer, authentic metallic optical disc deck, and customizable player bar dock themes."
   });
 });
 

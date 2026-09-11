@@ -1,7 +1,7 @@
 {
   "name": "cadence",
   "productName": "Cadence",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "High-Fidelity Studio Audio Player & Synced Karaoke Lyrics Engine",
   "author": "Darnell",
   "main": "electron/main.cjs",

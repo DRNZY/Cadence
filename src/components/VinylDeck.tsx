@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Disc3, Disc, Sparkles, Image as ImageIcon } from "lucide-react";
 import { Track, DeckMode } from "../types";
+import { formatBitrate } from "../utils/formatters";
 
 interface VinylDeckProps {
   currentTrack: Track | null;
@@ -439,12 +440,12 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                   <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-sm text-xs font-mono text-neutral-300">
                     <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? "bg-primary animate-pulse" : "bg-neutral-500"}`} />
                     <span className="font-bold text-white uppercase">{currentTrack.format || "FLAC"}</span>
-                    {currentTrack.bitrate && (
+                    {currentTrack.bitrate ? (
                       <>
                         <span className="text-neutral-600">•</span>
-                        <span>{currentTrack.bitrate} kbps</span>
+                        <span>{formatBitrate(currentTrack.bitrate)}</span>
                       </>
-                    )}
+                    ) : null}
                     {currentTrack.sampleRate && (
                       <>
                         <span className="text-neutral-600">•</span>
@@ -602,32 +603,44 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                 <div className="absolute inset-x-8 top-1/2 h-0.5 bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent blur-[1px] animate-pulse pointer-events-none" />
               )}
 
-              {/* Optical CD Disc with Hologram */}
+              {/* Authentic Silver Optical Compact Disc */}
               <div
                 ref={cdDiscRef}
                 style={{ willChange: "transform", transform: "rotate(0deg)" }}
-                className="w-[90%] h-[90%] rounded-full relative flex items-center justify-center shadow-2xl cd-hologram overflow-hidden border border-white/30"
+                className="w-[92%] h-[92%] rounded-full relative flex items-center justify-center cd-disc-surface cd-metallic-sheen overflow-hidden border border-white/40 shadow-2xl"
               >
-                {/* CD Mirror Surface & Data Rings */}
-                <div className="absolute inset-3 rounded-full border border-white/10 opacity-70" />
-                <div className="absolute inset-8 rounded-full border border-white/10 opacity-50" />
-                <div className="absolute inset-16 rounded-full border border-white/10 opacity-40" />
+                {/* Microgroove Data Tracks & Spiral Reflections */}
+                <div className="absolute inset-2 rounded-full border border-slate-400/30 pointer-events-none" />
+                <div className="absolute inset-6 rounded-full border border-slate-300/40 pointer-events-none" />
+                <div className="absolute inset-10 rounded-full border border-slate-400/25 pointer-events-none" />
+                <div className="absolute inset-14 rounded-full border border-slate-300/30 pointer-events-none" />
+                <div className="absolute inset-20 rounded-full border border-slate-400/20 pointer-events-none" />
 
-                {/* Center Hub & Album Art Miniature */}
-                <div className="w-[42%] h-[42%] rounded-full p-1 bg-black/40 backdrop-blur-md relative flex items-center justify-center border border-white/25 shadow-inner">
-                  <div className="w-full h-full rounded-full overflow-hidden relative shadow-md">
-                    <img
-                      src={coverUrl}
-                      alt=""
-                      loading="lazy"
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black/20" />
-                  </div>
+                {/* Anisotropic Light Sheen Layer */}
+                <div className="absolute inset-0 rounded-full cd-hologram opacity-60 pointer-events-none" />
 
-                  {/* CD Clear Center Ring & Clamping Spindle */}
-                  <div className="absolute w-7 h-7 rounded-full bg-neutral-900/90 border-2 border-white/50 flex items-center justify-center shadow-lg">
-                    <div className="w-2.5 h-2.5 rounded-full bg-neutral-950" />
+                {/* Transparent Inner Mirror Band / Stacking Ring (Clear Polycarbonate Area) */}
+                <div className="w-[50%] h-[50%] rounded-full bg-slate-900/40 backdrop-blur-sm border border-white/30 flex items-center justify-center shadow-inner relative">
+                  {/* Outer Stacking Ring */}
+                  <div className="absolute inset-2 rounded-full border border-white/20" />
+                  
+                  {/* Center Hub & Album Art Miniature */}
+                  <div className="w-[66%] h-[66%] rounded-full p-1 bg-black/50 relative flex items-center justify-center border border-white/30 shadow-md">
+                    <div className="w-full h-full rounded-full overflow-hidden relative shadow-sm">
+                      <img
+                        src={coverUrl}
+                        alt=""
+                        loading="lazy"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/15" />
+                    </div>
+
+                    {/* Precision Center Spindle & Clamping Ring */}
+                    <div className="absolute w-8 h-8 rounded-full bg-slate-900/90 border-2 border-white/60 flex items-center justify-center shadow-lg">
+                      {/* Transparent Center Hole with Rim */}
+                      <div className="w-3.5 h-3.5 rounded-full bg-neutral-950 border border-white/30 shadow-inner" />
+                    </div>
                   </div>
                 </div>
               </div>

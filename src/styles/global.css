@@ -77,15 +77,38 @@ body {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
 }
 
+/* Authentic Metallic Silver Optical CD Disc */
+.cd-disc-surface {
+  background: radial-gradient(
+    circle at center,
+    #f8fafc 0%,
+    #e2e8f0 25%,
+    #cbd5e1 55%,
+    #94a3b8 80%,
+    #64748b 100%
+  );
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.cd-metallic-sheen {
+  background: conic-gradient(
+    from 45deg,
+    rgba(255, 255, 255, 0.45) 0deg,
+    rgba(148, 163, 184, 0.08) 55deg,
+    rgba(255, 255, 255, 0.4) 180deg,
+    rgba(148, 163, 184, 0.08) 235deg,
+    rgba(255, 255, 255, 0.45) 360deg
+  );
+}
+
 .cd-hologram {
   background: conic-gradient(
-    from 0deg,
-    rgba(255, 0, 128, 0.2),
-    rgba(0, 255, 255, 0.25),
-    rgba(255, 255, 0, 0.2),
-    rgba(0, 255, 0, 0.2),
-    rgba(0, 0, 255, 0.25),
-    rgba(255, 0, 128, 0.2)
+    from 45deg,
+    rgba(255, 255, 255, 0.4) 0deg,
+    rgba(203, 213, 225, 0.1) 60deg,
+    rgba(255, 255, 255, 0.35) 180deg,
+    rgba(203, 213, 225, 0.1) 240deg,
+    rgba(255, 255, 255, 0.4) 360deg
   );
 }
 
@@ -411,3 +434,17 @@ body.light #app-root {
     animation: none;
   }
 }
+
+/* ─── DYNAMIC VELOCITY MOTION BLUR ─── */
+body.motion-blur-active .glass-panel,
+body.motion-blur-active .hero-surface,
+body.motion-blur-active main,
+.motion-blur-active .glass-panel,
+.motion-blur-active .hero-surface,
+.motion-blur-active main {
+  filter: blur(var(--motion-blur-amount, 14px)) !important;
+  transform: scaleX(var(--motion-blur-scale, 1.02)) translateZ(0);
+  transition: filter 0.05s ease-out, transform 0.05s ease-out;
+  will-change: filter, transform;
+}
+

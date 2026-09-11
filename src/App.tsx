@@ -190,10 +190,11 @@ export const App: React.FC = () => {
       lastResizeTimeRef.current = now;
       lastResizeWidthRef.current = winW;
 
-      if (settings.enableMotionBlur && velocity > 0.25) {
-        const blurAmount = Math.min(7, Math.max(1.5, Math.round(velocity * 3.2 * 10) / 10));
+      if (settings.enableMotionBlur && velocity > 0.05) {
+        const blurAmount = Math.min(24, Math.max(8, Math.round(velocity * 8 * 10) / 10));
+        const blurScale = 1 + Math.min(0.04, Math.max(0.01, velocity * 0.015));
         document.documentElement.style.setProperty("--motion-blur-amount", `${blurAmount}px`);
-        document.documentElement.style.setProperty("--motion-blur-scale", `${1 + Math.min(0.015, velocity * 0.004)}`);
+        document.documentElement.style.setProperty("--motion-blur-scale", `${blurScale}`);
         document.body.classList.add("motion-blur-active");
       }
 
@@ -275,9 +276,11 @@ export const App: React.FC = () => {
       lastDragTime = now;
       lastDragX = moveEvent.clientX;
 
-      if (settings.enableMotionBlur && velocity > 0.3) {
-        const blurAmount = Math.min(6, Math.max(1.5, Math.round(velocity * 2.5 * 10) / 10));
+      if (settings.enableMotionBlur && velocity > 0.05) {
+        const blurAmount = Math.min(24, Math.max(8, Math.round(velocity * 8 * 10) / 10));
+        const blurScale = 1 + Math.min(0.04, Math.max(0.01, velocity * 0.015));
         document.documentElement.style.setProperty("--motion-blur-amount", `${blurAmount}px`);
+        document.documentElement.style.setProperty("--motion-blur-scale", `${blurScale}`);
         document.body.classList.add("motion-blur-active");
       }
 
@@ -299,6 +302,7 @@ export const App: React.FC = () => {
       document.body.classList.remove("is-resizing");
       document.body.classList.remove("motion-blur-active");
       document.documentElement.style.removeProperty("--motion-blur-amount");
+      document.documentElement.style.removeProperty("--motion-blur-scale");
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -325,9 +329,11 @@ export const App: React.FC = () => {
       lastDragTime = now;
       lastDragX = moveEvent.clientX;
 
-      if (settings.enableMotionBlur && velocity > 0.3) {
-        const blurAmount = Math.min(6, Math.max(1.5, Math.round(velocity * 2.5 * 10) / 10));
+      if (settings.enableMotionBlur && velocity > 0.05) {
+        const blurAmount = Math.min(24, Math.max(8, Math.round(velocity * 8 * 10) / 10));
+        const blurScale = 1 + Math.min(0.04, Math.max(0.01, velocity * 0.015));
         document.documentElement.style.setProperty("--motion-blur-amount", `${blurAmount}px`);
+        document.documentElement.style.setProperty("--motion-blur-scale", `${blurScale}`);
         document.body.classList.add("motion-blur-active");
       }
 
@@ -349,6 +355,7 @@ export const App: React.FC = () => {
       document.body.classList.remove("is-resizing");
       document.body.classList.remove("motion-blur-active");
       document.documentElement.style.removeProperty("--motion-blur-amount");
+      document.documentElement.style.removeProperty("--motion-blur-scale");
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -375,9 +382,11 @@ export const App: React.FC = () => {
       lastDragTime = now;
       lastDragX = moveEvent.clientX;
 
-      if (settings.enableMotionBlur && velocity > 0.3) {
-        const blurAmount = Math.min(6, Math.max(1.5, Math.round(velocity * 2.5 * 10) / 10));
+      if (settings.enableMotionBlur && velocity > 0.05) {
+        const blurAmount = Math.min(24, Math.max(8, Math.round(velocity * 8 * 10) / 10));
+        const blurScale = 1 + Math.min(0.04, Math.max(0.01, velocity * 0.015));
         document.documentElement.style.setProperty("--motion-blur-amount", `${blurAmount}px`);
+        document.documentElement.style.setProperty("--motion-blur-scale", `${blurScale}`);
         document.body.classList.add("motion-blur-active");
       }
 
@@ -399,6 +408,7 @@ export const App: React.FC = () => {
       document.body.classList.remove("is-resizing");
       document.body.classList.remove("motion-blur-active");
       document.documentElement.style.removeProperty("--motion-blur-amount");
+      document.documentElement.style.removeProperty("--motion-blur-scale");
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -1261,6 +1271,7 @@ export const App: React.FC = () => {
             isEqualizerOpen={isEqualizerOpen}
             isCinemaMode={isCinemaMode}
             position="bottom"
+            barStyle={settings.playerBarStyle || "floating"}
             onTogglePlay={audioEngine.togglePlay}
             onPrevious={handlePrevious}
             onNext={handleNext}

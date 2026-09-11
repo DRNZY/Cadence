@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { 
   GripVertical, 
   EyeOff, 
@@ -23,6 +23,7 @@ import { Track, VisualizerMode, WidgetId, LyricsState } from "../types";
 import { SpectrumVisualizer } from "./SpectrumVisualizer";
 import { LyricsDeck, LyricsDeckHandle } from "./LyricsDeck";
 import { QueueDrawer } from "./QueueDrawer";
+import { formatBitrate } from "../utils/formatters";
 
 interface WidgetContainerProps {
   currentTrack: Track | null;
@@ -336,7 +337,7 @@ const WidgetCardItem = React.memo<WidgetCardItemProps>(({
               <div className="flex items-center justify-between pb-2 border-b border-white/5">
                 <span className="text-neutral-400">Bitrate</span>
                 <span className="font-mono text-primary font-semibold">
-                  {currentTrack?.bitrate ? `${currentTrack.bitrate} kbps` : "Lossless / VBR"}
+                  {formatBitrate(currentTrack?.bitrate)}
                 </span>
               </div>
               <div className="flex items-center justify-between pb-2 border-b border-white/5">
@@ -468,10 +469,10 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
     } catch {}
   }, [order, visibility]);
 
-  const handleLyricsLoaded = (state: LyricsState) => {
+  const handleLyricsLoaded = useCallback((state: LyricsState) => {
     setHasSyncedLyrics(state.synced && state.lines.length > 0);
     setHasAnyLyrics(state.lines.length > 0);
-  };
+  }, []);
 
   const toggleWidget = (id: WidgetId) => {
     setVisibility(prev => ({

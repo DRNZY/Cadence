@@ -30,6 +30,9 @@ interface LyricsCandidate {
   plainLyrics?: string;
 }
 
+// In-memory cache for instant zero-latency lyric transitions
+const lyricsMemoryCache = new Map<string, LyricsState>();
+
 export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
   currentTrack,
   currentTime,
@@ -49,6 +52,14 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
   const [searchTitle, setSearchTitle] = useState("");
   const [candidates, setCandidates] = useState<LyricsCandidate[]>([]);
   const [isSearchingCandidates, setIsSearchingCandidates] = useState(false);
+
+  // Stabilize onLyricsLoaded callback reference to prevent infinite re-fetch loop
+  const onLyricsLoadedRef = useRef(onLyricsLoaded);
+  useEffect(() => {
+    onLyricsLoadedRef.current = onLyricsLoaded;
+  }, [onLyricsLoaded]);
+
+  const lastFetchedKeyRef = useRef<string | null>(null);
 
   // Manual scroll lockout state
   const [isUserInteracting, setIsUserInteracting] = useState(false);
@@ -78,15 +89,28 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
   const fetchLyrics = useCallback((customArtist?: string, customTitle?: string, forceRefresh?: boolean) => {
     if (!currentTrack) {
       setLyricsState({ synced: false, source: "none", lines: [] });
+      lastFetchedKeyRef.current = null;
       return;
     }
 
-    setIsLoading(true);
     const artist = customArtist !== undefined ? customArtist : currentTrack.artist || "";
     const title = customTitle !== undefined ? customTitle : currentTrack.title || "";
     const album = currentTrack.album || "";
     const duration = currentTrack.duration || 0;
     const filePath = customArtist || customTitle || forceRefresh ? "" : currentTrack.filePath || "";
+    const cacheKey = `${currentTrack.id || currentTrack.filePath}:${artist}:${title}`;
+
+    if (!forceRefresh && lyricsMemoryCache.has(cacheKey)) {
+      const cached = lyricsMemoryCache.get(cacheKey)!;
+      lastFetchedKeyRef.current = cacheKey;
+      setLyricsState(cached);
+      setIsLoading(false);
+      onLyricsLoadedRef.current?.(cached);
+      return;
+    }
+
+    setIsLoading(true);
+    lastFetchedKeyRef.current = cacheKey;
 
     const params = new URLSearchParams({
       path: filePath,
@@ -109,19 +133,20 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
           isInstrumental: !!data.isInstrumental,
           lines: data.lines || []
         };
+        lyricsMemoryCache.set(cacheKey, state);
         setLyricsState(state);
-        onLyricsLoaded?.(state);
+        onLyricsLoadedRef.current?.(state);
       })
       .catch(err => {
         console.error("Failed to load lyrics:", err);
         const state: LyricsState = { synced: false, source: "none", lines: [] };
         setLyricsState(state);
-        onLyricsLoaded?.(state);
+        onLyricsLoadedRef.current?.(state);
       })
       .finally(() => {
         setIsLoading(false);
       });
-  }, [currentTrack, onLyricsLoaded]);
+  }, [currentTrack]);
 
   // Online candidate search
   const searchCandidates = useCallback(async (artistQuery: string, titleQuery: string) => {
@@ -193,10 +218,14 @@ export const LyricsDeck = forwardRef<LyricsDeckHandle, LyricsDeckProps>(({
       window.clearTimeout(userScrollTimeoutRef.current);
     }
     if (currentTrack) {
-      setSearchArtist(currentTrack.artist || "");
-      setSearchTitle(currentTrack.title || "");
-      fetchLyrics();
+      const trackKey = currentTrack.id || currentTrack.filePath;
+      if (lastFetchedKeyRef.current !== trackKey) {
+        setSearchArtist(currentTrack.artist || "");
+        setSearchTitle(currentTrack.title || "");
+        fetchLyrics();
+      }
     } else {
+      lastFetchedKeyRef.current = null;
       setLyricsState({ synced: false, source: "none", lines: [] });
     }
   }, [currentTrack, fetchLyrics]);

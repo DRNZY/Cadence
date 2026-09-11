@@ -13,7 +13,7 @@ import {
   Sliders,
   Disc3
 } from "lucide-react";
-import { Track, PlayerBarPosition } from "../types";
+import { Track, PlayerBarPosition, PlayerBarStyle } from "../types";
 
 interface ControlBarProps {
   currentTrack: Track | null;
@@ -26,6 +26,7 @@ interface ControlBarProps {
   repeatMode: "off" | "all" | "one";
   isEqualizerOpen: boolean;
   position?: PlayerBarPosition;
+  barStyle?: PlayerBarStyle;
   isCinemaMode?: boolean;
   onTogglePlay: () => void;
   onPrevious: () => void;
@@ -49,6 +50,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   repeatMode,
   isEqualizerOpen,
   position = "bottom",
+  barStyle = "floating",
   isCinemaMode = false,
   onTogglePlay,
   onPrevious,
@@ -184,43 +186,53 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   }
 
   // ─── HORIZONTAL (BOTTOM OR TOP) POSITION ───
+  const isBottomFloating = position === "bottom" && barStyle === "floating" && !isCinemaMode;
+  const isBottomMinimal = position === "bottom" && barStyle === "minimal" && !isCinemaMode;
+
+  const barClasses = isCinemaMode
+    ? "w-full border-transparent bg-transparent py-3 px-6"
+    : position === "top"
+    ? "w-full border-b border-white/10 bg-neutral-950/80 backdrop-blur-xl py-2 px-6"
+    : isBottomFloating
+    ? "max-w-5xl mx-auto rounded-3xl border border-white/15 bg-neutral-950/80 backdrop-blur-2xl shadow-2xl px-6 py-2.5"
+    : isBottomMinimal
+    ? "w-full border-t border-white/5 bg-black/75 backdrop-blur-md px-5 py-1.5"
+    : "w-full border-t border-white/10 bg-neutral-950/80 backdrop-blur-xl py-2.5 px-6";
+
   return (
     <footer
-      className={`w-full dock-integrated ${
-        position === "top" ? "border-b" : "border-t"
-      } ${
-        isCinemaMode
-          ? "border-transparent bg-transparent py-3"
-          : "border-white/10 bg-neutral-950/70 backdrop-blur-xl py-2.5"
-      } px-6 flex items-center justify-between z-30 select-none shrink-0 transition-all duration-500`}
+      className={`w-full z-30 select-none shrink-0 transition-all duration-300 ${
+        isBottomFloating ? "px-4 pb-3 pt-0" : ""
+      }`}
     >
-      {/* Left: Track Info & Mini Art */}
-      <div className={`flex items-center space-x-3 w-72 md:w-80 min-w-0 transition-opacity duration-500 ${isCinemaMode ? "opacity-75 hover:opacity-100" : "opacity-100"}`}>
-        <div className="relative w-11 h-11 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0 shadow-md">
-          <img src={coverUrl} alt="" className="w-full h-full object-cover" />
-          {isPlaying && (
-            <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-              <Disc3 className="w-5 h-5 text-white animate-spin" />
-            </div>
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1 text-left">
-          <div className="flex items-center gap-1.5">
-            <h4 className="text-xs md:text-sm font-bold text-white tracking-tight truncate">
-              {currentTrack?.title || "Cadence Studio Engine"}
-            </h4>
-            {currentTrack && (
-              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/10 text-white/90 border border-white/10 uppercase font-semibold shrink-0">
-                {currentTrack.format}
-              </span>
+      <div className={`dock-integrated ${barClasses} flex items-center justify-between transition-all duration-300`}>
+        {/* Left: Track Info & Mini Art */}
+        <div className={`flex items-center space-x-3 w-72 md:w-80 min-w-0 transition-opacity duration-300 ${isCinemaMode ? "opacity-75 hover:opacity-100" : "opacity-100"}`}>
+          <div className="relative w-11 h-11 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0 shadow-md">
+            <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+            {isPlaying && (
+              <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                <Disc3 className="w-5 h-5 text-white animate-spin" />
+              </div>
             )}
           </div>
-          <p className="text-[11px] text-neutral-400 tracking-tight truncate">
-            {currentTrack ? `${currentTrack.artist} — ${currentTrack.album}` : "Select music to play or press Space"}
-          </p>
+
+          <div className="min-w-0 flex-1 text-left">
+            <div className="flex items-center gap-1.5">
+              <h4 className="text-xs md:text-sm font-bold text-white tracking-tight truncate">
+                {currentTrack?.title || "Not Playing"}
+              </h4>
+              {currentTrack && (
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/10 text-white/90 border border-white/10 uppercase font-semibold shrink-0">
+                  {currentTrack.format}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-neutral-400 tracking-tight truncate">
+              {currentTrack ? `${currentTrack.artist} — ${currentTrack.album}` : "No Track Selected"}
+            </p>
+          </div>
         </div>
-      </div>
 
         {/* Center: Playback Controls & Progress Scrubber */}
         <div className="flex-1 max-w-3xl px-4 md:px-8 flex flex-col items-center space-y-1">
@@ -348,6 +360,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             />
           </div>
         </div>
+      </div>
     </footer>
   );
 };
