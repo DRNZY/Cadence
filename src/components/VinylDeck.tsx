@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Disc3, Disc, Sparkles, Image as ImageIcon, Shuffle, FolderOpen } from "lucide-react";
+import { Disc3, Disc, Sparkles, Image as ImageIcon } from "lucide-react";
 import { Track, DeckMode } from "../types";
 
 interface VinylDeckProps {
@@ -43,8 +43,6 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   onScratch,
   onEndScratch,
   accentColor,
-  tracks = [],
-  onShufflePlay,
   onOpenLibrary
 }) => {
   const [isScratching, setIsScratching] = useState(false);
@@ -76,16 +74,29 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    let rafId: number | null = null;
     const ro = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          setContainerSize({ width, height });
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect;
+          const w = Math.round(width);
+          const h = Math.round(height);
+          if (w > 0 && h > 0) {
+            setContainerSize(prev => {
+              if (Math.abs(prev.width - w) < 3 && Math.abs(prev.height - h) < 3) return prev;
+              return { width: w, height: h };
+            });
+          }
         }
-      }
+      });
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
   }, []);
 
   // High-performance DOM-level continuous rotation for Vinyl & CD (0 React re-renders while spinning!)
@@ -130,25 +141,25 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     : `/covers?accent=${encodeURIComponent(accentColor || "#38bdf8")}`;
 
   // Real-time dynamic dimensional scaling based on exact container dimensions
-  const availableHeight = Math.max(containerSize.height - 230, 180);
-  const availableWidth = Math.max(containerSize.width - 48, 180);
+  const availableHeight = Math.max(containerSize.height - 270, 160);
+  const availableWidth = Math.max(containerSize.width - 48, 160);
 
-  // 1. Cover Mode:
-  const maxSleeveWidth = Math.floor(availableWidth / 1.42);
-  const dynamicSleeveSize = Math.max(180, Math.min(availableHeight, maxSleeveWidth, 780));
+  // 1. Cover Mode (Album sleeve + peeking sliding vinyl assembly):
+  const maxSleeveWidth = Math.floor(availableWidth / 1.44);
+  const dynamicSleeveSize = Math.max(160, Math.min(availableHeight, maxSleeveWidth, 720));
 
   // 2. Vinyl Mode (Analog Turntable Platter):
-  const dynamicPlatterSize = Math.max(220, Math.min(availableWidth * 0.94, availableHeight * 0.94, 780));
+  const dynamicPlatterSize = Math.max(200, Math.min(availableWidth * 0.94, availableHeight * 0.94, 720));
 
   // 3. CD Mode (Holographic Compact Disc Jewel Case):
-  const dynamicCdSize = Math.max(200, Math.min(availableWidth / 1.45, availableHeight, 740));
+  const dynamicCdSize = Math.max(180, Math.min(availableWidth / 1.45, availableHeight, 680));
 
   // 4. Zen Mode (Breathing Minimal Aura):
-  const dynamicZenSize = Math.max(180, Math.min(availableWidth * 0.65, availableHeight * 0.65, 520));
+  const dynamicZenSize = Math.max(160, Math.min(availableWidth * 0.65, availableHeight * 0.65, 480));
 
   // 5. Responsive dynamic typography
-  const titleFontSize = Math.max(18, Math.min(Math.round(containerSize.width * 0.034), 44));
-  const subtitleFontSize = Math.max(12, Math.min(Math.round(containerSize.width * 0.016), 18));
+  const titleFontSize = Math.max(16, Math.min(Math.round(containerSize.width * 0.032), 38));
+  const subtitleFontSize = Math.max(11, Math.min(Math.round(containerSize.width * 0.015), 16));
 
   // Real-time DJ Vinyl Scratch handlers
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -305,161 +316,92 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
           />
         </div>
 
-        {/* ─── MODE 1: SQUARE ALBUM COVER HERO OR WELCOME LAUNCHPAD ─── */}
-        {deckMode === "cover" && (
-          !currentTrack ? (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -12 }}
-              transition={{ type: "spring", stiffness: 360, damping: 28 }}
-              className="relative flex flex-col items-center justify-center max-w-[480px] w-full p-6 md:p-8 rounded-3xl bg-neutral-900/60 border border-white/10 shadow-2xl backdrop-blur-2xl text-center space-y-6 z-10"
+        {/* ─── MODE 1: SQUARE ALBUM COVER HERO ─── */}
+        {deckMode === "cover" && currentTrack && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.94 }}
+            transition={{ type: "spring", stiffness: 380, damping: 28 }}
+            className="relative flex flex-col items-center justify-center w-full max-w-5xl 2xl:max-w-6xl my-auto px-4 z-10 hero-surface"
+          >
+            {/* Sleeve + Peeking Vinyl Record Presentation (Fluid Dynamic Scaling & Centered Envelope) */}
+            <div 
+              className="relative flex items-center justify-center transition-all duration-300"
+              onMouseMove={handleCoverMouseMove}
+              onMouseLeave={handleCoverMouseLeave}
+              style={{
+                perspective: 1000,
+                width: `${isPlaying ? Math.round(dynamicSleeveSize * 1.38) : dynamicSleeveSize}px`,
+                height: `${dynamicSleeveSize}px`
+              }}
             >
-              {/* Pulsing Concentric Audio Rings */}
-              <div className="relative flex items-center justify-center my-2">
-                <div className="absolute w-24 h-24 rounded-full bg-primary/20 animate-ping opacity-30" />
-                <div className="absolute w-20 h-20 rounded-full bg-primary/30 blur-md" />
-                <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary to-sky-400 p-0.5 shadow-xl shadow-primary/30 flex items-center justify-center">
-                  <div className="w-full h-full rounded-[14px] bg-neutral-950 flex items-center justify-center">
-                    <Disc3 className="w-8 h-8 text-primary animate-spin" style={{ animationDuration: "8s" }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Welcome Title & Subtitle */}
-              <div className="space-y-2">
-                <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono uppercase tracking-widest text-primary font-semibold">
-                  <Sparkles className="w-3 h-3 text-primary" />
-                  <span>Studio Sound Engine v2.2</span>
-                </div>
-                <h2 className="text-xl md:text-2xl font-bold tracking-tight text-white">
-                  Welcome to Cadence
-                </h2>
-                <p className="text-xs text-neutral-400 max-w-sm mx-auto leading-relaxed">
-                  High-fidelity audio reproduction, real-time synchronized karaoke lyrics, and studio master acoustics.
-                </p>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-xs justify-center">
-                {onShufflePlay && (
-                  <button
-                    onClick={onShufflePlay}
-                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-primary to-sky-500 hover:from-primary/90 hover:to-sky-400 text-white text-xs font-bold shadow-lg shadow-primary/25 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
-                  >
-                    <Shuffle className="w-4 h-4" />
-                    <span>Shuffle All {tracks && tracks.length > 0 ? `(${tracks.length})` : ""}</span>
-                  </button>
-                )}
-
-                {onOpenLibrary && (
-                  <button
-                    onClick={onOpenLibrary}
-                    className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-xs font-semibold hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
-                  >
-                    <FolderOpen className="w-4 h-4 text-neutral-300" />
-                    <span>Explore Library</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Feature Badges */}
-              <div className="pt-2 border-t border-white/5 w-full flex flex-wrap items-center justify-center gap-2">
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-neutral-400 border border-white/5">
-                  32-Bit Floating DSP
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-neutral-400 border border-white/5">
-                  Synced Lyrics
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-neutral-400 border border-white/5">
-                  Analog Decks
-                </span>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.94 }}
-              transition={{ type: "spring", stiffness: 380, damping: 28 }}
-              className="relative flex flex-col items-center justify-center w-full max-w-5xl 2xl:max-w-6xl my-auto px-4 z-10"
-            >
-              {/* Sleeve + Peeking Vinyl Record Presentation (Fluid Dynamic Scaling) */}
-              <div 
-                className="relative flex items-center justify-center transition-all duration-300"
-                onMouseMove={handleCoverMouseMove}
-                onMouseLeave={handleCoverMouseLeave}
+              {/* Vinyl Record that slides out smoothly from behind sleeve */}
+              <div
+                className={`absolute top-1/2 -translate-y-1/2 aspect-square rounded-full shadow-2xl z-0 pointer-events-none transition-all duration-700 ease-out ${
+                  isPlaying 
+                    ? "opacity-100 rotate-12" 
+                    : "opacity-0 rotate-0"
+                }`}
                 style={{
-                  perspective: 1000,
-                  width: `${isPlaying ? Math.round(dynamicSleeveSize * 1.38) : dynamicSleeveSize}px`,
-                  height: `${dynamicSleeveSize}px`
+                  width: `${Math.round(dynamicSleeveSize * 0.94)}px`,
+                  height: `${Math.round(dynamicSleeveSize * 0.94)}px`,
+                  right: isPlaying ? 0 : `${Math.round(dynamicSleeveSize * 0.03)}px`,
+                  background: "radial-gradient(circle, #25252a 0%, #16161a 50%, #0a0a0c 100%)",
+                  boxShadow: "0 25px 60px rgba(0,0,0,0.8), 0 0 35px rgba(0,0,0,0.6)",
+                  border: "2px solid rgba(255,255,255,0.08)"
                 }}
               >
-                {/* Vinyl Record that slides out smoothly from behind sleeve */}
-                <div
-                  className={`absolute right-0 top-1/2 -translate-y-1/2 aspect-square rounded-full shadow-2xl z-0 pointer-events-none transition-all duration-700 ease-out ${
-                    isPlaying 
-                      ? "translate-x-[38%] rotate-12 opacity-100" 
-                      : "translate-x-0 rotate-0 opacity-0"
-                  }`}
-                  style={{
-                    width: `${Math.round(dynamicSleeveSize * 0.94)}px`,
-                    height: `${Math.round(dynamicSleeveSize * 0.94)}px`,
-                    background: "radial-gradient(circle, #25252a 0%, #16161a 50%, #0a0a0c 100%)",
-                    boxShadow: "0 25px 60px rgba(0,0,0,0.8), 0 0 35px rgba(0,0,0,0.6)",
-                    border: "2px solid rgba(255,255,255,0.08)"
-                  }}
-                >
-                  {/* Vinyl Grooves Texture */}
-                  <div className="absolute inset-0 rounded-full vinyl-grooves opacity-95" />
-                  {/* Dynamic Vinyl Sheen */}
-                  <div className="absolute inset-0 rounded-full vinyl-sheen opacity-80" />
-                  {/* Spinning Center Label with Album Artwork */}
-                  <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[34%] aspect-square rounded-full overflow-hidden border-2 border-neutral-900 shadow-lg ${isPlaying ? "animate-spin-vinyl" : ""}`}>
-                    <img src={coverUrl} alt="" className="w-full h-full object-cover select-none pointer-events-none" />
-                    <div className="absolute inset-0 bg-black/15" />
-                    {/* Spindle hole */}
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-neutral-950 border border-neutral-400/80 shadow-inner" />
-                  </div>
+                {/* Vinyl Grooves Texture */}
+                <div className="absolute inset-0 rounded-full vinyl-grooves opacity-95" />
+                {/* Dynamic Vinyl Sheen */}
+                <div className="absolute inset-0 rounded-full vinyl-sheen opacity-80" />
+                {/* Spinning Center Label with Album Artwork */}
+                <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[34%] aspect-square rounded-full overflow-hidden border-2 border-neutral-900 shadow-lg ${isPlaying ? "animate-spin-vinyl" : ""}`}>
+                  <img src={coverUrl} alt="" className="w-full h-full object-cover select-none pointer-events-none" />
+                  <div className="absolute inset-0 bg-black/15" />
+                  {/* Spindle hole */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-neutral-950 border border-neutral-400/80 shadow-inner" />
                 </div>
-
-                {/* Main Album Jacket Card Frame with 3D Tilt (Real-Time Proportional Size) */}
-                <motion.div
-                  style={{
-                    width: `${dynamicSleeveSize}px`,
-                    height: `${dynamicSleeveSize}px`,
-                    rotateX: tilt.y,
-                    rotateY: tilt.x,
-                    transformStyle: "preserve-3d"
-                  }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  className={`aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 transition-transform duration-700 ease-out ${
-                    isPlaying ? "-translate-x-8 sm:-translate-x-12 md:-translate-x-14" : "translate-x-0"
-                  }`}
-                >
-                  <img
-                    src={coverUrl}
-                    alt={currentTrack?.album || "Cover"}
-                    className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
-                  />
-                  {/* Glass sheen highlight */}
-                  <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
-                </motion.div>
-
-                {/* Ambient Floor Shadow / Reflection */}
-                <div 
-                  className={`absolute -bottom-8 left-1/2 -translate-x-1/2 h-14 rounded-full blur-2xl pointer-events-none transition-all duration-700 ${
-                    isPlaying ? "opacity-80 scale-105" : "opacity-35 scale-95"
-                  }`}
-                  style={{
-                    width: `${Math.round(dynamicSleeveSize * 1.1)}px`,
-                    background: "radial-gradient(ellipse at center, var(--primary-glow, rgba(255,255,255,0.35)) 0%, rgba(0,0,0,0.9) 60%, transparent 80%)"
-                  }}
-                />
               </div>
 
-              {/* Prominent Studio Master Typography & Metadata (Fluid Dynamic Typography) */}
-              <div className="mt-5 sm:mt-6 flex flex-col items-center text-center max-w-3xl w-full px-2 z-10">
+              {/* Main Album Jacket Card Frame with 3D Tilt (Real-Time Proportional Size, 1:1 Square Lock) */}
+              <motion.div
+                style={{
+                  width: `${dynamicSleeveSize}px`,
+                  height: `${dynamicSleeveSize}px`,
+                  rotateX: tilt.y,
+                  rotateY: tilt.x,
+                  transformStyle: "preserve-3d"
+                }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className={`shrink-0 aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 transition-transform duration-700 ease-out ${
+                  isPlaying ? "self-start" : ""
+                }`}
+              >
+                <img
+                  src={coverUrl}
+                  alt={currentTrack?.album || "Cover"}
+                  className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
+                />
+                {/* Glass sheen highlight */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
+              </motion.div>
+
+              {/* Ambient Floor Shadow / Reflection */}
+              <div 
+                className={`absolute -bottom-8 left-1/2 -translate-x-1/2 h-14 rounded-full blur-2xl pointer-events-none transition-all duration-700 ${
+                  isPlaying ? "opacity-80 scale-105" : "opacity-35 scale-95"
+                }`}
+                style={{
+                  width: `${Math.round(dynamicSleeveSize * 1.1)}px`,
+                  background: "radial-gradient(ellipse at center, var(--primary-glow, rgba(255,255,255,0.35)) 0%, rgba(0,0,0,0.9) 60%, transparent 80%)"
+                }}
+              />
+            </div>
+
+            {/* Prominent Studio Master Typography & Metadata (Fluid Dynamic Typography) */}
+            <div className="mt-4 sm:mt-5 flex flex-col items-center text-center max-w-3xl w-full px-2 z-10 shrink-0">
                 <h1 
                   style={{ fontSize: `${titleFontSize}px` }}
                   className="font-extrabold tracking-tight text-white drop-shadow-md truncate max-w-full leading-snug transition-all"
@@ -519,7 +461,6 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                 </div>
               </div>
             </motion.div>
-          )
         )}
 
         {/* ─── MODE 2: ANALOG TURNTABLE (VINYL ONLY) ─── */}

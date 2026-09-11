@@ -16,6 +16,7 @@ export interface AppSettings {
   themeMode?: ThemeMode;
   enableAmbientGlow: boolean;
   enableGlassBlur: boolean;
+  enableMotionBlur: boolean;
   visualizerEnabled: boolean;
   dynamicTheme: boolean;
   autoScrobble: boolean;
@@ -35,6 +36,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   themeMode: "dark",
   enableAmbientGlow: true,
   enableGlassBlur: true,
+  enableMotionBlur: true,
   visualizerEnabled: true,
   dynamicTheme: true,
   autoScrobble: false,
@@ -788,6 +790,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       checked={settings.enableGlassBlur}
                       onChange={v => set("enableGlassBlur", v)}
                       label="Hardware Frosted Glass Blur"
+                    />
+                    <Toggle
+                      checked={settings.enableMotionBlur}
+                      onChange={v => set("enableMotionBlur", v)}
+                      label="Dynamic Velocity Motion Blur"
+                      description="Applies subtle directional blur during window resizing, divider dragging, and deck transitions for high-framerate fluid motion"
                     />
                     <Toggle
                       checked={settings.visualizerEnabled}

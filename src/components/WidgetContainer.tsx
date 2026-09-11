@@ -119,21 +119,21 @@ const WidgetCardItem = React.memo<WidgetCardItemProps>(({
 }) => {
   const dragControls = useDragControls();
 
-  // Dynamic height determination
+  // Dynamic height determination: prioritize Lyrics deck visibility
   const heightClass = isMinimized
     ? "shrink-0 h-auto"
     : isOnlyVisible
     ? "flex-1 min-h-0"
     : widgetId === "visualizer"
-    ? (visibleWidgets.includes("lyrics") && !hasSyncedLyrics
-        ? "flex-1 min-h-[200px]"
-        : "h-44 shrink-0")
+    ? (visibleWidgets.includes("lyrics") && hasAnyLyrics
+        ? "h-28 sm:h-32 shrink-0"
+        : "flex-1 min-h-[140px]")
     : widgetId === "lyrics"
-    ? (shouldLyricsCompact ? "h-36 shrink-0" : "flex-1 min-h-[200px]")
+    ? (shouldLyricsCompact ? "h-24 shrink-0" : "flex-1 min-h-[180px]")
     : widgetId === "queue"
-    ? (visibleWidgets.includes("lyrics") && !hasSyncedLyrics
-        ? "flex-1 min-h-[220px]"
-        : (visibleWidgets.includes("lyrics") ? "h-52 shrink-0" : "flex-1 min-h-0"))
+    ? (visibleWidgets.includes("lyrics") && hasAnyLyrics
+        ? "h-36 sm:h-40 shrink-0"
+        : "flex-1 min-h-[160px]")
     : "shrink-0 h-auto";
 
   return (
