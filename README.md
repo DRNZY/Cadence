@@ -12,7 +12,7 @@ A modern, high-fidelity studio desktop audio player, DSP acoustic engine, and sy
 ## Installation
 
 ### Releases
-Download pre-built packages for Linux (.deb, .AppImage), macOS (.dmg), and Windows (.exe) from [Releases](https://github.com/DRNZY/Cadence/releases/latest).
+Download pre-built packages for Android (.apk), Linux (.deb, .AppImage), macOS (.dmg), and Windows (.exe) from [Releases](https://github.com/DRNZY/Cadence/releases/latest).
 
 ### Flatpak
 Cadence is submitted to Flathub. To build or install locally:
