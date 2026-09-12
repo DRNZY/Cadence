@@ -31,3 +31,9 @@ out
 *.sw?
 archive/
 cli/test_soulseek*.py
+
+# Flatpak build artifacts
+.flatpak-builder/
+build-dir/
+repo/
+*.flatpak
