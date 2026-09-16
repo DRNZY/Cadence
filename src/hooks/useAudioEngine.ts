@@ -30,6 +30,8 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
   const scratchFilterRef = useRef<BiquadFilterNode | null>(null);
   const wasPlayingBeforeScratchRef = useRef<boolean>(false);
   const scratchAnimFrameRef = useRef<number | null>(null);
+  const freqArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const timeArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -659,16 +661,22 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
 
   const getFrequencyData = useCallback((): Uint8Array => {
     if (!analyserRef.current) return new Uint8Array(0);
-    const buffer = new Uint8Array(analyserRef.current.frequencyBinCount);
-    analyserRef.current.getByteFrequencyData(buffer);
-    return buffer;
+    const binCount = analyserRef.current.frequencyBinCount;
+    if (!freqArrayRef.current || freqArrayRef.current.length !== binCount) {
+      freqArrayRef.current = new Uint8Array(binCount);
+    }
+    analyserRef.current.getByteFrequencyData(freqArrayRef.current);
+    return freqArrayRef.current;
   }, []);
 
   const getTimeDomainData = useCallback((): Uint8Array => {
     if (!analyserRef.current) return new Uint8Array(0);
-    const buffer = new Uint8Array(analyserRef.current.frequencyBinCount);
-    analyserRef.current.getByteTimeDomainData(buffer);
-    return buffer;
+    const binCount = analyserRef.current.frequencyBinCount;
+    if (!timeArrayRef.current || timeArrayRef.current.length !== binCount) {
+      timeArrayRef.current = new Uint8Array(binCount);
+    }
+    analyserRef.current.getByteTimeDomainData(timeArrayRef.current);
+    return timeArrayRef.current;
   }, []);
 
   return {

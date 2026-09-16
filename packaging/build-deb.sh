@@ -48,7 +48,8 @@ Section: sound
 Priority: optional
 Architecture: $ARCH
 Depends: electron | nodejs (>= 18), ffmpeg
-Maintainer: Darnell
+Maintainer: DRNZY
+Homepage: https://github.com/DRNZY/Cadence
 Description: High-Fidelity Studio Linux Audio Player & Synced Karaoke Lyrics Engine
  Standalone native Linux audio engine with 32:9 and 16:9 Turntable UI,
  real-time 128-band FFT spectrum visualizer, analog vinyl deck,

@@ -102,13 +102,20 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
 
   // High-performance DOM-level continuous rotation for Vinyl & CD (0 React re-renders while spinning!)
   useEffect(() => {
+    if (!isPlaying) return;
+
     let animId: number;
 
     const tick = (now: number) => {
-      const delta = (now - lastTimeRef.current) / 1000;
+      if (document.hidden) {
+        animId = requestAnimationFrame(tick);
+        return;
+      }
+
+      const delta = Math.min((now - lastTimeRef.current) / 1000, 0.1);
       lastTimeRef.current = now;
 
-      if (isPlaying && !isScratchingRef.current) {
+      if (!isScratchingRef.current) {
         // 33.3 RPM is 200 deg/sec at 1.0x speed
         const speedMultiplier = playbackRate;
         const degPerSec = 200 * speedMultiplier;
@@ -128,7 +135,18 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
 
     lastTimeRef.current = performance.now();
     animId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animId);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        lastTimeRef.current = performance.now();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [isPlaying, playbackRate]);
 
   // Tone arm angle for Vinyl only: 0deg = rested on cradle, 21deg to 37deg across the record

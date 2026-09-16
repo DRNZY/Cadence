@@ -31,8 +31,11 @@ if (!gotTheLock) {
   });
 }
 
-// Clean Linux flags for Wayland & X11 compatibility
+// Clean Linux flags for Wayland & X11 compatibility, GPU acceleration, and low memory footprint
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+app.commandLine.appendSwitch("enable-gpu-rasterization");
+app.commandLine.appendSwitch("enable-zero-copy");
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=256");
 
 function checkUrl(url) {
   return new Promise((resolve) => {
@@ -119,7 +122,9 @@ async function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: true
+      webSecurity: true,
+      spellcheck: false,
+      backgroundThrottling: true
     }
   });
 

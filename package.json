@@ -3,7 +3,7 @@
   "productName": "Cadence",
   "version": "3.0.0",
   "description": "High-Fidelity Studio Audio Player & Synced Karaoke Lyrics Engine",
-  "author": "Darnell",
+  "author": "DRNZY",
   "license": "MIT",
   "main": "electron/main.cjs",
   "type": "module",

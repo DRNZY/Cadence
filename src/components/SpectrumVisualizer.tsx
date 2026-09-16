@@ -79,7 +79,49 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
       return "#38bdf8";
     };
 
+    const drawRestingState = () => {
+      ctx.clearRect(0, 0, width, height);
+      if (visualizerMode === "bars") {
+        const numBars = Math.min(64, Math.max(28, Math.floor(width / 11)));
+        const barWidth = (width / numBars) * 0.68;
+        const gap = (width / numBars) * 0.32;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        for (let i = 0; i < numBars; i++) {
+          const x = i * (barWidth + gap) + gap / 2;
+          ctx.beginPath();
+          ctx.roundRect(x, height - 3, barWidth, 3, [1.5, 1.5, 0, 0]);
+          ctx.fill();
+        }
+      } else if (visualizerMode === "wave" || visualizerMode === "oscilloscope") {
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+      } else if (visualizerMode === "radial") {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = Math.min(width, height) * 0.28;
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    };
+
+    if (!isPlaying) {
+      drawRestingState();
+      return;
+    }
+
     const render = (now: number) => {
+      if (document.hidden) {
+        animId = requestAnimationFrame(render);
+        return;
+      }
+
       // Throttle to 60 FPS max
       if (now - lastRenderTime < 16) {
         animId = requestAnimationFrame(render);
@@ -104,10 +146,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
 
         for (let i = 0; i < numBars; i++) {
           const freqIndex = Math.floor((i / numBars) * (freqData.length * 0.85));
-          let val = freqData[freqIndex] || 0;
-          if (!isPlaying) {
-            val = Math.max(3, Math.round((Math.sin(now * 0.002 + i * 0.22) * 0.5 + 0.5) * 25));
-          }
+          const val = freqData[freqIndex] || 0;
           const barHeight = Math.max(3, (val / 255) * (height - 10));
           const x = i * (barWidth + gap) + gap / 2;
           const y = height - barHeight;
@@ -141,10 +180,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         let x = 0;
 
         for (let i = 0; i < timeData.length; i++) {
-          let v = (timeData[i] || 128) / 128.0;
-          if (!isPlaying) {
-            v = 1.0 + Math.sin(now * 0.0025 + i * 0.12) * 0.08;
-          }
+          const v = (timeData[i] || 128) / 128.0;
           const y = (v * height) / 2;
 
           if (i === 0) ctx.moveTo(x, y);
@@ -163,10 +199,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         ctx.beginPath();
         const step = Math.max(1, Math.floor(timeData.length / width));
         for (let i = 0; i < width; i++) {
-          let val = timeData[i * step] || 128;
-          if (!isPlaying) {
-            val = 128 + Math.round(Math.sin(now * 0.003 + i * 0.035) * 14);
-          }
+          const val = timeData[i * step] || 128;
           const y = (val / 255) * height;
           if (i === 0) ctx.moveTo(i, y);
           else ctx.lineTo(i, y);
@@ -183,10 +216,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         for (let i = 0; i < bars; i++) {
           const rad = (i * 2 * Math.PI) / bars;
           const freqIndex = Math.floor((i / bars) * (freqData.length * 0.8));
-          let val = freqData[freqIndex] || 0;
-          if (!isPlaying) {
-            val = Math.round((Math.sin(now * 0.002 + i * 0.25) * 0.5 + 0.5) * 20);
-          }
+          const val = freqData[freqIndex] || 0;
           const barLen = (val / 255) * (Math.min(width, height) * 0.2) + 3;
 
           const x1 = centerX + Math.cos(rad) * radius;
@@ -207,7 +237,18 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
     };
 
     animId = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(animId);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isPlaying) {
+        lastRenderTime = performance.now();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [isPlaying, visualizerMode, getFrequencyData, getTimeDomainData, accentColor, size]);
 
   return (

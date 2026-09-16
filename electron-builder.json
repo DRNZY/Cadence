@@ -17,9 +17,10 @@
       "tar.gz",
       "deb"
     ],
-    "maintainer": "Darnell <darnell.dijksteel@gmail.com>",
+    "category": "AudioVideo",
+    "maintainer": "DRNZY <darnell.dijksteel@gmail.com>",
+    "synopsis": "Studio Hi-Fi Linux Audio Engine",
     "icon": "packaging/cadence.png",
-    "category": "Audio",
     "mimeTypes": [
       "audio/flac",
       "audio/mpeg",
