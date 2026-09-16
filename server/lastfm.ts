@@ -9,9 +9,9 @@ export const lastFmRouter = express.Router();
 const USER_DATA_DIR = path.join(process.env.HOME || os.homedir(), ".config", "cadence");
 const LASTFM_CONFIG_FILE = path.join(USER_DATA_DIR, "lastfm.json");
 
-// Default Community Scrobbler credentials (users can override with their own developer key)
-const DEFAULT_API_KEY = "b25b959554ed76058ac220b7b2e0a026";
-const DEFAULT_API_SECRET = "425b42d1350d7720119518b9f0456de1";
+// Default Community Scrobbler credentials (users configure their own developer key/secret or set env)
+const DEFAULT_API_KEY = process.env.LASTFM_API_KEY || "b25b959554ed76058ac220b7b2e0a026";
+const DEFAULT_API_SECRET = process.env.LASTFM_API_SECRET || "";
 const LASTFM_API_URL = "https://ws.audioscrobbler.com/2.0/";
 
 export interface LastFmConfig {
@@ -80,6 +80,10 @@ export async function callLastFm(method: string, params: Record<string, any> = {
   const apiKey = getActiveApiKey(params.apiKey);
   const apiSecret = getActiveSecret(params.apiSecret);
 
+  if (!apiSecret && method !== "auth.getToken") {
+    throw new Error("Last.fm API Secret is required. Please set LASTFM_API_SECRET or configure your API Key and Secret in Settings.");
+  }
+
   // Clean params
   delete params.apiKey;
   delete params.apiSecret;
@@ -140,7 +144,16 @@ lastFmRouter.post("/config", (req, res) => {
   if (typeof scrobblePercentage === "number") lastFmConfig.scrobblePercentage = scrobblePercentage;
 
   saveLastFmConfig(lastFmConfig);
-  res.json({ success: true, config: lastFmConfig });
+  res.json({
+    success: true,
+    config: {
+      enabled: lastFmConfig.enabled,
+      username: lastFmConfig.username || null,
+      hasSession: Boolean(lastFmConfig.sessionKey),
+      apiKey: lastFmConfig.apiKey || "",
+      scrobblePercentage: lastFmConfig.scrobblePercentage || 50
+    }
+  });
 });
 
 // POST /api/lastfm/auth/mobile (Authenticate using Username & Password)

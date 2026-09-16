@@ -28,6 +28,8 @@ const isPrivateIpOrigin = (origin: string): boolean => {
     return (
       host === "localhost" ||
       host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "[::1]" ||
       host.startsWith("192.168.") ||
       host.startsWith("10.") ||
       /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
@@ -48,6 +50,16 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
   allowedHeaders: ["Range", "Accept-Ranges", "Content-Type", "Origin", "X-Requested-With"]
 }));
+
+// Origin Validation Defense for cross-site requests
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !origin.startsWith("file://") && !origin.startsWith("vscode-webview://") && !isPrivateIpOrigin(origin)) {
+    return res.status(403).json({ error: "Access denied by Cadence origin policy" });
+  }
+  next();
+});
+
 app.use(express.json({ limit: "10mb" }));
 app.use("/api/lastfm", lastFmRouter);
 
@@ -437,6 +449,7 @@ async function extractMetadata(filePath: string): Promise<Partial<Track>> {
       "-print_format", "json",
       "-show_format",
       "-show_streams",
+      "--",
       filePath
     ]);
     const data = JSON.parse(stdout);
@@ -684,15 +697,20 @@ app.get("/api/playlists", (_req, res) => {
 
 app.post("/api/playlists", (req, res) => {
   const { name, description, trackIds } = req.body;
-  if (!name || typeof name !== "string") {
-    return res.status(400).json({ error: "Playlist name is required" });
+  if (!name || typeof name !== "string" || name.trim().length === 0 || name.length > 255) {
+    return res.status(400).json({ error: "Valid playlist name (max 255 chars) is required" });
   }
+  const cleanDescription = typeof description === "string" ? description.slice(0, 2000).trim() : "";
+  const cleanTrackIds = Array.isArray(trackIds)
+    ? trackIds.filter((id): id is string => typeof id === "string" && id.length <= 1024).slice(0, 10000)
+    : [];
+
   const playlists = loadPlaylists();
   const newPlaylist: Playlist = {
     id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     name: name.trim(),
-    description: (description || "").trim(),
-    trackIds: Array.isArray(trackIds) ? trackIds : [],
+    description: cleanDescription,
+    trackIds: cleanTrackIds,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -712,11 +730,17 @@ app.put("/api/playlists/:id", (req, res) => {
     return res.status(404).json({ error: "Playlist not found" });
   }
   const existing = playlists[index];
+  const cleanName = (typeof name === "string" && name.trim().length > 0) ? name.slice(0, 255).trim() : existing.name;
+  const cleanDesc = typeof description === "string" ? description.slice(0, 2000).trim() : existing.description;
+  const cleanTrackIds = Array.isArray(trackIds)
+    ? trackIds.filter((t): t is string => typeof t === "string" && t.length <= 1024).slice(0, 10000)
+    : existing.trackIds;
+
   const updated: Playlist = {
     ...existing,
-    name: name !== undefined ? name.trim() : existing.name,
-    description: description !== undefined ? description.trim() : existing.description,
-    trackIds: Array.isArray(trackIds) ? trackIds : existing.trackIds,
+    name: cleanName,
+    description: cleanDesc,
+    trackIds: cleanTrackIds,
     updatedAt: Date.now()
   };
   playlists[index] = updated;
@@ -751,8 +775,8 @@ app.post("/api/favorites", (req, res) => {
   let favorites = loadFavorites();
 
   if (Array.isArray(newFavorites)) {
-    favorites = Array.from(new Set(newFavorites));
-  } else if (trackId && typeof trackId === "string") {
+    favorites = Array.from(new Set(newFavorites.filter((id): id is string => typeof id === "string" && id.length <= 1024))).slice(0, 20000);
+  } else if (trackId && typeof trackId === "string" && trackId.length <= 1024) {
     if (action === "remove") {
       favorites = favorites.filter(id => id !== trackId);
     } else if (action === "add") {
@@ -844,12 +868,38 @@ app.get("/api/settings", (_req, res) => {
   res.json({ settings: null });
 });
 
+function sanitizeSettingsObject(obj: any): Record<string, any> {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+  const clean: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
+    if (typeof k !== "string" || k.length > 64) continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean" || v === null) {
+      if (typeof v === "string" && v.length > 4096) continue;
+      clean[k] = v;
+    } else if (Array.isArray(v)) {
+      clean[k] = v.filter(item => typeof item === "string" || typeof item === "number" || typeof item === "boolean").slice(0, 1000);
+    } else if (typeof v === "object" && v !== null) {
+      clean[k] = sanitizeSettingsObject(v);
+    }
+  }
+  return clean;
+}
+
 app.post("/api/settings", (req, res) => {
   try {
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      return res.status(400).json({ error: "Invalid settings payload" });
+    }
+    const cleanSettings = sanitizeSettingsObject(req.body);
+    const serialized = JSON.stringify(cleanSettings, null, 2);
+    if (serialized.length > 512 * 1024) {
+      return res.status(413).json({ error: "Settings payload exceeds allowable limit (512KB)" });
+    }
     if (!fs.existsSync(USER_DATA_DIR)) {
       fs.mkdirSync(USER_DATA_DIR, { recursive: true });
     }
-    atomicWriteFileSync(SETTINGS_FILE, JSON.stringify(req.body, null, 2));
+    atomicWriteFileSync(SETTINGS_FILE, serialized);
     res.json({ success: true });
   } catch (err) {
     console.error("[Cadence Server] Error saving settings:", err);
@@ -922,9 +972,23 @@ app.post("/api/lyrics/save", async (req, res) => {
     return res.status(400).json({ error: "Missing required artist, title, or lyrics content" });
   }
 
+  if (typeof artist !== "string" || typeof title !== "string") {
+    return res.status(400).json({ error: "Artist and title must be strings" });
+  }
+  if (artist.length > 255 || title.length > 255) {
+    return res.status(400).json({ error: "Artist or title parameter exceeds length limit" });
+  }
+  const content = lrc || plain;
+  if (typeof content !== "string") {
+    return res.status(400).json({ error: "Lyrics content must be a string" });
+  }
+  if (content.length > 131072) {
+    return res.status(413).json({ error: "Lyrics content exceeds maximum allowed size (128KB)" });
+  }
+
   try {
     const cacheFile = getCacheKey(artist, title);
-    fs.writeFileSync(cacheFile, lrc || plain, "utf-8");
+    fs.writeFileSync(cacheFile, content, "utf-8");
     const lines = lrc ? parseLrc(lrc) : plain.split(/\r?\n/).map((text: string, idx: number) => ({ time: idx * 4, text }));
     res.json({ status: "ok", cached: true, synced: !!lrc, lines });
   } catch (err: any) {
@@ -971,12 +1035,19 @@ app.get("/stream", (req, res) => {
     const parts = range.replace(/bytes=/, "").split("-");
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    const chunksize = end - start + 1;
-    const file = fs.createReadStream(filePath, { start, end });
+
+    if (isNaN(start) || isNaN(end) || start < 0 || end < start || start >= fileSize) {
+      res.setHeader("Content-Range", `bytes */${fileSize}`);
+      return res.status(416).send("Requested range not satisfiable");
+    }
+
+    const safeEnd = Math.min(end, fileSize - 1);
+    const chunksize = safeEnd - start + 1;
+    const file = fs.createReadStream(filePath, { start, end: safeEnd });
     req.on("close", () => file.destroy());
     
     res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+      "Content-Range": `bytes ${start}-${safeEnd}/${fileSize}`,
       "Accept-Ranges": "bytes",
       "Content-Length": chunksize,
       "Content-Type": contentType,
