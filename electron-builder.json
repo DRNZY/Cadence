@@ -1,5 +1,5 @@
 {
-  "appId": "com.darnell.cadence",
+  "appId": "io.github.drnzy.cadence",
   "productName": "Cadence",
   "directories": {
     "output": "release"
