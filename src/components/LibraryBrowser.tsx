@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, User, Play, Plus, Mic2, FolderSync, ListMusic, Download, Upload, Trash2, ShieldCheck, Heart } from "lucide-react";
 import { Track, Playlist } from "../types";
+import { getTrackCoverUrl } from "../utils/formatters";
 
 interface LibraryBrowserProps {
   tracks: Track[];
@@ -479,9 +480,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
           <div className="space-y-1 pb-8">
             {filteredTracks.map(t => {
               const isSelected = currentTrack?.id === t.id;
-              const coverUrl = t.coverPath
-                ? `/covers?path=${encodeURIComponent(t.coverPath)}`
-                : `/covers`;
+              const coverUrl = getTrackCoverUrl(t);
 
               return (
                 <div
@@ -819,9 +818,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
               <div className="space-y-1">
                 {likedTracks.map((t, idx) => {
                   const isSelected = currentTrack?.id === t.id;
-                  const coverUrl = t.coverPath
-                    ? `/covers?path=${encodeURIComponent(t.coverPath)}`
-                    : `/covers`;
+                  const coverUrl = getTrackCoverUrl(t);
 
                   return (
                     <div

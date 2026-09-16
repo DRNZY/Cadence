@@ -23,3 +23,24 @@ export function formatFileSize(bytes: number): string {
   const mb = bytes / (1024 * 1024);
   return `${mb.toFixed(1)} MB`;
 }
+
+export function getTrackCoverUrl(
+  track?: { coverPath?: string; artist?: string; album?: string; title?: string } | null,
+  accent?: string
+): string {
+  if (!track) {
+    return `/covers${accent ? `?accent=${encodeURIComponent(accent)}` : ""}`;
+  }
+  if (track.coverPath) {
+    return `/covers?path=${encodeURIComponent(track.coverPath)}`;
+  }
+  const params = new URLSearchParams();
+  if (track.artist) params.set("artist", track.artist);
+  if (track.album) params.set("album", track.album);
+  if (track.title) params.set("title", track.title);
+  if (accent) params.set("accent", accent);
+
+  const qs = params.toString();
+  return qs ? `/covers?${qs}` : `/covers`;
+}
+

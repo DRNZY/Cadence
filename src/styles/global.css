@@ -114,7 +114,8 @@ body {
 
 /* ---------- LIGHT MODE THEME OVERRIDES ---------- */
 :root.light,
-body.light {
+body.light,
+[data-theme="light"] {
   --m3-surface: #f8fafc;
   --m3-surface-dim: #f1f5f9;
   --m3-surface-container: #ffffff;
@@ -122,13 +123,15 @@ body.light {
   --m3-on-surface: #0f172a;
   --m3-on-surface-variant: #475569;
   --m3-outline: rgb(0 0 0 / 0.08);
-  --m3-primary: #6366f1;
+  --m3-primary: #4f46e5;
   --m3-on-primary: #ffffff;
   --m3-primary-container: #e0e7ff;
-  --m3-secondary-container: rgb(99 102 241 / 0.12);
+  --m3-secondary-container: rgb(79 70 229 / 0.12);
 
-  --ambient-1: #c7d2fe;
-  --ambient-2: #e2e8f0;
+  --ambient-1: #e0e7ff;
+  --ambient-2: #f1f5f9;
+  --ambient-3: #e2e8f0;
+  --theme-tertiary: #cbd5e1;
 }
 
 body.light {
@@ -142,11 +145,11 @@ body.light #app-root {
 }
 
 .light .glass-panel {
-  background: rgba(255, 255, 255, 0.84) !important;
-  backdrop-filter: blur(24px) saturate(1.6);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  border: 1px solid rgba(0, 0, 0, 0.09) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03) !important;
   color: #0f172a !important;
 }
 
@@ -168,32 +171,69 @@ body.light #app-root {
   color: #0f172a !important;
 }
 
+.light .dock-integrated,
+.light footer .dock-integrated,
+.light .bg-neutral-950\/80,
+.light .bg-neutral-950\/90,
+.light .bg-neutral-950\/70,
+.light .bg-neutral-950 {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(0, 0, 0, 0.09) !important;
+  color: #0f172a !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important;
+}
+
+.light .cadence-play-button {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25) !important;
+}
+
+.light .cadence-play-button svg {
+  fill: #ffffff !important;
+  color: #ffffff !important;
+}
+
 .light .text-white {
   color: #0f172a !important;
 }
 
+.light .cadence-play-button .text-white,
+.light .bg-primary .text-white,
+.light .bg-black .text-white,
+.light .bg-neutral-900 .text-white,
+.light .keep-white {
+  color: #ffffff !important;
+}
+
 .light .text-neutral-200,
 .light .text-neutral-300,
-.light .text-white\/70 {
+.light .text-white\/70,
+.light .text-white\/90 {
   color: #334155 !important;
 }
 
 .light .text-neutral-400,
 .light .text-neutral-500,
-.light .text-white\/40 {
+.light .text-white\/40,
+.light .text-white\/50 {
   color: #64748b !important;
 }
 
+.light .bg-black\/20,
+.light .bg-black\/30,
 .light .bg-black\/40,
 .light .bg-black\/50,
 .light .bg-black\/60,
-.light .bg-black\/70 {
+.light .bg-black\/70,
+.light .bg-black\/80 {
   background-color: rgba(0, 0, 0, 0.04) !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
 .light .bg-white\/5,
 .light .bg-white\/10,
+.light .bg-white\/15,
 .light .bg-white\/20,
 .light .bg-white\/\[0\.02\],
 .light .bg-white\/\[0\.03\],
@@ -201,22 +241,23 @@ body.light #app-root {
 .light .bg-white\/\[0\.05\],
 .light .bg-white\/\[0\.07\] {
   background-color: rgba(0, 0, 0, 0.04) !important;
-  border-color: rgba(0, 0, 0, 0.06) !important;
+  border-color: rgba(0, 0, 0, 0.07) !important;
 }
 
 .light .border-white\/5,
 .light .border-white\/10,
 .light .border-white\/15,
-.light .border-white\/20 {
+.light .border-white\/20,
+.light .border-white\/30 {
   border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
 .light .lyrics-gradient-top {
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.95), transparent) !important;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.75), transparent) !important;
 }
 
 .light .lyrics-gradient-bottom {
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.95), transparent) !important;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.75), transparent) !important;
 }
 
 .light input[type="text"],
@@ -224,7 +265,7 @@ body.light #app-root {
 .light input[type="password"] {
   color: #0f172a !important;
   background-color: rgba(0, 0, 0, 0.04) !important;
-  border-color: rgba(0, 0, 0, 0.1) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
 }
 
 .light input::placeholder {
@@ -240,6 +281,7 @@ body.light #app-root {
   background: rgba(255, 255, 255, 0.97) !important;
   border-color: rgba(0, 0, 0, 0.1) !important;
   box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.18) !important;
+  color: #0f172a !important;
 }
 
 .dock-integrated {

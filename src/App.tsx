@@ -20,6 +20,7 @@ import { EqualizerModal } from "./components/EqualizerModal";
 import { SettingsModal, loadSettings } from "./components/SettingsModal";
 import { SleepTimerModal } from "./components/SleepTimerModal";
 import type { AppSettings } from "./components/SettingsModal";
+import { getTrackCoverUrl } from "./utils/formatters";
 
 function findBestTrackMatch(all: Track[], query: string): Track | null {
   if (!query || all.length === 0) return null;
@@ -584,6 +585,18 @@ export const App: React.FC = () => {
     fetchLibrary();
   }, [fetchLibrary]);
 
+  // Sync Light/Dark appearance mode with document root
+  useEffect(() => {
+    const isLight = settings.themeMode === "light";
+    document.documentElement.classList.toggle("light", isLight);
+    document.body.classList.toggle("light", isLight);
+    if (isLight) {
+      document.documentElement.setAttribute("data-theme", "light");
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+  }, [settings.themeMode]);
+
   // Dynamic Ambient Theme Color Extraction
   useEffect(() => {
     if (!settings.dynamicTheme || !audioEngine.currentTrack) {
@@ -605,9 +618,7 @@ export const App: React.FC = () => {
       return;
     }
 
-    const coverUrl = audioEngine.currentTrack.coverPath
-      ? `/covers?path=${encodeURIComponent(audioEngine.currentTrack.coverPath)}`
-      : `/covers?artist=${encodeURIComponent(audioEngine.currentTrack.artist)}&album=${encodeURIComponent(audioEngine.currentTrack.album)}&title=${encodeURIComponent(audioEngine.currentTrack.title)}`;
+    const coverUrl = getTrackCoverUrl(audioEngine.currentTrack);
 
     extractColors(coverUrl).then(colors => {
       applyThemeColors(colors);
@@ -841,7 +852,10 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className="flex h-screen w-screen text-white relative overflow-hidden select-none"
+      id="app-root"
+      className={`flex h-screen w-screen relative overflow-hidden select-none transition-colors duration-500 ${
+        settings.themeMode === "light" ? "light text-slate-900" : "text-white"
+      }`}
       style={{
         background: isCinemaMode
           ? "#000000"

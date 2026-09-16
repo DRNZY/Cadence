@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from "react";
 import { ListMusic, Trash2, ArrowUp, ArrowDown, X, Play, Music } from "lucide-react";
 import { Track } from "../types";
-import { formatBitrate } from "../utils/formatters";
+import { formatBitrate, getTrackCoverUrl } from "../utils/formatters";
 
 interface QueueDrawerProps {
   queue: Track[];
@@ -89,7 +89,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = React.memo(({
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl overflow-hidden bg-black/40 shrink-0 border border-primary/20">
               <img
-                src={currentTrack.coverPath ? `/covers?path=${encodeURIComponent(currentTrack.coverPath)}` : `/covers`}
+                src={getTrackCoverUrl(currentTrack)}
                 alt=""
                 loading="lazy"
                 decoding="async"

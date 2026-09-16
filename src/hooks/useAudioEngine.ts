@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { Track, DspSettings } from "../types";
+import { getTrackCoverUrl } from "../utils/formatters";
 
 export const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -306,9 +307,7 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
 
     // Update MediaSession Metadata & Desktop Notifications
     if ("mediaSession" in navigator) {
-      const coverUrl = track.coverPath
-        ? `/covers?path=${encodeURIComponent(track.coverPath)}`
-        : `/covers`;
+      const coverUrl = getTrackCoverUrl(track);
 
       navigator.mediaSession.metadata = new MediaMetadata({
         title: track.title,

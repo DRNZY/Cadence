@@ -14,6 +14,7 @@ import {
   Disc3
 } from "lucide-react";
 import { Track, PlayerBarPosition, PlayerBarStyle } from "../types";
+import { getTrackCoverUrl } from "../utils/formatters";
 
 interface ControlBarProps {
   currentTrack: Track | null;
@@ -89,20 +90,18 @@ export const ControlBar: React.FC<ControlBarProps> = ({
     setHoverSeekTime(ratio * duration);
   };
 
-  const coverUrl = currentTrack?.coverPath
-    ? `/covers?path=${encodeURIComponent(currentTrack.coverPath)}`
-    : `/covers`;
+  const coverUrl = getTrackCoverUrl(currentTrack);
 
   // ─── LEFT SIDEBAR POSITION ───
   if (position === "left") {
     return (
       <div className="h-full w-20 flex flex-col items-center justify-between py-4 px-2 bg-neutral-950/90 border-r border-white/10 backdrop-blur-2xl z-30 shrink-0 select-none">
         {/* Top: Mini Art */}
-        <div className="relative w-12 h-12 rounded-2xl overflow-hidden bg-black/60 border border-white/15 shadow-md">
-          <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+        <div className="relative w-12 h-12 rounded-2xl overflow-hidden bg-black/60 border border-white/15 shadow-md group">
+          <img src={coverUrl} alt={currentTrack?.title || "Cover Art"} className="w-full h-full object-cover" />
           {isPlaying && (
-            <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-              <Disc3 className="w-5 h-5 text-white animate-spin" />
+            <div className="absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full bg-black/70 backdrop-blur-sm border border-white/20 flex items-center justify-center shadow">
+              <Disc3 className="w-2.5 h-2.5 text-primary animate-spin" />
             </div>
           )}
         </div>
@@ -208,11 +207,11 @@ export const ControlBar: React.FC<ControlBarProps> = ({
       <div className={`dock-integrated ${barClasses} flex items-center justify-between transition-all duration-300`}>
         {/* Left: Track Info & Mini Art */}
         <div className={`flex items-center space-x-3 w-72 md:w-80 min-w-0 transition-opacity duration-300 ${isCinemaMode ? "opacity-75 hover:opacity-100" : "opacity-100"}`}>
-          <div className="relative w-11 h-11 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0 shadow-md">
-            <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+          <div className="relative w-11 h-11 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0 shadow-md group">
+            <img src={coverUrl} alt={currentTrack?.title || "Album Art"} className="w-full h-full object-cover" />
             {isPlaying && (
-              <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                <Disc3 className="w-5 h-5 text-white animate-spin" />
+              <div className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-black/70 backdrop-blur-sm border border-white/20 flex items-center justify-center shadow">
+                <Disc3 className="w-2.5 h-2.5 text-primary animate-spin" />
               </div>
             )}
           </div>
@@ -260,13 +259,13 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={onTogglePlay}
-              className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
+              className="cadence-play-button w-10 h-10 md:w-11 md:h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
               title={isPlaying ? "Pause" : "Play"}
             >
               {isPlaying ? (
-                <Pause className="w-4 h-4 md:w-5 md:h-5 fill-black" />
+                <Pause className="w-4 h-4 md:w-5 md:h-5 fill-current" />
               ) : (
-                <Play className="w-4 h-4 md:w-5 md:h-5 fill-black ml-0.5" />
+                <Play className="w-4 h-4 md:w-5 md:h-5 fill-current ml-0.5" />
               )}
             </motion.button>
 

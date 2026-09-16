@@ -79,13 +79,18 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
       return "#38bdf8";
     };
 
+    const isLight = document.documentElement.classList.contains("light");
+    const restingFill = isLight ? "rgba(0, 0, 0, 0.12)" : "rgba(255, 255, 255, 0.08)";
+    const restingStroke = isLight ? "rgba(0, 0, 0, 0.18)" : "rgba(255, 255, 255, 0.12)";
+    const peakCapColor = isLight ? "rgba(0, 0, 0, 0.75)" : "rgba(255, 255, 255, 0.9)";
+
     const drawRestingState = () => {
       ctx.clearRect(0, 0, width, height);
       if (visualizerMode === "bars") {
         const numBars = Math.min(64, Math.max(28, Math.floor(width / 11)));
         const barWidth = (width / numBars) * 0.68;
         const gap = (width / numBars) * 0.32;
-        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.fillStyle = restingFill;
         for (let i = 0; i < numBars; i++) {
           const x = i * (barWidth + gap) + gap / 2;
           ctx.beginPath();
@@ -94,7 +99,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         }
       } else if (visualizerMode === "wave" || visualizerMode === "oscilloscope") {
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.strokeStyle = restingStroke;
         ctx.beginPath();
         ctx.moveTo(0, height / 2);
         ctx.lineTo(width, height / 2);
@@ -104,7 +109,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
         const centerY = height / 2;
         const radius = Math.min(width, height) * 0.28;
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.strokeStyle = restingStroke;
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         ctx.stroke();
@@ -165,7 +170,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
 
           // Peak cap indicator
           const peakY = height - Math.max(3, ((peaks[i] || 0) / 255) * (height - 10)) - 2;
-          ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+          ctx.fillStyle = peakCapColor;
           ctx.fillRect(x, peakY, barWidth, 1.5);
         }
       } else if (visualizerMode === "wave") {
