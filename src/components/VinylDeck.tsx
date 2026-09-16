@@ -54,13 +54,13 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   const cdDiscRef = useRef<HTMLDivElement | null>(null);
   const rotationAngleRef = useRef<number>(0);
   const cdAngleRef = useRef<number>(0);
-  const lastTimeRef = useRef<number>(performance.now());
+  const lastTimeRef = useRef<number>(0);
   const scratchStartAngleRef = useRef<number>(0);
   const scratchCenterRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const deckRef = useRef<HTMLDivElement>(null);
 
   // Scratch physics tracking
-  const lastMoveTimeRef = useRef<number>(performance.now());
+  const lastMoveTimeRef = useRef<number>(0);
   const lastAngleRef = useRef<number>(0);
   const smoothVelocityRef = useRef<number>(0);
   const isScratchingRef = useRef<boolean>(false);

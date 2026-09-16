@@ -27,8 +27,7 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
   const compressorRef = useRef<DynamicsCompressorNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const isNodesConnectedRef = useRef<boolean>(false);
-  const scratchNoiseGainRef = useRef<GainNode | null>(null);
-  const scratchFilterRef = useRef<BiquadFilterNode | null>(null);
+  const filterFxRef = useRef<BiquadFilterNode | null>(null);
   const wasPlayingBeforeScratchRef = useRef<boolean>(false);
   const scratchAnimFrameRef = useRef<number | null>(null);
   const freqArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
@@ -43,6 +42,19 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [eqGains, setEqGains] = useState<number[]>(new Array(10).fill(0));
   const [isLoading, setIsLoading] = useState(false);
+  const [baseBpm, setBaseBpm] = useState<number>(120.0);
+  const [pitchRange, setPitchRange] = useState<6 | 10 | 16 | 50>(10);
+  const [keyLock, setKeyLockState] = useState<boolean>(true);
+  const [colorFilter, setColorFilterState] = useState<number>(0);
+  const [hotCues, setHotCues] = useState<(number | null)[]>(new Array(8).fill(null));
+  const [beatLoop, setBeatLoopState] = useState<{ active: boolean; start: number; end: number; beats: number }>({
+    active: false,
+    start: 0,
+    end: 0,
+    beats: 4
+  });
+  const loopRef = useRef(beatLoop);
+  loopRef.current = beatLoop;
 
   // DSP Settings State
   const [dspSettings, setDspSettings] = useState<DspSettings>(() => {
@@ -155,6 +167,15 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
           prevNode.connect(f);
           prevNode = f;
         }
+
+        // Color FX Filter Node (DJ LPF / HPF sweep)
+        const filterFx = ctx.createBiquadFilter();
+        filterFx.type = "allpass";
+        filterFx.frequency.value = 20000;
+        filterFxRef.current = filterFx;
+        prevNode.connect(filterFx);
+        prevNode = filterFx;
+
         prevNode.connect(analyser);
         analyser.connect(gain);
         gain.connect(compressor);
@@ -173,9 +194,17 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     audio.crossOrigin = "anonymous";
     audio.preload = "auto";
     audio.volume = volume;
+    audio.preservesPitch = keyLock;
     audioRef.current = audio;
 
     const handleTimeUpdate = () => {
+      if (loopRef.current.active && loopRef.current.end > loopRef.current.start) {
+        if (audio.currentTime >= loopRef.current.end) {
+          audio.currentTime = loopRef.current.start;
+          setCurrentTime(loopRef.current.start);
+          return;
+        }
+      }
       setCurrentTime(audio.currentTime);
 
       // MediaSession position sync
@@ -461,152 +490,137 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     setDspSettings(prev => ({ ...prev, ...newSettings }));
   }, []);
 
-  // Setup Vinyl Scratch Noise Graph
-  const initScratchSynth = useCallback(() => {
-    if (!audioCtxRef.current) return;
-    const ctx = audioCtxRef.current;
-    if (scratchNoiseGainRef.current) return;
+  // Precision DJ Tempo / BPM controls
+  const setPitchPercent = useCallback((percent: number) => {
+    const rate = Math.max(0.1, Math.min(3.0, 1.0 + percent / 100));
+    setSpeed(rate);
+  }, [setSpeed]);
 
-    try {
-      // 1-second pink noise buffer for realistic vinyl needle friction
-      const bufferSize = ctx.sampleRate;
-      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const output = noiseBuffer.getChannelData(0);
-      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-      for (let i = 0; i < bufferSize; i++) {
-        const white = Math.random() * 2 - 1;
-        b0 = 0.99886 * b0 + white * 0.0555179;
-        b1 = 0.99332 * b1 + white * 0.0750759;
-        b2 = 0.96900 * b2 + white * 0.1538520;
-        b3 = 0.86650 * b3 + white * 0.3104856;
-        b4 = 0.55000 * b4 + white * 0.5329522;
-        b5 = -0.7616 * b5 - white * 0.0168980;
-        output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.12;
-        b6 = white * 0.115926;
-      }
-
-      const whiteNoise = ctx.createBufferSource();
-      whiteNoise.buffer = noiseBuffer;
-      whiteNoise.loop = true;
-
-      // Bandpass filter centered at needle scratch friction frequency
-      const filter = ctx.createBiquadFilter();
-      filter.type = "bandpass";
-      filter.frequency.value = 2200;
-      filter.Q.value = 3.5;
-      scratchFilterRef.current = filter;
-
-      const gain = ctx.createGain();
-      gain.gain.value = 0.0;
-      scratchNoiseGainRef.current = gain;
-
-      whiteNoise.connect(filter);
-      filter.connect(gain);
-      if (gainNodeRef.current) {
-        gain.connect(gainNodeRef.current);
-      } else {
-        gain.connect(ctx.destination);
-      }
-      whiteNoise.start();
-    } catch (e) {
-      console.warn("Scratch synth init notice:", e);
+  const setKeyLock = useCallback((locked: boolean) => {
+    setKeyLockState(locked);
+    if (audioRef.current) {
+      audioRef.current.preservesPitch = locked;
     }
   }, []);
 
+  const nudgePitch = useCallback((deltaPercent: number) => {
+    if (!audioRef.current) return;
+    const currentRate = audioRef.current.playbackRate;
+    const nudgeRate = Math.max(0.1, Math.min(3.0, currentRate + deltaPercent / 100));
+    audioRef.current.playbackRate = nudgeRate;
+  }, []);
+
+  const resetPitch = useCallback(() => {
+    setSpeed(1.0);
+  }, [setSpeed]);
+
+  // Color FX Rotary Filter (DJ low-pass to high-pass sweep)
+  const setColorFilter = useCallback((val: number) => {
+    const clamped = Math.max(-1, Math.min(1, val));
+    setColorFilterState(clamped);
+
+    if (!filterFxRef.current) return;
+    const filter = filterFxRef.current;
+
+    if (clamped < -0.05) {
+      // Low-pass Filter sweep: 20kHz down to 220Hz
+      filter.type = "lowpass";
+      const factor = (clamped + 0.05) / -0.95; // 0 to 1
+      filter.frequency.value = Math.max(220, 20000 * Math.pow(0.011, factor));
+      filter.Q.value = 1.6;
+    } else if (clamped > 0.05) {
+      // High-pass Filter sweep: 20Hz up to 4500Hz
+      filter.type = "highpass";
+      const factor = (clamped - 0.05) / 0.95; // 0 to 1
+      filter.frequency.value = Math.min(4800, 20 + Math.pow(factor, 2.2) * 4780);
+      filter.Q.value = 1.6;
+    } else {
+      filter.type = "allpass";
+      filter.frequency.value = 20000;
+      filter.Q.value = 0.7;
+    }
+  }, []);
+
+  // Performance Hot Cues (8 Cues)
+  const triggerHotCue = useCallback((index: number) => {
+    if (index < 0 || index >= 8) return;
+    setHotCues(prev => {
+      const next = [...prev];
+      if (next[index] !== null) {
+        // Jump to cue position
+        seek(next[index]!);
+      } else {
+        // Save current position
+        next[index] = currentTime;
+      }
+      return next;
+    });
+  }, [currentTime, seek]);
+
+  const clearHotCue = useCallback((index: number) => {
+    if (index < 0 || index >= 8) return;
+    setHotCues(prev => {
+      const next = [...prev];
+      next[index] = null;
+      return next;
+    });
+  }, []);
+
+  // Auto Beat Looper
+  const setBeatLoop = useCallback((beats: number) => {
+    const currentBpm = Math.max(40, baseBpm * playbackRate);
+    const secondsPerBeat = 60.0 / currentBpm;
+    const loopDuration = Math.max(0.1, secondsPerBeat * beats);
+    const start = currentTime;
+    const end = Math.min(duration || start + loopDuration, start + loopDuration);
+
+    setBeatLoopState({
+      active: true,
+      start,
+      end,
+      beats
+    });
+  }, [baseBpm, playbackRate, currentTime, duration]);
+
+  const exitLoop = useCallback(() => {
+    setBeatLoopState(prev => ({ ...prev, active: false }));
+  }, []);
+
+  // True Physical Vinyl Scrubbing (Zero fake noise, pure smooth audio scrolling)
   const startScratch = useCallback(() => {
     initAudioNodes();
-    initScratchSynth();
     if (scratchAnimFrameRef.current) {
       cancelAnimationFrame(scratchAnimFrameRef.current);
     }
     wasPlayingBeforeScratchRef.current = isPlaying;
-  }, [initAudioNodes, initScratchSynth, isPlaying]);
+    if (audioRef.current && isPlaying) {
+      audioRef.current.pause();
+    }
+  }, [initAudioNodes, isPlaying]);
 
-  const scratch = useCallback((velocityDegPerSec: number, deltaAngle: number) => {
-    if (!audioRef.current || !audioCtxRef.current) return;
+  const scratch = useCallback((_velocityDegPerSec: number, deltaAngle: number) => {
+    if (!audioRef.current) return;
     const audio = audioRef.current;
-    const ctx = audioCtxRef.current;
-    const now = ctx.currentTime;
+    const totalDur = audio.duration || duration || 0;
+    if (totalDur <= 0) return;
 
-    const absVel = Math.abs(velocityDegPerSec);
-    const speedRatio = velocityDegPerSec / 200; // 200 deg/sec is standard 33.3 RPM playback speed
+    // Physical turntable 33.3 RPM rotation: 360 deg = 1.8 seconds of audio
+    // Spinning forward advances the song, spinning backward rewinds the song
+    const scrubDeltaSec = (deltaAngle / 360) * 1.8;
+    const targetTime = Math.max(0, Math.min(totalDur, audio.currentTime + scrubDeltaSec));
 
-    // Modulate scratch noise level and pitch
-    if (scratchNoiseGainRef.current && scratchFilterRef.current) {
-      const frictionVolume = Math.min(0.35, (absVel / 600) * 0.35);
-      scratchNoiseGainRef.current.gain.cancelScheduledValues(now);
-      scratchNoiseGainRef.current.gain.linearRampToValueAtTime(frictionVolume, now + 0.02);
+    audio.currentTime = targetTime;
+    setCurrentTime(targetTime);
+  }, [duration]);
 
-      // Modulate filter frequency based on scratch speed and direction
-      const targetFreq = Math.max(600, Math.min(5000, 1600 + absVel * 3.5));
-      scratchFilterRef.current.frequency.cancelScheduledValues(now);
-      scratchFilterRef.current.frequency.linearRampToValueAtTime(targetFreq, now + 0.02);
-    }
-
-    if (velocityDegPerSec >= 0) {
-      // Forward scratch / scrub
-      const clampedRate = Math.min(3.5, Math.max(0.0625, speedRatio));
-      try {
-        audio.playbackRate = clampedRate;
-        if (absVel > 15 && audio.paused && wasPlayingBeforeScratchRef.current) {
-          audio.play().catch(() => {});
-        }
-      } catch {}
-    } else {
-      // Reverse scratch scrub
-      try {
-        if (!audio.paused) {
-          audio.playbackRate = 0.0625;
-        }
-        // Scrub back by delta angle
-        const scrubDeltaSec = (deltaAngle / 360) * 1.5;
-        if (audio.duration && audio.duration > 0) {
-          audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + scrubDeltaSec));
-        }
-      } catch {}
-    }
-  }, []);
-
-  const endScratch = useCallback((spinUpMs: number = 220) => {
-    if (!audioRef.current || !audioCtxRef.current) return;
+  const endScratch = useCallback((_spinUpMs: number = 80) => {
+    if (!audioRef.current) return;
     const audio = audioRef.current;
-    const ctx = audioCtxRef.current;
-    const now = ctx.currentTime;
 
-    // Fade out friction noise immediately
-    if (scratchNoiseGainRef.current) {
-      scratchNoiseGainRef.current.gain.cancelScheduledValues(now);
-      scratchNoiseGainRef.current.gain.linearRampToValueAtTime(0, now + 0.05);
+    audio.playbackRate = playbackRate;
+    if (wasPlayingBeforeScratchRef.current) {
+      audio.play().then(() => setIsPlaying(true)).catch(() => {});
     }
-
-    // Realistic turntable motor spin-up inertia curve back to target speed
-    const targetSpeed = playbackRate;
-    const startTime = performance.now();
-    const startRate = audio.playbackRate || 0.1;
-
-    const animateSpinUp = (currTime: number) => {
-      const elapsed = currTime - startTime;
-      const progress = Math.min(1, elapsed / spinUpMs);
-      const ease = 1 - Math.pow(1 - progress, 3);
-      const currentRate = startRate + (targetSpeed - startRate) * ease;
-
-      try {
-        audio.playbackRate = Math.max(0.0625, Math.min(3.0, currentRate));
-      } catch {}
-
-      if (progress < 1) {
-        scratchAnimFrameRef.current = requestAnimationFrame(animateSpinUp);
-      } else {
-        try {
-          audio.playbackRate = targetSpeed;
-        } catch {}
-        if (wasPlayingBeforeScratchRef.current && audio.paused) {
-          audio.play().catch(() => {});
-        }
-      }
-    };
-
-    scratchAnimFrameRef.current = requestAnimationFrame(animateSpinUp);
   }, [playbackRate]);
 
   // Register HTML5 MediaSession MPRIS Action Handlers
@@ -686,6 +700,14 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     volume,
     isMuted,
     playbackRate,
+    baseBpm,
+    currentBpm: Math.round(baseBpm * playbackRate * 10) / 10,
+    pitchPercent: Math.round((playbackRate - 1.0) * 1000) / 10,
+    pitchRange,
+    keyLock,
+    colorFilter,
+    hotCues,
+    beatLoop,
     eqGains,
     equalizerGains: eqGains,
     dspSettings,
@@ -699,6 +721,17 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     setVolume: setAudioVolume,
     toggleMute,
     setSpeed,
+    setBaseBpm,
+    setPitchPercent,
+    setPitchRange,
+    setKeyLock,
+    nudgePitch,
+    resetPitch,
+    setColorFilter,
+    triggerHotCue,
+    clearHotCue,
+    setBeatLoop,
+    exitLoop,
     setEqGain,
     setEqualizerGain: setEqGain,
     setAllEqGains,

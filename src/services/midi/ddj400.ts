@@ -15,11 +15,18 @@ export interface DDJ400Actions {
   onEndScratch: () => void;
   onSetVolume: (volume: number) => void;
   onSetSpeed: (speed: number) => void;
+  onSetPitchPercent?: (percent: number) => void;
+  onSetColorFilter?: (val: number) => void;
   onSetEqGains: (gains: number[]) => void;
   onSeekRelative: (seconds: number) => void;
   onSeekFraction: (fraction: number) => void;
+  onTriggerPad?: (index: number) => void;
+  onToggleKeyLock?: () => void;
+  onToggleLoop?: (beats: number) => void;
+  onCrossfade?: (position: number) => void;
   isPlaying: boolean;
   volume: number;
+  pitchRange?: 6 | 10 | 16 | 50;
   getAudioPeakLevel?: () => number;
 }
 
@@ -28,6 +35,12 @@ export interface DDJ400State {
   deviceName: string | null;
   isJogTouching: boolean;
   pitchRate: number;
+  pitchPercent: number;
+  colorFilter: number;
+  eqLowDb: number;
+  eqMidDb: number;
+  eqHighDb: number;
+  channelVolume: number;
 }
 
 export class DDJ400Controller {
@@ -40,6 +53,12 @@ export class DDJ400Controller {
   private isJogTouching = false;
   private lastJogTime = 0;
   private pitchRate = 1.0;
+  private pitchPercent = 0.0;
+  private colorFilter = 0.0;
+  private eqLowDb = 0.0;
+  private eqMidDb = 0.0;
+  private eqHighDb = 0.0;
+  private channelVolume = 0.85;
   private vuTimer: number | null = null;
 
   // Cached 10-band EQ state for 3-band hardware mapping
@@ -129,7 +148,13 @@ export class DDJ400Controller {
         isConnected: this.midiInput !== null,
         deviceName: this.midiInput?.name || null,
         isJogTouching: this.isJogTouching,
-        pitchRate: this.pitchRate
+        pitchRate: this.pitchRate,
+        pitchPercent: this.pitchPercent,
+        colorFilter: this.colorFilter,
+        eqLowDb: this.eqLowDb,
+        eqMidDb: this.eqMidDb,
+        eqHighDb: this.eqHighDb,
+        channelVolume: this.channelVolume
       });
     }
   }
@@ -144,7 +169,6 @@ export class DDJ400Controller {
     const messageType = status & 0xf0;
     const channel = status & 0x0f; // 0 = Deck 1, 1 = Deck 2
 
-    // Filter to Deck 1 (Ch 0) & Deck 2 (Ch 1) or Master (Ch 6/8)
     const isDeck1 = channel === 0;
     const isDeck2 = channel === 1;
 
@@ -181,11 +205,20 @@ export class DDJ400Controller {
         return;
       }
 
-      // 4. Performance Pads 1-8 (Notes 0x00 - 0x07)
+      // 4. Master Tempo / Key Lock (Note 0x1A = 26)
+      if (data1 === 0x1a && isDown) {
+        this.actions.onToggleKeyLock?.();
+        return;
+      }
+
+      // 5. Performance Pads 1-8 (Notes 0x00 - 0x07)
       if (data1 >= 0x00 && data1 <= 0x07 && isDown) {
-        const padIndex = data1;
-        const fraction = padIndex / 8.0;
-        this.actions.onSeekFraction(fraction);
+        if (this.actions.onTriggerPad) {
+          this.actions.onTriggerPad(data1);
+        } else {
+          const fraction = data1 / 8.0;
+          this.actions.onSeekFraction(fraction);
+        }
         // Light up the pressed pad
         this.sendLED(channel, data1, 127);
         setTimeout(() => this.sendLED(channel, data1, 0), 250);
@@ -224,7 +257,9 @@ export class DDJ400Controller {
       // 3. Channel Volume Fader (CC 0x13 = 19)
       if (cc === 0x13 && (isDeck1 || isDeck2)) {
         const normalizedVol = Math.max(0, Math.min(1, val / 127));
+        this.channelVolume = normalizedVol;
         this.actions.onSetVolume(normalizedVol);
+        this.notifyState();
         return;
       }
 
@@ -237,47 +272,69 @@ export class DDJ400Controller {
 
       // 5. EQ High Knob (CC 0x07 = 7)
       if (cc === 0x07) {
-        // Map 0..127 to -24dB .. +6dB with center 64 = 0dB
         const gainDb = val <= 64 ? ((val - 64) / 64) * 24 : ((val - 64) / 63) * 6;
-        // Apply to High bands: 4000Hz, 8000Hz, 16000Hz (indices 7, 8, 9)
+        this.eqHighDb = gainDb;
         this.eqGains[7] = gainDb;
         this.eqGains[8] = gainDb;
         this.eqGains[9] = gainDb;
         this.actions.onSetEqGains([...this.eqGains]);
+        this.notifyState();
         return;
       }
 
       // 6. EQ Mid Knob (CC 0x0B = 11)
       if (cc === 0x0b) {
         const gainDb = val <= 64 ? ((val - 64) / 64) * 24 : ((val - 64) / 63) * 6;
-        // Apply to Mid bands: 500Hz, 1000Hz, 2000Hz (indices 4, 5, 6)
+        this.eqMidDb = gainDb;
         this.eqGains[4] = gainDb;
         this.eqGains[5] = gainDb;
         this.eqGains[6] = gainDb;
         this.actions.onSetEqGains([...this.eqGains]);
+        this.notifyState();
         return;
       }
 
       // 7. EQ Low Knob (CC 0x0F = 15)
       if (cc === 0x0f) {
         const gainDb = val <= 64 ? ((val - 64) / 64) * 24 : ((val - 64) / 63) * 6;
-        // Apply to Bass bands: 32Hz, 64Hz, 125Hz, 250Hz (indices 0, 1, 2, 3)
+        this.eqLowDb = gainDb;
         this.eqGains[0] = gainDb;
         this.eqGains[1] = gainDb;
         this.eqGains[2] = gainDb;
         this.eqGains[3] = gainDb;
         this.actions.onSetEqGains([...this.eqGains]);
+        this.notifyState();
         return;
       }
 
-      // 8. Tempo Pitch Slider (CC 0x00 = 0)
+      // 8. Color FX Filter Knob (CC 0x17 = 23)
+      if (cc === 0x17) {
+        const filterVal = (val - 64) / 64; // -1.0 to +1.0
+        this.colorFilter = filterVal;
+        this.actions.onSetColorFilter?.(filterVal);
+        this.notifyState();
+        return;
+      }
+
+      // 9. Crossfader (CC 0x1F = 31)
+      if (cc === 0x1f) {
+        const crossVal = val / 127;
+        this.actions.onCrossfade?.(crossVal);
+        return;
+      }
+
+      // 10. Tempo Pitch Slider (CC 0x00 = 0)
       if (cc === 0x00) {
-        // Range: 0 (top/slow) to 127 (bottom/fast), center 64 = 1.0x
-        // 0.8x to 1.2x pitch range (+/- 20% tempo)
-        const rate = 1.0 + ((val - 64) / 64) * 0.2;
-        const clampedRate = Math.max(0.5, Math.min(2.0, Math.round(rate * 1000) / 1000));
-        this.pitchRate = clampedRate;
-        this.actions.onSetSpeed(clampedRate);
+        const range = this.actions.pitchRange || 10;
+        const percent = ((val - 64) / 64) * range;
+        const rate = Math.max(0.2, Math.min(3.0, 1.0 + percent / 100));
+        this.pitchRate = rate;
+        this.pitchPercent = percent;
+        if (this.actions.onSetPitchPercent) {
+          this.actions.onSetPitchPercent(percent);
+        } else {
+          this.actions.onSetSpeed(rate);
+        }
         this.notifyState();
         return;
       }
@@ -286,10 +343,16 @@ export class DDJ400Controller {
     // --- PITCH BEND (0xE0) for high-precision tempo fader ---
     if (messageType === 0xe0) {
       const bend = ((data2 << 7) | data1) - 8192; // -8192 to +8191
-      const rate = 1.0 + (bend / 8192) * 0.25;
-      const clampedRate = Math.max(0.5, Math.min(2.0, Math.round(rate * 1000) / 1000));
-      this.pitchRate = clampedRate;
-      this.actions.onSetSpeed(clampedRate);
+      const range = this.actions.pitchRange || 10;
+      const percent = (bend / 8192) * range;
+      const rate = Math.max(0.2, Math.min(3.0, 1.0 + percent / 100));
+      this.pitchRate = rate;
+      this.pitchPercent = percent;
+      if (this.actions.onSetPitchPercent) {
+        this.actions.onSetPitchPercent(percent);
+      } else {
+        this.actions.onSetSpeed(rate);
+      }
       this.notifyState();
       return;
     }

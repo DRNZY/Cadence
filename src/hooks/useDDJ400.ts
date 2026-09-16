@@ -6,7 +6,13 @@ export function useDDJ400(actions: DDJ400Actions) {
     isConnected: false,
     deviceName: null,
     isJogTouching: false,
-    pitchRate: 1.0
+    pitchRate: 1.0,
+    pitchPercent: 0.0,
+    colorFilter: 0.0,
+    eqLowDb: 0.0,
+    eqMidDb: 0.0,
+    eqHighDb: 0.0,
+    channelVolume: 0.85
   });
 
   const actionsRef = useRef(actions);

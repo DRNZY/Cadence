@@ -22,6 +22,7 @@ import { SleepTimerModal } from "./components/SleepTimerModal";
 import type { AppSettings } from "./components/SettingsModal";
 import { getTrackCoverUrl } from "./utils/formatters";
 import { useDDJ400 } from "./hooks/useDDJ400";
+import { DDJ400AddonDrawer } from "./components/DDJ400AddonDrawer";
 
 function findBestTrackMatch(all: Track[], query: string): Track | null {
   if (!query || all.length === 0) return null;
@@ -87,6 +88,7 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
   const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null);
+  const [isDDJAddonOpen, setIsDDJAddonOpen] = useState(false);
   const [isCinemaMode, setIsCinemaMode] = useState<boolean>(() => {
     try {
       return localStorage.getItem("cadence_cinema_mode") === "true";
@@ -748,6 +750,8 @@ export const App: React.FC = () => {
     onEndScratch: () => audioEngine.endScratch(),
     onSetVolume: (v) => audioEngine.setVolume(v),
     onSetSpeed: (s) => audioEngine.setSpeed(s),
+    onSetPitchPercent: (p) => audioEngine.setPitchPercent(p),
+    onSetColorFilter: (f) => audioEngine.setColorFilter(f),
     onSetEqGains: (gains) => audioEngine.setAllEqGains(gains),
     onSeekRelative: (delta) => audioEngine.seek(audioEngine.currentTime + delta),
     onSeekFraction: (fraction) => {
@@ -755,6 +759,9 @@ export const App: React.FC = () => {
         audioEngine.seek(fraction * audioEngine.duration);
       }
     },
+    onTriggerPad: (padIndex) => audioEngine.triggerHotCue(padIndex),
+    onToggleKeyLock: () => audioEngine.setKeyLock(!audioEngine.keyLock),
+    pitchRange: audioEngine.pitchRange,
     isPlaying: audioEngine.isPlaying,
     volume: audioEngine.volume,
     getAudioPeakLevel: () => {
@@ -945,6 +952,8 @@ export const App: React.FC = () => {
           onToggleEqualizer={() => setIsEqualizerOpen(prev => !prev)}
           isDDJConnected={ddjState.isConnected}
           isJogTouching={ddjState.isJogTouching}
+          isDDJAddonOpen={isDDJAddonOpen}
+          onToggleDDJAddon={() => setIsDDJAddonOpen(prev => !prev)}
         />
       )}
 
@@ -1124,6 +1133,8 @@ export const App: React.FC = () => {
             onToggleEqualizer={() => setIsEqualizerOpen(prev => !prev)}
             isDDJConnected={ddjState.isConnected}
             isJogTouching={ddjState.isJogTouching}
+            isDDJAddonOpen={isDDJAddonOpen}
+            onToggleDDJAddon={() => setIsDDJAddonOpen(prev => !prev)}
           />
         )}
 
@@ -1335,9 +1346,55 @@ export const App: React.FC = () => {
             onToggleEqualizer={() => setIsEqualizerOpen(prev => !prev)}
             isDDJConnected={ddjState.isConnected}
             isJogTouching={ddjState.isJogTouching}
+            isDDJAddonOpen={isDDJAddonOpen}
+            onToggleDDJAddon={() => setIsDDJAddonOpen(prev => !prev)}
           />
         )}
       </div>
+
+      {/* Pioneer DDJ-400 DJ Console Add-on Drawer */}
+      <DDJ400AddonDrawer
+        isOpen={isDDJAddonOpen}
+        onClose={() => setIsDDJAddonOpen(false)}
+        currentTrack={audioEngine.currentTrack}
+        isPlaying={audioEngine.isPlaying}
+        currentTime={audioEngine.currentTime}
+        duration={audioEngine.duration}
+        playbackRate={audioEngine.playbackRate}
+        baseBpm={audioEngine.baseBpm}
+        currentBpm={audioEngine.currentBpm}
+        pitchPercent={audioEngine.pitchPercent}
+        pitchRange={audioEngine.pitchRange}
+        keyLock={audioEngine.keyLock}
+        colorFilter={audioEngine.colorFilter}
+        hotCues={audioEngine.hotCues}
+        beatLoop={audioEngine.beatLoop}
+        eqGains={audioEngine.eqGains}
+        volume={audioEngine.volume}
+        ddjState={ddjState}
+        onPlayPause={audioEngine.togglePlay}
+        onCue={() => {
+          audioEngine.pause();
+          audioEngine.seek(0);
+        }}
+        onStartScratch={audioEngine.startScratch}
+        onScratch={audioEngine.scratch}
+        onEndScratch={audioEngine.endScratch}
+        onSetPitchPercent={audioEngine.setPitchPercent}
+        onSetPitchRange={audioEngine.setPitchRange}
+        onSetKeyLock={audioEngine.setKeyLock}
+        onNudgePitch={audioEngine.nudgePitch}
+        onResetPitch={audioEngine.resetPitch}
+        onSetColorFilter={audioEngine.setColorFilter}
+        onTriggerHotCue={audioEngine.triggerHotCue}
+        onClearHotCue={audioEngine.clearHotCue}
+        onSetBeatLoop={audioEngine.setBeatLoop}
+        onExitLoop={audioEngine.exitLoop}
+        onSetVolume={audioEngine.setVolume}
+        onSetEqGains={audioEngine.setAllEqGains}
+        onSeek={audioEngine.seek}
+        getFrequencyData={audioEngine.getFrequencyData}
+      />
 
       {/* Equalizer Modal */}
       <EqualizerModal

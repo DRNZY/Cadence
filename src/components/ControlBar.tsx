@@ -40,6 +40,8 @@ interface ControlBarProps {
   onToggleEqualizer: () => void;
   isDDJConnected?: boolean;
   isJogTouching?: boolean;
+  isDDJAddonOpen?: boolean;
+  onToggleDDJAddon?: () => void;
 }
 
 export const ControlBar: React.FC<ControlBarProps> = ({
@@ -65,7 +67,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   onToggleRepeat,
   onToggleEqualizer,
   isDDJConnected = false,
-  isJogTouching = false
+  isJogTouching = false,
+  isDDJAddonOpen = false,
+  onToggleDDJAddon
 }) => {
   const [hoverSeekTime, setHoverSeekTime] = useState<number | null>(null);
 
@@ -343,25 +347,32 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             <Sliders className="w-3.5 h-3.5" />
           </button>
 
-          {/* Pioneer DDJ-400 Hardware Indicator */}
-          {isDDJConnected && (
-            <div
-              className={`hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-[10px] font-mono tracking-wide transition-all shadow-sm ${
+          {/* Pioneer DDJ-400 / DJ Decks Add-On Toggle Button */}
+          <button
+            onClick={onToggleDDJAddon}
+            className={`hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-[10px] font-mono tracking-wide transition-all shadow-sm active:scale-95 ${
+              isDDJAddonOpen
+                ? "bg-amber-500/25 border-amber-500/50 text-amber-300 font-bold shadow-[0_0_12px_rgba(245,158,11,0.35)]"
+                : isDDJConnected
+                ? isJogTouching
+                  ? "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25"
+                  : "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25"
+                : "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-400 hover:text-white"
+            }`}
+            title="Toggle Pioneer DDJ-400 DJ Console Add-on"
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
                 isJogTouching
-                  ? "bg-amber-500/15 border-amber-500/30 text-amber-400"
-                  : "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
+                  ? "bg-amber-400 animate-ping"
+                  : isDDJConnected
+                  ? "bg-emerald-400 animate-pulse"
+                  : "bg-neutral-600"
               }`}
-              title="Pioneer DDJ-400 Hardware DJ Bridge Active"
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isJogTouching ? "bg-amber-400 animate-ping" : "bg-emerald-400 animate-pulse"
-                }`}
-              />
-              <span className="font-semibold">DDJ-400</span>
-              {isJogTouching && <span className="text-[9px] uppercase opacity-80">Scratch</span>}
-            </div>
-          )}
+            />
+            <span className="font-semibold">DJ DECKS</span>
+            {isDDJConnected && <span className="text-[8px] opacity-80 uppercase">DDJ-400</span>}
+          </button>
 
           {/* Volume Slider */}
           <div className="flex items-center space-x-2 bg-black/40 px-2.5 py-1 rounded-full border border-white/10">
