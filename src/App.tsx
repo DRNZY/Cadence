@@ -21,6 +21,7 @@ import { SettingsModal, loadSettings } from "./components/SettingsModal";
 import { SleepTimerModal } from "./components/SleepTimerModal";
 import type { AppSettings } from "./components/SettingsModal";
 import { getTrackCoverUrl } from "./utils/formatters";
+import { useDDJ400 } from "./hooks/useDDJ400";
 
 function findBestTrackMatch(all: Track[], query: string): Track | null {
   if (!query || all.length === 0) return null;
@@ -735,6 +736,39 @@ export const App: React.FC = () => {
     enabled: true,
   });
 
+  // Pioneer DDJ-400 Hardware DJ Controller Bridge
+  const ddjState = useDDJ400({
+    onPlayPause: () => audioEngine.togglePlay(),
+    onCue: () => {
+      audioEngine.pause();
+      audioEngine.seek(0);
+    },
+    onStartScratch: () => audioEngine.startScratch(),
+    onScratch: (vel, delta) => audioEngine.scratch(vel, delta),
+    onEndScratch: () => audioEngine.endScratch(),
+    onSetVolume: (v) => audioEngine.setVolume(v),
+    onSetSpeed: (s) => audioEngine.setSpeed(s),
+    onSetEqGains: (gains) => audioEngine.setAllEqGains(gains),
+    onSeekRelative: (delta) => audioEngine.seek(audioEngine.currentTime + delta),
+    onSeekFraction: (fraction) => {
+      if (audioEngine.duration > 0) {
+        audioEngine.seek(fraction * audioEngine.duration);
+      }
+    },
+    isPlaying: audioEngine.isPlaying,
+    volume: audioEngine.volume,
+    getAudioPeakLevel: () => {
+      const data = audioEngine.getFrequencyData();
+      if (!data || data.length === 0) return 0;
+      let sum = 0;
+      const len = Math.min(32, data.length);
+      for (let i = 0; i < len; i++) {
+        sum += data[i];
+      }
+      return (sum / len) / 255;
+    }
+  });
+
   // Render Left Column Content
   const renderLibraryPanel = () => {
     if (isLibraryCollapsed) {
@@ -909,6 +943,8 @@ export const App: React.FC = () => {
           onToggleShuffle={() => setIsShuffle(prev => !prev)}
           onToggleRepeat={() => setRepeatMode(prev => prev === "off" ? "all" : prev === "all" ? "one" : "off")}
           onToggleEqualizer={() => setIsEqualizerOpen(prev => !prev)}
+          isDDJConnected={ddjState.isConnected}
+          isJogTouching={ddjState.isJogTouching}
         />
       )}
 
@@ -1086,6 +1122,8 @@ export const App: React.FC = () => {
             onToggleShuffle={() => setIsShuffle(prev => !prev)}
             onToggleRepeat={() => setRepeatMode(prev => prev === "off" ? "all" : prev === "all" ? "one" : "off")}
             onToggleEqualizer={() => setIsEqualizerOpen(prev => !prev)}
+            isDDJConnected={ddjState.isConnected}
+            isJogTouching={ddjState.isJogTouching}
           />
         )}
 
@@ -1295,6 +1333,8 @@ export const App: React.FC = () => {
             onToggleShuffle={() => setIsShuffle(prev => !prev)}
             onToggleRepeat={() => setRepeatMode(prev => prev === "off" ? "all" : prev === "all" ? "one" : "off")}
             onToggleEqualizer={() => setIsEqualizerOpen(prev => !prev)}
+            isDDJConnected={ddjState.isConnected}
+            isJogTouching={ddjState.isJogTouching}
           />
         )}
       </div>

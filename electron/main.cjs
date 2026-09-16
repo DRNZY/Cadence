@@ -128,6 +128,15 @@ async function createWindow() {
     }
   });
 
+  // Explicitly authorize Web MIDI for hardware DJ controllers (Pioneer DDJ-400)
+  mainWindow.webContents.session.setPermissionCheckHandler((_webContents, permission) => {
+    if (permission === "midi" || permission === "midiSysex") return true;
+    return true;
+  });
+  mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(true);
+  });
+
   // Forward renderer console to terminal
   mainWindow.webContents.on("console-message", (_event, level, message) => {
     console.log(`[Renderer Console] ${message}`);

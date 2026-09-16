@@ -38,6 +38,8 @@ interface ControlBarProps {
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
   onToggleEqualizer: () => void;
+  isDDJConnected?: boolean;
+  isJogTouching?: boolean;
 }
 
 export const ControlBar: React.FC<ControlBarProps> = ({
@@ -61,7 +63,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   onToggleMute,
   onToggleShuffle,
   onToggleRepeat,
-  onToggleEqualizer
+  onToggleEqualizer,
+  isDDJConnected = false,
+  isJogTouching = false
 }) => {
   const [hoverSeekTime, setHoverSeekTime] = useState<number | null>(null);
 
@@ -338,6 +342,26 @@ export const ControlBar: React.FC<ControlBarProps> = ({
           >
             <Sliders className="w-3.5 h-3.5" />
           </button>
+
+          {/* Pioneer DDJ-400 Hardware Indicator */}
+          {isDDJConnected && (
+            <div
+              className={`hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-[10px] font-mono tracking-wide transition-all shadow-sm ${
+                isJogTouching
+                  ? "bg-amber-500/15 border-amber-500/30 text-amber-400"
+                  : "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
+              }`}
+              title="Pioneer DDJ-400 Hardware DJ Bridge Active"
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isJogTouching ? "bg-amber-400 animate-ping" : "bg-emerald-400 animate-pulse"
+                }`}
+              />
+              <span className="font-semibold">DDJ-400</span>
+              {isJogTouching && <span className="text-[9px] uppercase opacity-80">Scratch</span>}
+            </div>
+          )}
 
           {/* Volume Slider */}
           <div className="flex items-center space-x-2 bg-black/40 px-2.5 py-1 rounded-full border border-white/10">
