@@ -744,7 +744,7 @@ app.get("/api/tracks", async (req, res) => {
   });
 });
 
-app.get("/api/rescan", async (req, res) => {
+app.all("/api/rescan", async (req, res) => {
   if (isScanning) return res.status(429).json({ message: "Scan already in progress" });
   isScanning = true;
   try {
