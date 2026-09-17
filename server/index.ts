@@ -1478,6 +1478,16 @@ app.get("/api/ctl/state", (_req, res) => {
   });
 });
 
+app.get("/api/now-playing", (_req, res) => {
+  res.json({
+    isRunning: true,
+    isPlaying: currentPlaybackState?.status === "playing",
+    ...currentPlaybackState,
+    favoritesUpdatedAt,
+    playlistsUpdatedAt,
+  });
+});
+
 function getLocalIpAddresses(): string[] {
   const nets = os.networkInterfaces();
   const results: string[] = [];
