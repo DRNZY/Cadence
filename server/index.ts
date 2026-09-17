@@ -303,16 +303,53 @@ function findCachedCover(artist?: string, album?: string, title?: string): strin
   return undefined;
 }
 
+function cleanQueryTerm(s?: string): string {
+  if (!s) return "";
+  return s
+    .replace(/feat\..*|ft\..*|- Topic|\(.*?\)|\[.*?\]|- Single|- EP|\b(official\s+video|official\s+audio|lyrics|slowed|reverb|remastered|remaster)\b/gi, "")
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isConfidentCoverMatch(
+  candArtist: string,
+  candTitle: string,
+  qArtist: string,
+  qTitle: string
+): boolean {
+  const cA = (candArtist || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const cT = (candTitle || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const qA = cleanQueryTerm(qArtist).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const qT = cleanQueryTerm(qTitle).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  if (!qT && !qA) return false;
+
+  // If query artist is present, require strong artist match
+  if (qA && qA.length > 2) {
+    const artMatch = cA.includes(qA) || qA.includes(cA);
+    if (!artMatch) {
+      const qWords = qA.split(/\s+/).filter(w => w.length > 2);
+      const matched = qWords.filter(w => cA.includes(w));
+      if (matched.length === 0) return false;
+    }
+  }
+
+  // Title match: substring or token overlap
+  if (qT && qT.length > 2) {
+    if (cT.includes(qT) || qT.includes(cT)) return true;
+    const qWords = qT.split(/\s+/).filter(w => w.length > 2);
+    const matched = qWords.filter(w => cT.includes(w));
+    if (qWords.length > 0 && matched.length / qWords.length >= 0.5) return true;
+  }
+
+  return true;
+}
+
 export async function fetchOnlineAlbumCover(artist?: string, album?: string, title?: string): Promise<string | null> {
-  const cleanArtist = (artist || "")
-    .replace(/feat\..*|ft\..*|- Topic|\(.*?\)|\[.*?\]/gi, "")
-    .trim();
-  const cleanAlbum = (album || "")
-    .replace(/\(.*?\)|\[.*?\]|- Single|- EP/gi, "")
-    .trim();
-  const cleanTitle = (title || "")
-    .replace(/\(.*?\)|\[.*?\]|feat\..*|ft\..*/gi, "")
-    .trim();
+  const cleanArtist = cleanQueryTerm(artist);
+  const cleanAlbum = cleanQueryTerm(album);
+  const cleanTitle = cleanQueryTerm(title);
 
   const query = `${cleanArtist} ${cleanAlbum || cleanTitle}`.trim();
   if (!query || query.length < 2) return null;
@@ -324,8 +361,8 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
   }
 
   try {
-    // 1. Query Apple iTunes Search API (entity=album first for high-res official sleeves)
-    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=3`;
+    // 1. Query Apple iTunes Search API (entity=album first for high-res official sleeves with validation)
+    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=5`;
     const itunesRes = await fetch(itunesUrl, {
       headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
       signal: AbortSignal.timeout(5000)
@@ -334,8 +371,10 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
     if (itunesRes.ok) {
       const data: any = await itunesRes.json();
       if (data.results && data.results.length > 0) {
-        const match = data.results[0];
-        if (match.artworkUrl100) {
+        const match = data.results.find((r: any) =>
+          isConfidentCoverMatch(r.artistName, r.collectionName || r.trackName, cleanArtist, cleanAlbum || cleanTitle)
+        );
+        if (match && match.artworkUrl100) {
           const highResUrl = match.artworkUrl100.replace("100x100bb.jpg", "1000x1000bb.jpg");
           const imgRes = await fetch(highResUrl, { signal: AbortSignal.timeout(7000) });
           if (imgRes.ok) {
@@ -347,8 +386,8 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
       }
     }
 
-    // 1b. iTunes Search API fallback: entity=song (for singles, EPs, standalone tracks)
-    const itunesSongUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(`${cleanArtist} ${cleanTitle || cleanAlbum}`.trim())}&entity=song&limit=3`;
+    // 1b. iTunes Search API fallback: entity=song (for singles, EPs, standalone tracks with validation)
+    const itunesSongUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(`${cleanArtist} ${cleanTitle || cleanAlbum}`.trim())}&entity=song&limit=5`;
     const itunesSongRes = await fetch(itunesSongUrl, {
       headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
       signal: AbortSignal.timeout(5000)
@@ -356,8 +395,10 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
     if (itunesSongRes.ok) {
       const data: any = await itunesSongRes.json();
       if (data.results && data.results.length > 0) {
-        const match = data.results[0];
-        if (match.artworkUrl100) {
+        const match = data.results.find((r: any) =>
+          isConfidentCoverMatch(r.artistName, r.trackName || r.collectionName, cleanArtist, cleanTitle || cleanAlbum)
+        );
+        if (match && match.artworkUrl100) {
           const highResUrl = match.artworkUrl100.replace("100x100bb.jpg", "1000x1000bb.jpg");
           const imgRes = await fetch(highResUrl, { signal: AbortSignal.timeout(7000) });
           if (imgRes.ok) {
@@ -369,8 +410,28 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
       }
     }
 
-    // 2. Query Deezer API as high-res fallback (album search first, then track search)
-    const deezerUrl = `https://api.deezer.com/search/album?q=${encodeURIComponent(query)}&limit=1`;
+    // 2. TheAudioDB High-Resolution Official Album Art
+    if (cleanArtist && (cleanAlbum || cleanTitle)) {
+      try {
+        const adbUrl = `https://www.theaudiodb.com/api/v1/json/2/searchalbum.php?s=${encodeURIComponent(cleanArtist)}&a=${encodeURIComponent(cleanAlbum || cleanTitle)}`;
+        const adbRes = await fetch(adbUrl, { signal: AbortSignal.timeout(4000) });
+        if (adbRes.ok) {
+          const adbData: any = await adbRes.json();
+          const alb = adbData?.album?.[0];
+          if (alb && alb.strAlbumThumb && isConfidentCoverMatch(alb.strArtist, alb.strAlbum, cleanArtist, cleanAlbum || cleanTitle)) {
+            const imgRes = await fetch(alb.strAlbumThumb, { signal: AbortSignal.timeout(7000) });
+            if (imgRes.ok) {
+              const buffer = Buffer.from(await imgRes.arrayBuffer());
+              fs.writeFileSync(cacheFile, buffer);
+              return cacheFile;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // 3. Query Deezer API as high-res fallback (album search first, then track search with validation)
+    const deezerUrl = `https://api.deezer.com/search/album?q=${encodeURIComponent(query)}&limit=3`;
     const deezerRes = await fetch(deezerUrl, {
       headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
       signal: AbortSignal.timeout(5000)
@@ -378,19 +439,24 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
     if (deezerRes.ok) {
       const dData: any = await deezerRes.json();
       if (dData.data && dData.data.length > 0) {
-        const coverUrl = dData.data[0].cover_xl || dData.data[0].cover_big;
-        if (coverUrl) {
-          const imgRes = await fetch(coverUrl, { signal: AbortSignal.timeout(7000) });
-          if (imgRes.ok) {
-            const buffer = Buffer.from(await imgRes.arrayBuffer());
-            fs.writeFileSync(cacheFile, buffer);
-            return cacheFile;
+        const match = dData.data.find((d: any) =>
+          isConfidentCoverMatch(d.artist?.name, d.title, cleanArtist, cleanAlbum || cleanTitle)
+        );
+        if (match) {
+          const coverUrl = match.cover_xl || match.cover_big;
+          if (coverUrl) {
+            const imgRes = await fetch(coverUrl, { signal: AbortSignal.timeout(7000) });
+            if (imgRes.ok) {
+              const buffer = Buffer.from(await imgRes.arrayBuffer());
+              fs.writeFileSync(cacheFile, buffer);
+              return cacheFile;
+            }
           }
         }
       }
     }
 
-    const deezerTrackUrl = `https://api.deezer.com/search/track?q=${encodeURIComponent(`${cleanArtist} ${cleanTitle || cleanAlbum}`.trim())}&limit=1`;
+    const deezerTrackUrl = `https://api.deezer.com/search/track?q=${encodeURIComponent(`${cleanArtist} ${cleanTitle || cleanAlbum}`.trim())}&limit=3`;
     const deezerTrackRes = await fetch(deezerTrackUrl, {
       headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
       signal: AbortSignal.timeout(5000)
@@ -398,37 +464,45 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
     if (deezerTrackRes.ok) {
       const dData: any = await deezerTrackRes.json();
       if (dData.data && dData.data.length > 0) {
-        const albumObj = dData.data[0].album;
-        const coverUrl = albumObj?.cover_xl || albumObj?.cover_big;
-        if (coverUrl) {
-          const imgRes = await fetch(coverUrl, { signal: AbortSignal.timeout(7000) });
-          if (imgRes.ok) {
-            const buffer = Buffer.from(await imgRes.arrayBuffer());
-            fs.writeFileSync(cacheFile, buffer);
-            return cacheFile;
+        const match = dData.data.find((d: any) =>
+          isConfidentCoverMatch(d.artist?.name, d.title, cleanArtist, cleanTitle || cleanAlbum)
+        );
+        if (match) {
+          const albumObj = match.album;
+          const coverUrl = albumObj?.cover_xl || albumObj?.cover_big;
+          if (coverUrl) {
+            const imgRes = await fetch(coverUrl, { signal: AbortSignal.timeout(7000) });
+            if (imgRes.ok) {
+              const buffer = Buffer.from(await imgRes.arrayBuffer());
+              fs.writeFileSync(cacheFile, buffer);
+              return cacheFile;
+            }
           }
         }
       }
     }
 
-    // 3. Query MusicBrainz + Cover Art Archive (Zero API Key, Open Community)
+    // 4. Query MusicBrainz + Cover Art Archive (Zero API Key, Open Community)
     if (cleanArtist && (cleanAlbum || cleanTitle)) {
       const mbQuery = cleanAlbum ? `release:${cleanAlbum} AND artist:${cleanArtist}` : `release:${cleanTitle} AND artist:${cleanArtist}`;
-      const mbUrl = `https://musicbrainz.org/ws/2/release/?query=${encodeURIComponent(mbQuery)}&fmt=json&limit=1`;
+      const mbUrl = `https://musicbrainz.org/ws/2/release/?query=${encodeURIComponent(mbQuery)}&fmt=json&limit=3`;
       const mbRes = await fetch(mbUrl, {
         headers: { "User-Agent": "CadenceAudioPlayer/1.0.0 ( contact@cadence.app )" },
         signal: AbortSignal.timeout(4000)
       });
       if (mbRes.ok) {
         const mbData: any = await mbRes.json();
-        const mbid = mbData?.releases?.[0]?.id;
-        if (mbid) {
-          const caaUrl = `https://coverartarchive.org/release/${mbid}/front-500`;
-          const caaRes = await fetch(caaUrl, { signal: AbortSignal.timeout(7000), redirect: "follow" });
-          if (caaRes.ok) {
-            const buffer = Buffer.from(await caaRes.arrayBuffer());
-            fs.writeFileSync(cacheFile, buffer);
-            return cacheFile;
+        const rels = mbData?.releases || [];
+        for (const rel of rels) {
+          const relArtist = rel["artist-credit"]?.[0]?.name || "";
+          if (isConfidentCoverMatch(relArtist, rel.title, cleanArtist, cleanAlbum || cleanTitle)) {
+            const caaUrl = `https://coverartarchive.org/release/${rel.id}/front-500`;
+            const caaRes = await fetch(caaUrl, { signal: AbortSignal.timeout(7000), redirect: "follow" });
+            if (caaRes.ok) {
+              const buffer = Buffer.from(await caaRes.arrayBuffer());
+              fs.writeFileSync(cacheFile, buffer);
+              return cacheFile;
+            }
           }
         }
       }

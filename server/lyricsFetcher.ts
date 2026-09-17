@@ -171,6 +171,82 @@ export function calculateMatchScore(
   return baseScore * durationFactor;
 }
 
+export async function fetchGeniusLyrics(artist: string, title: string): Promise<string | null> {
+  try {
+    const cleanArt = cleanArtistName(artist);
+    const cleanTit = cleanTrackTitle(title);
+    if (!cleanTit) return null;
+
+    const query = `${cleanArt} ${cleanTit}`.trim();
+    const searchUrl = `https://genius.com/api/search/multi?q=${encodeURIComponent(query)}`;
+    const sRes = await fetch(searchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+      },
+      signal: AbortSignal.timeout(4500)
+    });
+
+    if (!sRes.ok) return null;
+    const data: any = await sRes.json();
+    const sections = data?.response?.sections || [];
+    const songSection = sections.find((s: any) => s.type === "song" || s.type === "top_hit");
+    const hits = songSection?.hits || [];
+    if (hits.length === 0) return null;
+
+    const normArt = normalizeString(cleanArt);
+    const normTit = normalizeString(cleanTit);
+
+    const match = hits.find((h: any) => {
+      const r = h.result;
+      if (!r || !r.path) return false;
+      const hitArt = normalizeString(r.primary_artist?.name || "");
+      const hitTit = normalizeString(r.title || "");
+      const artistOk = !normArt || hitArt.includes(normArt) || normArt.includes(hitArt);
+      const titleOk = hitTit.includes(normTit) || normTit.includes(hitTit);
+      return artistOk && titleOk;
+    }) || hits[0];
+
+    const hitPath = match?.result?.path;
+    if (!hitPath) return null;
+
+    const pageUrl = `https://genius.com${hitPath}`;
+    const pageRes = await fetch(pageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+      },
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (!pageRes.ok) return null;
+    const html = await pageRes.text();
+    const containers = html.match(/<div[^>]*data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/g);
+    if (!containers || containers.length === 0) return null;
+
+    let fullLyrics = "";
+    for (const c of containers) {
+      const text = c
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&#x27;/g, "'")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">");
+      fullLyrics += text + "\n\n";
+    }
+
+    const cleaned = fullLyrics
+      .replace(/^\d+\s+Contributors[\s\S]*?Lyrics/i, "")
+      .replace(/^\d+\s+Contributors/i, "")
+      .trim();
+
+    if (cleaned.length > 25) {
+      return cleaned;
+    }
+  } catch {}
+  return null;
+}
+
 async function fetchLyricsOvh(artist: string, title: string): Promise<string | null> {
   try {
     const cleanArt = cleanArtistName(artist);
@@ -298,7 +374,15 @@ export async function fetchOnlineLyrics(
     console.warn("[Lyrics] Scored search error:", e);
   }
 
-  // 4. Fallback to Lyrics.ovh with strict validation
+  // 4. Fallback to Genius Scraper (Massive Global Lyrics Database)
+  if (cleanTitle) {
+    const geniusText = await fetchGeniusLyrics(cleanArtist, cleanTitle);
+    if (geniusText) {
+      return { synced: false, lrc: "", plain: geniusText, provider: "Genius" };
+    }
+  }
+
+  // 5. Fallback to Lyrics.ovh with strict validation
   if (cleanArtist && cleanTitle) {
     const ovhText = await fetchLyricsOvh(cleanArtist, cleanTitle);
     if (ovhText) {
