@@ -49,6 +49,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   const [isScratching, setIsScratching] = useState(false);
   const [scratchRpmDisplay, setScratchRpmDisplay] = useState<number>(0);
   const [tilt, setTilt] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const tiltRafRef = useRef<number | null>(null);
 
   const platterRef = useRef<HTMLDivElement | null>(null);
   const cdDiscRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +97,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     ro.observe(el);
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
+      if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
       ro.disconnect();
     };
   }, []);
@@ -247,15 +249,19 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     }
   };
 
-  // 3D Card Hover for Cover mode
+  // 3D Card Hover for Cover mode with RAF throttling
   const handleCoverMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width - 0.5;
     const y = (e.clientY - rect.top) / rect.height - 0.5;
-    setTilt({ x: x * 12, y: -y * 12 });
+    if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
+    tiltRafRef.current = requestAnimationFrame(() => {
+      setTilt({ x: x * 14, y: -y * 14 });
+    });
   };
 
   const handleCoverMouseLeave = () => {
+    if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
     setTilt({ x: 0, y: 0 });
   };
 
@@ -346,65 +352,83 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
           >
             {/* Sleeve + Peeking Vinyl Record Presentation (Fluid Dynamic Scaling & Centered Envelope) */}
             <div 
-              className="relative flex items-center justify-center transition-all duration-300"
+              className="relative flex items-center justify-center select-none"
               onMouseMove={handleCoverMouseMove}
               onMouseLeave={handleCoverMouseLeave}
               style={{
-                perspective: 1000,
+                perspective: 1200,
                 width: `${isPlaying ? Math.round(dynamicSleeveSize * 1.38) : dynamicSleeveSize}px`,
-                height: `${dynamicSleeveSize}px`
+                height: `${dynamicSleeveSize}px`,
+                transition: "width 300ms ease, height 300ms ease"
               }}
             >
-              {/* Vinyl Record that slides out smoothly from behind sleeve */}
-              <div
-                className={`absolute top-1/2 -translate-y-1/2 aspect-square rounded-full shadow-2xl z-0 pointer-events-none transition-all duration-700 ease-out ${
-                  isPlaying 
-                    ? "opacity-100 rotate-12" 
-                    : "opacity-0 rotate-0"
-                }`}
-                style={{
-                  width: `${Math.round(dynamicSleeveSize * 0.94)}px`,
-                  height: `${Math.round(dynamicSleeveSize * 0.94)}px`,
-                  right: isPlaying ? 0 : `${Math.round(dynamicSleeveSize * 0.03)}px`,
-                  background: "radial-gradient(circle, #25252a 0%, #16161a 50%, #0a0a0c 100%)",
-                  boxShadow: "0 25px 60px rgba(0,0,0,0.8), 0 0 35px rgba(0,0,0,0.6)",
-                  border: "2px solid rgba(255,255,255,0.08)"
-                }}
-              >
-                {/* Vinyl Grooves Texture */}
-                <div className="absolute inset-0 rounded-full vinyl-grooves opacity-95" />
-                {/* Dynamic Vinyl Sheen */}
-                <div className="absolute inset-0 rounded-full vinyl-sheen opacity-80" />
-                {/* Spinning Center Label with Album Artwork */}
-                <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[34%] aspect-square rounded-full overflow-hidden border-2 border-neutral-900 shadow-lg ${isPlaying ? "animate-spin-vinyl" : ""}`}>
-                  <img src={coverUrl} alt="" className="w-full h-full object-cover select-none pointer-events-none" />
-                  <div className="absolute inset-0 bg-black/15" />
-                  {/* Spindle hole */}
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-neutral-950 border border-neutral-400/80 shadow-inner" />
-                </div>
-              </div>
-
-              {/* Main Album Jacket Card Frame with 3D Tilt (Real-Time Proportional Size, 1:1 Square Lock) */}
+              {/* Unified 3D Tilt Assembly (Jacket & Vinyl Plate move in lockstep with zero input lag) */}
               <motion.div
+                className="relative w-full h-full flex items-center justify-center"
                 style={{
-                  width: `${dynamicSleeveSize}px`,
-                  height: `${dynamicSleeveSize}px`,
-                  rotateX: tilt.y,
-                  rotateY: tilt.x,
                   transformStyle: "preserve-3d"
                 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className={`shrink-0 aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 transition-transform duration-700 ease-out ${
-                  isPlaying ? "self-start" : ""
-                }`}
+                animate={{
+                  rotateX: tilt.y,
+                  rotateY: tilt.x
+                }}
+                transition={{
+                  type: "spring",
+                  stiffness: 450,
+                  damping: 32,
+                  mass: 0.1
+                }}
               >
-                <img
-                  src={coverUrl}
-                  alt={currentTrack?.album || "Cover"}
-                  className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
-                />
-                {/* Glass sheen highlight */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
+                {/* Vinyl Record that slides out smoothly from behind sleeve */}
+                <div
+                  className={`absolute top-1/2 -translate-y-1/2 aspect-square rounded-full shadow-2xl z-0 pointer-events-none transition-all duration-700 ease-out ${
+                    isPlaying 
+                      ? "opacity-100 rotate-12" 
+                      : "opacity-0 rotate-0"
+                  }`}
+                  style={{
+                    width: `${Math.round(dynamicSleeveSize * 0.94)}px`,
+                    height: `${Math.round(dynamicSleeveSize * 0.94)}px`,
+                    right: isPlaying ? 0 : `${Math.round(dynamicSleeveSize * 0.03)}px`,
+                    transform: "translateZ(0px)",
+                    background: "radial-gradient(circle, #25252a 0%, #16161a 50%, #0a0a0c 100%)",
+                    boxShadow: "0 25px 60px rgba(0,0,0,0.8), 0 0 35px rgba(0,0,0,0.6)",
+                    border: "2px solid rgba(255,255,255,0.08)"
+                  }}
+                >
+                  {/* Vinyl Grooves Texture */}
+                  <div className="absolute inset-0 rounded-full vinyl-grooves opacity-95" />
+                  {/* Dynamic Vinyl Sheen */}
+                  <div className="absolute inset-0 rounded-full vinyl-sheen opacity-80" />
+                  {/* Spinning Center Label with Album Artwork */}
+                  <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[34%] aspect-square rounded-full overflow-hidden border-2 border-neutral-900 shadow-lg ${isPlaying ? "animate-spin-vinyl" : ""}`}>
+                    <img src={coverUrl} alt="" className="w-full h-full object-cover select-none pointer-events-none" />
+                    <div className="absolute inset-0 bg-black/15" />
+                    {/* Spindle hole */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-neutral-950 border border-neutral-400/80 shadow-inner" />
+                  </div>
+                </div>
+
+                {/* Main Album Jacket Card Frame with 3D Elevation */}
+                <div
+                  style={{
+                    width: `${dynamicSleeveSize}px`,
+                    height: `${dynamicSleeveSize}px`,
+                    transform: "translateZ(26px)",
+                    transformStyle: "preserve-3d"
+                  }}
+                  className={`shrink-0 aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 ${
+                    isPlaying ? "self-start" : ""
+                  }`}
+                >
+                  <img
+                    src={coverUrl}
+                    alt={currentTrack?.album || "Cover"}
+                    className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
+                  />
+                  {/* Glass sheen highlight */}
+                  <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
+                </div>
               </motion.div>
 
               {/* Ambient Floor Shadow / Reflection */}

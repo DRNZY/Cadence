@@ -304,9 +304,15 @@ function findCachedCover(artist?: string, album?: string, title?: string): strin
 }
 
 export async function fetchOnlineAlbumCover(artist?: string, album?: string, title?: string): Promise<string | null> {
-  const cleanArtist = (artist || "").replace(/feat\..*|ft\..*|\(.*?\)|\[.*?\]/gi, "").trim();
-  const cleanAlbum = (album || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
-  const cleanTitle = (title || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
+  const cleanArtist = (artist || "")
+    .replace(/feat\..*|ft\..*|- Topic|\(.*?\)|\[.*?\]/gi, "")
+    .trim();
+  const cleanAlbum = (album || "")
+    .replace(/\(.*?\)|\[.*?\]|- Single|- EP/gi, "")
+    .trim();
+  const cleanTitle = (title || "")
+    .replace(/\(.*?\)|\[.*?\]|feat\..*|ft\..*/gi, "")
+    .trim();
 
   const query = `${cleanArtist} ${cleanAlbum || cleanTitle}`.trim();
   if (!query || query.length < 2) return null;
@@ -318,7 +324,7 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
   }
 
   try {
-    // 1. Query Apple iTunes Search API (returns 1000x1000 ultra high-res art)
+    // 1. Query Apple iTunes Search API (entity=album first for high-res official sleeves)
     const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=3`;
     const itunesRes = await fetch(itunesUrl, {
       headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
@@ -341,7 +347,29 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
       }
     }
 
-    // 2. Query Deezer API as high-res fallback
+    // 1b. iTunes Search API fallback: entity=song (for singles, EPs, standalone tracks)
+    const itunesSongUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(`${cleanArtist} ${cleanTitle || cleanAlbum}`.trim())}&entity=song&limit=3`;
+    const itunesSongRes = await fetch(itunesSongUrl, {
+      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (itunesSongRes.ok) {
+      const data: any = await itunesSongRes.json();
+      if (data.results && data.results.length > 0) {
+        const match = data.results[0];
+        if (match.artworkUrl100) {
+          const highResUrl = match.artworkUrl100.replace("100x100bb.jpg", "1000x1000bb.jpg");
+          const imgRes = await fetch(highResUrl, { signal: AbortSignal.timeout(7000) });
+          if (imgRes.ok) {
+            const buffer = Buffer.from(await imgRes.arrayBuffer());
+            fs.writeFileSync(cacheFile, buffer);
+            return cacheFile;
+          }
+        }
+      }
+    }
+
+    // 2. Query Deezer API as high-res fallback (album search first, then track search)
     const deezerUrl = `https://api.deezer.com/search/album?q=${encodeURIComponent(query)}&limit=1`;
     const deezerRes = await fetch(deezerUrl, {
       headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
@@ -351,6 +379,27 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
       const dData: any = await deezerRes.json();
       if (dData.data && dData.data.length > 0) {
         const coverUrl = dData.data[0].cover_xl || dData.data[0].cover_big;
+        if (coverUrl) {
+          const imgRes = await fetch(coverUrl, { signal: AbortSignal.timeout(7000) });
+          if (imgRes.ok) {
+            const buffer = Buffer.from(await imgRes.arrayBuffer());
+            fs.writeFileSync(cacheFile, buffer);
+            return cacheFile;
+          }
+        }
+      }
+    }
+
+    const deezerTrackUrl = `https://api.deezer.com/search/track?q=${encodeURIComponent(`${cleanArtist} ${cleanTitle || cleanAlbum}`.trim())}&limit=1`;
+    const deezerTrackRes = await fetch(deezerTrackUrl, {
+      headers: { "User-Agent": "Cadence-AudioPlayer/1.0.0" },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (deezerTrackRes.ok) {
+      const dData: any = await deezerTrackRes.json();
+      if (dData.data && dData.data.length > 0) {
+        const albumObj = dData.data[0].album;
+        const coverUrl = albumObj?.cover_xl || albumObj?.cover_big;
         if (coverUrl) {
           const imgRes = await fetch(coverUrl, { signal: AbortSignal.timeout(7000) });
           if (imgRes.ok) {
@@ -388,6 +437,38 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
     // Network timeout or offline
   }
   return null;
+}
+
+export async function extractEmbeddedCover(filePath: string, artist?: string, album?: string, title?: string): Promise<string | undefined> {
+  const cleanArtist = (artist || "").replace(/feat\..*|ft\..*|- Topic|\(.*?\)|\[.*?\]/gi, "").trim();
+  const cleanAlbum = (album || "").replace(/\(.*?\)|\[.*?\]|- Single|- EP/gi, "").trim();
+  const cleanTitle = (title || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
+
+  const safeKey = `${cleanArtist}_${cleanAlbum || cleanTitle}`.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+  const cacheFile = path.join(COVER_CACHE_DIR, `${safeKey || "emb_" + Buffer.from(filePath).toString("base64url").slice(0, 16)}.jpg`);
+
+  if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 1000) {
+    return cacheFile;
+  }
+
+  try {
+    // Extract front cover art stream with ffmpeg without re-encoding quality loss
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-i", filePath,
+      "-an",
+      "-frames:v", "1",
+      "-update", "1",
+      "-vcodec", "mjpeg",
+      "-q:v", "2",
+      cacheFile
+    ]);
+    if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 1000) {
+      return cacheFile;
+    }
+  } catch {}
+
+  return undefined;
 }
 
 function findCoverArt(trackPath: string, artist?: string, album?: string, title?: string): string | undefined {
@@ -599,8 +680,10 @@ async function scanLibrary(): Promise<Track[]> {
       fallbackArtist = parts[0];
     }
 
-    const cleanedTitle = fallbackTitle.replace(/^(\d{1,2}[.\s\-_]+)+/, "").trim() || fallbackTitle;
-    const coverPath = findCoverArt(fullPath, meta.artist || fallbackArtist, meta.album || fallbackAlbum, meta.title || cleanedTitle);
+    let coverPath = findCoverArt(fullPath, meta.artist || fallbackArtist, meta.album || fallbackAlbum, meta.title || cleanedTitle);
+    if (!coverPath) {
+      coverPath = await extractEmbeddedCover(fullPath, meta.artist || fallbackArtist, meta.album || fallbackAlbum, meta.title || cleanedTitle);
+    }
     const { hasLyrics } = findLyrics(fullPath);
 
     const track: Track = {

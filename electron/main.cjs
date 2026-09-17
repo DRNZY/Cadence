@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, globalShortcut, ipcMain, Notification } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, Notification } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -82,27 +82,6 @@ async function startBackendServer() {
   }
 }
 
-function registerGlobalMediaKeys() {
-  const mediaKeys = [
-    { key: "MediaPlayPause", action: "play-pause" },
-    { key: "MediaNextTrack", action: "next" },
-    { key: "MediaPreviousTrack", action: "previous" },
-    { key: "MediaStop", action: "stop" }
-  ];
-
-  for (const { key, action } of mediaKeys) {
-    try {
-      globalShortcut.register(key, () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("mpris-media-key", action);
-        }
-      });
-    } catch (err) {
-      console.warn(`[Cadence Electron] Could not bind global shortcut ${key}:`, err);
-    }
-  }
-}
-
 async function createWindow() {
   const iconPath = path.join(__dirname, "../packaging/cadence.png");
 
@@ -128,11 +107,6 @@ async function createWindow() {
     }
   });
 
-  // Explicitly authorize Web MIDI for hardware DJ controllers (Pioneer DDJ-400)
-  mainWindow.webContents.session.setPermissionCheckHandler((_webContents, permission) => {
-    if (permission === "midi" || permission === "midiSysex") return true;
-    return true;
-  });
   mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(true);
   });
@@ -250,7 +224,6 @@ app.whenReady().then(async () => {
     await startBackendServer();
   }
 
-  registerGlobalMediaKeys();
   await createWindow();
 
   app.on("activate", () => {
@@ -261,7 +234,6 @@ app.whenReady().then(async () => {
 });
 
 app.on("will-quit", () => {
-  globalShortcut.unregisterAll();
   if (serverProcess) {
     serverProcess.kill();
     serverProcess = null;

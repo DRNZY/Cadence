@@ -21,8 +21,6 @@ import { SettingsModal, loadSettings } from "./components/SettingsModal";
 import { SleepTimerModal } from "./components/SleepTimerModal";
 import type { AppSettings } from "./components/SettingsModal";
 import { getTrackCoverUrl } from "./utils/formatters";
-import { useDDJ400 } from "./hooks/useDDJ400";
-import { DDJ400AddonDrawer } from "./components/DDJ400AddonDrawer";
 
 function findBestTrackMatch(all: Track[], query: string): Track | null {
   if (!query || all.length === 0) return null;
@@ -88,7 +86,6 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
   const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null);
-  const [isDDJAddonOpen, setIsDDJAddonOpen] = useState(false);
   const [isCinemaMode, setIsCinemaMode] = useState<boolean>(() => {
     try {
       return localStorage.getItem("cadence_cinema_mode") === "true";
@@ -738,44 +735,6 @@ export const App: React.FC = () => {
     enabled: true,
   });
 
-  // Pioneer DDJ-400 Hardware DJ Controller Bridge
-  const ddjState = useDDJ400({
-    onPlayPause: () => audioEngine.togglePlay(),
-    onCue: () => {
-      audioEngine.pause();
-      audioEngine.seek(0);
-    },
-    onStartScratch: () => audioEngine.startScratch(),
-    onScratch: (vel, delta) => audioEngine.scratch(vel, delta),
-    onEndScratch: () => audioEngine.endScratch(),
-    onSetVolume: (v) => audioEngine.setVolume(v),
-    onSetSpeed: (s) => audioEngine.setSpeed(s),
-    onSetPitchPercent: (p) => audioEngine.setPitchPercent(p),
-    onSetColorFilter: (f) => audioEngine.setColorFilter(f),
-    onSetEqGains: (gains) => audioEngine.setAllEqGains(gains),
-    onSeekRelative: (delta) => audioEngine.seek(audioEngine.currentTime + delta),
-    onSeekFraction: (fraction) => {
-      if (audioEngine.duration > 0) {
-        audioEngine.seek(fraction * audioEngine.duration);
-      }
-    },
-    onTriggerPad: (padIndex) => audioEngine.triggerHotCue(padIndex),
-    onToggleKeyLock: () => audioEngine.setKeyLock(!audioEngine.keyLock),
-    pitchRange: audioEngine.pitchRange,
-    isPlaying: audioEngine.isPlaying,
-    volume: audioEngine.volume,
-    getAudioPeakLevel: () => {
-      const data = audioEngine.getFrequencyData();
-      if (!data || data.length === 0) return 0;
-      let sum = 0;
-      const len = Math.min(32, data.length);
-      for (let i = 0; i < len; i++) {
-        sum += data[i];
-      }
-      return (sum / len) / 255;
-    }
-  });
-
   // Render Left Column Content
   const renderLibraryPanel = () => {
     if (isLibraryCollapsed) {
@@ -950,10 +909,6 @@ export const App: React.FC = () => {
           onToggleShuffle={() => setIsShuffle(prev => !prev)}
           onToggleRepeat={() => setRepeatMode(prev => prev === "off" ? "all" : prev === "all" ? "one" : "off")}
           onToggleEqualizer={() => setIsEqualizerOpen(prev => !prev)}
-          isDDJConnected={ddjState.isConnected}
-          isJogTouching={ddjState.isJogTouching}
-          isDDJAddonOpen={isDDJAddonOpen}
-          onToggleDDJAddon={() => setIsDDJAddonOpen(prev => !prev)}
         />
       )}
 
@@ -1131,10 +1086,6 @@ export const App: React.FC = () => {
             onToggleShuffle={() => setIsShuffle(prev => !prev)}
             onToggleRepeat={() => setRepeatMode(prev => prev === "off" ? "all" : prev === "all" ? "one" : "off")}
             onToggleEqualizer={() => setIsEqualizerOpen(prev => !prev)}
-            isDDJConnected={ddjState.isConnected}
-            isJogTouching={ddjState.isJogTouching}
-            isDDJAddonOpen={isDDJAddonOpen}
-            onToggleDDJAddon={() => setIsDDJAddonOpen(prev => !prev)}
           />
         )}
 
@@ -1344,57 +1295,9 @@ export const App: React.FC = () => {
             onToggleShuffle={() => setIsShuffle(prev => !prev)}
             onToggleRepeat={() => setRepeatMode(prev => prev === "off" ? "all" : prev === "all" ? "one" : "off")}
             onToggleEqualizer={() => setIsEqualizerOpen(prev => !prev)}
-            isDDJConnected={ddjState.isConnected}
-            isJogTouching={ddjState.isJogTouching}
-            isDDJAddonOpen={isDDJAddonOpen}
-            onToggleDDJAddon={() => setIsDDJAddonOpen(prev => !prev)}
           />
         )}
       </div>
-
-      {/* Pioneer DDJ-400 DJ Console Add-on Drawer */}
-      <DDJ400AddonDrawer
-        isOpen={isDDJAddonOpen}
-        onClose={() => setIsDDJAddonOpen(false)}
-        currentTrack={audioEngine.currentTrack}
-        isPlaying={audioEngine.isPlaying}
-        currentTime={audioEngine.currentTime}
-        duration={audioEngine.duration}
-        playbackRate={audioEngine.playbackRate}
-        baseBpm={audioEngine.baseBpm}
-        currentBpm={audioEngine.currentBpm}
-        pitchPercent={audioEngine.pitchPercent}
-        pitchRange={audioEngine.pitchRange}
-        keyLock={audioEngine.keyLock}
-        colorFilter={audioEngine.colorFilter}
-        hotCues={audioEngine.hotCues}
-        beatLoop={audioEngine.beatLoop}
-        eqGains={audioEngine.eqGains}
-        volume={audioEngine.volume}
-        ddjState={ddjState}
-        onPlayPause={audioEngine.togglePlay}
-        onCue={() => {
-          audioEngine.pause();
-          audioEngine.seek(0);
-        }}
-        onStartScratch={audioEngine.startScratch}
-        onScratch={audioEngine.scratch}
-        onEndScratch={audioEngine.endScratch}
-        onSetPitchPercent={audioEngine.setPitchPercent}
-        onSetPitchRange={audioEngine.setPitchRange}
-        onSetKeyLock={audioEngine.setKeyLock}
-        onNudgePitch={audioEngine.nudgePitch}
-        onResetPitch={audioEngine.resetPitch}
-        onSetColorFilter={audioEngine.setColorFilter}
-        onTriggerHotCue={audioEngine.triggerHotCue}
-        onClearHotCue={audioEngine.clearHotCue}
-        onSetBeatLoop={audioEngine.setBeatLoop}
-        onExitLoop={audioEngine.exitLoop}
-        onSetVolume={audioEngine.setVolume}
-        onSetEqGains={audioEngine.setAllEqGains}
-        onSeek={audioEngine.seek}
-        getFrequencyData={audioEngine.getFrequencyData}
-      />
 
       {/* Equalizer Modal */}
       <EqualizerModal
