@@ -15,7 +15,8 @@
     "target": [
       "AppImage",
       "tar.gz",
-      "deb"
+      "deb",
+      "snap"
     ],
     "category": "AudioVideo",
     "maintainer": "DRNZY <darnell.dijksteel@gmail.com>",
@@ -29,6 +30,22 @@
       "audio/ogg",
       "audio/opus",
       "audio/aac"
+    ]
+  },
+  "snap": {
+    "grade": "stable",
+    "confinement": "strict",
+    "plugs": [
+      "default",
+      "audio-playback",
+      "pulseaudio",
+      "home",
+      "removable-media",
+      "network",
+      "network-bind",
+      "opengl",
+      "wayland",
+      "x11"
     ]
   },
   "win": {
