@@ -3,12 +3,14 @@ const path = require("path");
 const fs = require("fs");
 const http = require("http");
 const { spawn } = require("child_process");
+const { DiscordRpc } = require("./discordRpc.cjs");
 
 // Set Application Name
 app.name = "Cadence";
 
 let mainWindow = null;
 let serverProcess = null;
+let discordRpc = null;
 const SERVER_PORT = 3001;
 const DEV_URL = "http://localhost:5173";
 const PROD_URL = `http://localhost:${SERVER_PORT}`;
@@ -188,6 +190,36 @@ async function createWindow() {
 }
 
 // IPC Handlers
+ipcMain.on("playback-state-changed", (_event, state) => {
+  if (!discordRpc) return;
+  if (!state || state.status !== "playing" || !state.currentTrack) {
+    discordRpc.clearActivity();
+    return;
+  }
+  const track = state.currentTrack;
+  const now = Math.floor(Date.now() / 1000);
+  const currentTime = Math.floor(state.currentTime || 0);
+  const duration = Math.floor(state.duration || track.duration || 0);
+  const startTimestamp = Math.floor(now - currentTime);
+  const endTimestamp = duration > 0 ? Math.floor(startTimestamp + duration) : undefined;
+
+  discordRpc.setActivity({
+    details: track.title,
+    state: `${track.artist || "Unknown Artist"}${track.album ? ` • ${track.album}` : ""}`,
+    timestamps: {
+      start: startTimestamp,
+      ...(endTimestamp ? { end: endTimestamp } : {})
+    },
+    assets: {
+      large_image: "cadence_logo",
+      large_text: "Cadence — Studio Hi-Fi Audio Engine",
+      small_image: "playing",
+      small_text: `${track.format || "FLAC"} • 32-bit DSP`
+    },
+    instance: false
+  });
+});
+
 ipcMain.on("track-changed", (_event, track) => {
   if (Notification.isSupported() && track && track.title) {
     try {
@@ -219,6 +251,13 @@ ipcMain.on("window-close", () => {
 });
 
 app.whenReady().then(async () => {
+  try {
+    discordRpc = new DiscordRpc();
+    discordRpc.connect();
+  } catch (err) {
+    console.log("[Cadence Discord RPC] Could not connect:", err);
+  }
+
   const isServerRunning = await checkUrl(PROD_URL);
   if (!isServerRunning) {
     await startBackendServer();
@@ -234,6 +273,10 @@ app.whenReady().then(async () => {
 });
 
 app.on("will-quit", () => {
+  if (discordRpc) {
+    discordRpc.destroy();
+    discordRpc = null;
+  }
   if (serverProcess) {
     serverProcess.kill();
     serverProcess = null;

@@ -754,17 +754,21 @@ async function scanLibrary(): Promise<Track[]> {
       fallbackArtist = parts[0];
     }
 
-    let coverPath = findCoverArt(fullPath, meta.artist || fallbackArtist, meta.album || fallbackAlbum, meta.title || cleanedTitle);
+    const trackTitle = meta.title || fallbackTitle;
+    const trackArtist = meta.artist || fallbackArtist;
+    const trackAlbum = meta.album || fallbackAlbum;
+
+    let coverPath = findCoverArt(fullPath, trackArtist, trackAlbum, trackTitle);
     if (!coverPath) {
-      coverPath = await extractEmbeddedCover(fullPath, meta.artist || fallbackArtist, meta.album || fallbackAlbum, meta.title || cleanedTitle);
+      coverPath = await extractEmbeddedCover(fullPath, trackArtist, trackAlbum, trackTitle);
     }
     const { hasLyrics } = findLyrics(fullPath);
 
     const track: Track = {
       id: Buffer.from(fullPath).toString("base64url"),
-      title: meta.title || cleanedTitle,
-      artist: meta.artist || fallbackArtist,
-      album: meta.album || fallbackAlbum,
+      title: trackTitle,
+      artist: trackArtist,
+      album: trackAlbum,
       year: meta.year,
       trackNumber: meta.trackNumber,
       duration: meta.duration || 0,

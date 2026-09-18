@@ -691,18 +691,24 @@ export const App: React.FC = () => {
     };
   }, [audioEngine, handlePlayTrack, handleNext, handlePrevious]);
 
-  // Update server playback state for CLI status reporting
+  // Update server playback state for CLI status reporting and Discord RPC
   useEffect(() => {
+    const statePayload = {
+      status: audioEngine.isPlaying ? "playing" : audioEngine.currentTrack ? "paused" : "stopped",
+      currentTrack: audioEngine.currentTrack,
+      currentTime: audioEngine.currentTime,
+      duration: audioEngine.duration
+    };
+
     fetch("/api/ctl/state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        status: audioEngine.isPlaying ? "playing" : audioEngine.currentTrack ? "paused" : "stopped",
-        currentTrack: audioEngine.currentTrack,
-        currentTime: audioEngine.currentTime,
-        duration: audioEngine.duration
-      })
+      body: JSON.stringify(statePayload)
     }).catch(() => {});
+
+    if ((window as any).electronAPI?.updatePlaybackState) {
+      (window as any).electronAPI.updatePlaybackState(statePayload);
+    }
   }, [audioEngine.isPlaying, audioEngine.currentTrack, audioEngine.currentTime, audioEngine.duration]);
 
   const toggleFullscreen = () => {
