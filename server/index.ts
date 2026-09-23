@@ -8,6 +8,7 @@ import { promisify } from "util";
 import crypto from "crypto";
 import { getLyricsForTrack, searchLyricsCandidates, getCacheKey, parseLrc } from "./lyricsFetcher.ts";
 import { lastFmRouter } from "./lastfm.ts";
+import { DiscoveryServer } from "./discovery.ts";
 
 const execFileAsync = promisify(execFile);
 const app = express();
@@ -1543,6 +1544,9 @@ if (fs.existsSync(DIST_DIR)) {
     next();
   });
 }
+
+const discoveryServer = new DiscoveryServer(PORT);
+discoveryServer.start();
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[Cadence Audio Server] Running on http://0.0.0.0:${PORT}`);
