@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sendTrackChange: (trackInfo) => {
     ipcRenderer.send("track-changed", trackInfo);
   },
+  updatePlaybackState: (state) => {
+    ipcRenderer.send("playback-state-changed", state);
+  },
   minimize: () => ipcRenderer.send("window-minimize"),
   maximize: () => ipcRenderer.send("window-maximize"),
   close: () => ipcRenderer.send("window-close")
