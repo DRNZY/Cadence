@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, User, Play, Plus, Mic2, FolderSync, ListMusic, Download, Upload, Trash2, ShieldCheck, Heart } from "lucide-react";
+import { Search, User, Play, Plus, Mic2, FolderSync, ListMusic, Download, Upload, Trash2, ShieldCheck, Heart, Shuffle } from "lucide-react";
 import { Track, Playlist } from "../types";
 import { getTrackCoverUrl } from "../utils/formatters";
 
@@ -101,6 +101,16 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
       window.removeEventListener("cadence:playlists_updated", handlePlaylistsUpdated);
     };
   }, []);
+
+  const handleShuffleTracks = useCallback((trackList: Track[]) => {
+    if (trackList.length === 0) return;
+    const shuffled = [...trackList];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    onPlayAlbum(shuffled);
+  }, [onPlayAlbum]);
 
   const handleCreatePlaylist = async () => {
     if (!newPlaylistName.trim()) return;
@@ -732,6 +742,14 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
 
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => handleShuffleTracks(selectedPlaylistTracks)}
+                      disabled={selectedPlaylistTracks.length === 0}
+                      className="px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-50 border border-white/10"
+                      title="Shuffle and play playlist"
+                    >
+                      <Shuffle className="w-3.5 h-3.5" /> Shuffle
+                    </button>
+                    <button
                       onClick={() => onPlayAlbum(selectedPlaylistTracks)}
                       disabled={selectedPlaylistTracks.length === 0}
                       className="px-4 py-1.5 rounded-full bg-primary text-black font-bold text-xs flex items-center gap-1.5 hover:bg-primary/90 transition-all disabled:opacity-50"
@@ -798,12 +816,21 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
               </div>
 
               {likedTracks.length > 0 && (
-                <button
-                  onClick={() => onPlayAlbum(likedTracks)}
-                  className="px-4 py-2 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition-all flex items-center gap-1.5 shadow-lg"
-                >
-                  <Play className="w-4 h-4 fill-black ml-0.5" /> Play All
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleShuffleTracks(likedTracks)}
+                    className="px-3.5 py-2 rounded-full text-xs font-bold bg-white/10 text-white hover:bg-white/20 transition-all flex items-center gap-1.5 border border-white/10 shadow-lg"
+                    title="Shuffle and play liked songs"
+                  >
+                    <Shuffle className="w-3.5 h-3.5" /> Shuffle
+                  </button>
+                  <button
+                    onClick={() => onPlayAlbum(likedTracks)}
+                    className="px-4 py-2 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition-all flex items-center gap-1.5 shadow-lg"
+                  >
+                    <Play className="w-4 h-4 fill-black ml-0.5" /> Play All
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1018,6 +1045,17 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
 
                 {/* Quick Action Controls */}
                 <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                  <button
+                    onClick={() => {
+                      handleShuffleTracks(previewAlbum.tracks);
+                      setPreviewAlbum(null);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-white text-xs font-bold transition-all shadow-md"
+                    title="Shuffle and play album"
+                  >
+                    <Shuffle className="w-3.5 h-3.5" />
+                    <span>Shuffle</span>
+                  </button>
                   <button
                     onClick={() => {
                       onPlayAlbum(previewAlbum.tracks);
