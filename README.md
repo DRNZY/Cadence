@@ -1,13 +1,13 @@
 # Cadence
 
-A modern, high-fidelity studio desktop audio player, DSP acoustic engine, and synchronized lyrics canvas for Linux, macOS, and Windows.
+A desktop audio player, DSP engine, and synchronized lyrics canvas for Linux, macOS, and Windows.
 
-## Highlights
+## Features
 
-* **Precision Audio & DSP**: Bit-perfect 32-bit floating point audio engine supporting FLAC (up to 24-bit/192kHz), ALAC, WAV, MP3, AAC, and OPUS with a 10-band parametric EQ, tube saturation, dynamic bass boost, and ReplayGain loudness normalization.
-* **Fluid Presentation**: Native resolution auto-scaling, customizable motion blur dynamics, customizable bottom player bar (floating pill or edge-to-edge dock), and realistic deck representations (Album Art, Analog Vinyl Turntable with scratch physics, and Metallic CD).
-* **Synchronized Lyrics**: Sub-millisecond LRC lyrics sync with smooth auto-centering viewport tracking, instant fuzzy search, and romanization fallback.
-* **Native Desktop Integration**: Linux D-Bus MPRIS2 media player controls, PipeWire/PulseAudio integration, system media keys, and Last.fm scrobbling.
+* 32-bit floating point audio engine supporting FLAC (up to 24-bit/192kHz), ALAC, WAV, MP3, AAC, and OPUS with a 10-band parametric EQ, tube saturation, dynamic bass boost, and ReplayGain loudness normalization.
+* Customizable UI layouts with motion scaling, dockable player controls, and visualizers (Album Art, Analog Turntable, and CD modes).
+* Sub-millisecond synchronized LRC lyrics with auto-centering viewport tracking and search.
+* Native desktop integration with Linux MPRIS2 media player controls, PipeWire/PulseAudio support, system media keys, and Last.fm scrobbling.
 
 ## Installation
 
@@ -15,7 +15,8 @@ A modern, high-fidelity studio desktop audio player, DSP acoustic engine, and sy
 Download pre-built packages for Android (.apk), Linux (.deb, .AppImage), macOS (.dmg), and Windows (.exe) from [Releases](https://github.com/DRNZY/Cadence/releases/latest).
 
 ### Flatpak
-Cadence is submitted to Flathub. To build or install locally:
+To build or install locally via flatpak-builder:
+
 ```bash
 flatpak-builder --user --install --force-clean build-dir packaging/flatpak/io.github.DRNZY.Cadence.yml
 flatpak run io.github.DRNZY.Cadence
@@ -43,7 +44,7 @@ npm run build:server
 npm run dist
 ```
 
-## CLI Usage
+## CLI usage
 
 Control playback headlessly or bind hotkeys using `cadence-ctl`:
 

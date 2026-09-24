@@ -1,12 +1,12 @@
-# Global Media Keys & Shortcut Reference
+# Global media keys and shortcut reference
 
 Cadence supports native desktop media keys and custom MPRIS2 controls.
 
-## Default Keybindings
+## Default keybindings
 
 * `Space`: Play / Pause toggle
-* `Ctrl + Right`: Next Track
-* `Ctrl + Left`: Previous Track
-* `Ctrl + Up`: Volume Up (+5%)
-* `Ctrl + Down`: Volume Down (-5%)
-* `Ctrl + L`: Toggle Lyrics View
+* `Ctrl + Right`: Next track
+* `Ctrl + Left`: Previous track
+* `Ctrl + Up`: Volume up (+5%)
+* `Ctrl + Down`: Volume down (-5%)
+* `Ctrl + L`: Toggle lyrics view
