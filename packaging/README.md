@@ -1,59 +1,40 @@
-# AuraDeck Standalone Desktop Packaging Guide
+# Cadence Linux packaging guide
 
-AuraDeck is now a **100% standalone native Linux desktop application** powered by Electron, Web Audio API, and an Express PipeWire/ALSA backend. It does not launch or touch external web browsers.
+Cadence runs as a standalone desktop application using Electron, Web Audio, and an Express PipeWire/ALSA backend.
 
 ---
 
 ## 1. Arch Linux / AUR (Arch User Repository)
 
-Installable via standard AUR helpers:
-```bash
-paru -S auradeck
-# or
-yay -S auradeck
-```
+Installable via AUR helpers:
 
-### Steps to Submit & Publish to AUR:
-1. **Create an account** on [aur.archlinux.org](https://aur.archlinux.org) and register your SSH key (`~/.ssh/id_ed25519.pub`).
-2. **Clone the official AUR repo namespace**:
-   ```bash
-   git clone ssh://aur@aur.archlinux.org/auradeck.git /tmp/auradeck-aur
-   ```
-3. **Copy the pre-configured packaging files**:
-   ```bash
-   cp /home/darnell/Projects/auradeck/packaging/PKGBUILD /tmp/auradeck-aur/
-   cp /home/darnell/Projects/auradeck/packaging/.SRCINFO /tmp/auradeck-aur/
-   cp /home/darnell/Projects/auradeck/packaging/auradeck.desktop /tmp/auradeck-aur/
-   cp /home/darnell/Projects/auradeck/packaging/auradeck.png /tmp/auradeck-aur/
-   ```
-4. **Push to AUR**:
-   ```bash
-   cd /tmp/auradeck-aur
-   git add PKGBUILD .SRCINFO auradeck.desktop auradeck.png
-   git commit -m "feat: initial standalone release v1.0.0"
-   git push origin master
-   ```
-5. AuraDeck is immediately live on the AUR for all Arch Linux, CachyOS, and Manjaro users.
+```bash
+paru -S cadence-player
+# or
+yay -S cadence-player
+```
 
 ---
 
-## 2. Debian / Ubuntu / Pop!_OS (APT / .deb)
+## 2. Debian / Ubuntu (APT / .deb)
 
-### Build `.deb` Package:
+### Build .deb package
+
 ```bash
 ./packaging/build-deb.sh
 ```
-Installs with:
+
+Install:
+
 ```bash
-sudo apt install ./packaging/auradeck_1.0.0_all.deb
+sudo apt install ./packaging/cadence_1.0.0_all.deb
 ```
 
 ---
 
-## 3. Responsive Screen Adaptability
+## 3. Flatpak
 
-AuraDeck dynamically auto-detects and adapts to screen aspect ratios:
-- **🎛️ Studio 16:9 (Default):** Balanced 3-column layout (`[Library]` | `[Vinyl Deck]` | `[Lyrics & Visualizer]`) tailored for 1080p, 1440p, 4K standard monitors and laptops.
-- **🌟 Ultrawide 32:9:** 4-column panoramic studio for super ultrawide and multi-monitor setups.
-- **🎵 Vinyl Stage:** Centered hero turntable with split FFT visualizer.
-- **📚 Library Focus:** Expanded discography album grid.
+```bash
+flatpak-builder --user --install --force-clean build-dir packaging/flatpak/io.github.DRNZY.Cadence.yml
+flatpak run io.github.DRNZY.Cadence
+```
