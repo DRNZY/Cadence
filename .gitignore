@@ -16,6 +16,7 @@ release
 out
 *.tsbuildinfo
 *.tar.gz
+.env
 *.zip
 *.local
 
