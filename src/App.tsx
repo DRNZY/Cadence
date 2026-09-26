@@ -139,8 +139,6 @@ export const App: React.FC = () => {
   const [isWindowResizing, setIsWindowResizing] = useState<boolean>(false);
   const resizeDebounceTimerRef = useRef<number | null>(null);
   const resizeRafRef = useRef<number | null>(null);
-  const lastResizeTimeRef = useRef<number>(0);
-  const lastResizeWidthRef = useRef<number>(typeof window !== "undefined" ? window.innerWidth : 1920);
 
   // Calculate responsive ideal panel widths based on real-time viewport resolution
   const getIdealPanelWidths = useCallback((winWidth: number) => {
@@ -177,36 +175,17 @@ export const App: React.FC = () => {
     setRightPanelWidth(ideal.right);
   }, [getIdealPanelWidths]);
 
-  // Real-time window resize handler: high-performance RAF throttled with velocity motion blur
+  // Real-time window resize handler
   useEffect(() => {
     const handleResize = () => {
       document.body.classList.add("is-resizing");
       setIsWindowResizing(true);
-
-      const now = performance.now();
-      const dt = Math.max(lastResizeTimeRef.current ? now - lastResizeTimeRef.current : 16, 16);
-      const winW = window.innerWidth;
-      const dw = Math.abs(winW - lastResizeWidthRef.current);
-      const velocity = dw / dt;
-      lastResizeTimeRef.current = now;
-      lastResizeWidthRef.current = winW;
-
-      if (settings.enableMotionBlur && velocity > 0.05) {
-        const blurAmount = Math.min(24, Math.max(8, Math.round(velocity * 8 * 10) / 10));
-        const blurScale = 1 + Math.min(0.04, Math.max(0.01, velocity * 0.015));
-        document.documentElement.style.setProperty("--motion-blur-amount", `${blurAmount}px`);
-        document.documentElement.style.setProperty("--motion-blur-scale", `${blurScale}`);
-        document.body.classList.add("motion-blur-active");
-      }
 
       if (resizeDebounceTimerRef.current) {
         window.clearTimeout(resizeDebounceTimerRef.current);
       }
       resizeDebounceTimerRef.current = window.setTimeout(() => {
         document.body.classList.remove("is-resizing");
-        document.body.classList.remove("motion-blur-active");
-        document.documentElement.style.removeProperty("--motion-blur-amount");
-        document.documentElement.style.removeProperty("--motion-blur-scale");
         setIsWindowResizing(false);
 
         const finalW = window.innerWidth;
@@ -229,19 +208,19 @@ export const App: React.FC = () => {
       if (resizeRafRef.current) return;
       resizeRafRef.current = requestAnimationFrame(() => {
         resizeRafRef.current = null;
-        setWindowWidth(winW);
-        const ideal = getIdealPanelWidths(winW);
+        setWindowWidth(window.innerWidth);
+        const ideal = getIdealPanelWidths(window.innerWidth);
 
         if (userRatioRef.current.left !== undefined) {
-          const maxW = Math.round(winW * 0.45);
-          setLeftPanelWidth(Math.min(Math.max(Math.round(winW * userRatioRef.current.left), 220), maxW));
+          const maxW = Math.round(window.innerWidth * 0.45);
+          setLeftPanelWidth(Math.min(Math.max(Math.round(window.innerWidth * userRatioRef.current.left), 220), maxW));
         } else {
           setLeftPanelWidth(ideal.left);
         }
 
         if (userRatioRef.current.right !== undefined) {
-          const maxW = Math.round(winW * 0.45);
-          setRightPanelWidth(Math.min(Math.max(Math.round(winW * userRatioRef.current.right), 240), maxW));
+          const maxW = Math.round(window.innerWidth * 0.45);
+          setRightPanelWidth(Math.min(Math.max(Math.round(window.innerWidth * userRatioRef.current.right), 240), maxW));
         } else {
           setRightPanelWidth(ideal.right);
         }
@@ -254,37 +233,19 @@ export const App: React.FC = () => {
       if (resizeRafRef.current) cancelAnimationFrame(resizeRafRef.current);
       if (resizeDebounceTimerRef.current) window.clearTimeout(resizeDebounceTimerRef.current);
       document.body.classList.remove("is-resizing");
-      document.body.classList.remove("motion-blur-active");
     };
-  }, [getIdealPanelWidths, settings.enableMotionBlur]);
+  }, [getIdealPanelWidths]);
 
-  // Divider drag handlers with ratio tracking and dynamic velocity motion blur
+  // Divider drag handlers with ratio tracking
   const handleLeftDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsDraggingPanel(true);
     document.body.classList.add("is-resizing");
     const startX = e.clientX;
     const startWidth = leftPanelWidth;
-    let lastDragTime = performance.now();
-    let lastDragX = startX;
     let dragRafId: number | null = null;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const now = performance.now();
-      const dt = Math.max(now - lastDragTime, 16);
-      const dx = Math.abs(moveEvent.clientX - lastDragX);
-      const velocity = dx / dt;
-      lastDragTime = now;
-      lastDragX = moveEvent.clientX;
-
-      if (settings.enableMotionBlur && velocity > 0.05) {
-        const blurAmount = Math.min(24, Math.max(8, Math.round(velocity * 8 * 10) / 10));
-        const blurScale = 1 + Math.min(0.04, Math.max(0.01, velocity * 0.015));
-        document.documentElement.style.setProperty("--motion-blur-amount", `${blurAmount}px`);
-        document.documentElement.style.setProperty("--motion-blur-scale", `${blurScale}`);
-        document.body.classList.add("motion-blur-active");
-      }
-
       if (dragRafId) return;
       dragRafId = requestAnimationFrame(() => {
         dragRafId = null;
@@ -301,9 +262,6 @@ export const App: React.FC = () => {
       if (dragRafId) cancelAnimationFrame(dragRafId);
       setIsDraggingPanel(false);
       document.body.classList.remove("is-resizing");
-      document.body.classList.remove("motion-blur-active");
-      document.documentElement.style.removeProperty("--motion-blur-amount");
-      document.documentElement.style.removeProperty("--motion-blur-scale");
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -318,26 +276,9 @@ export const App: React.FC = () => {
     document.body.classList.add("is-resizing");
     const startX = e.clientX;
     const startWidth = rightPanelWidth;
-    let lastDragTime = performance.now();
-    let lastDragX = startX;
     let dragRafId: number | null = null;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const now = performance.now();
-      const dt = Math.max(now - lastDragTime, 16);
-      const dx = Math.abs(moveEvent.clientX - lastDragX);
-      const velocity = dx / dt;
-      lastDragTime = now;
-      lastDragX = moveEvent.clientX;
-
-      if (settings.enableMotionBlur && velocity > 0.05) {
-        const blurAmount = Math.min(24, Math.max(8, Math.round(velocity * 8 * 10) / 10));
-        const blurScale = 1 + Math.min(0.04, Math.max(0.01, velocity * 0.015));
-        document.documentElement.style.setProperty("--motion-blur-amount", `${blurAmount}px`);
-        document.documentElement.style.setProperty("--motion-blur-scale", `${blurScale}`);
-        document.body.classList.add("motion-blur-active");
-      }
-
       if (dragRafId) return;
       dragRafId = requestAnimationFrame(() => {
         dragRafId = null;
@@ -354,9 +295,6 @@ export const App: React.FC = () => {
       if (dragRafId) cancelAnimationFrame(dragRafId);
       setIsDraggingPanel(false);
       document.body.classList.remove("is-resizing");
-      document.body.classList.remove("motion-blur-active");
-      document.documentElement.style.removeProperty("--motion-blur-amount");
-      document.documentElement.style.removeProperty("--motion-blur-scale");
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -371,26 +309,9 @@ export const App: React.FC = () => {
     document.body.classList.add("is-resizing");
     const startX = e.clientX;
     const startRatio = idleSplitRatioRef.current;
-    let lastDragTime = performance.now();
-    let lastDragX = startX;
     let dragRafId: number | null = null;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const now = performance.now();
-      const dt = Math.max(now - lastDragTime, 16);
-      const dx = Math.abs(moveEvent.clientX - lastDragX);
-      const velocity = dx / dt;
-      lastDragTime = now;
-      lastDragX = moveEvent.clientX;
-
-      if (settings.enableMotionBlur && velocity > 0.05) {
-        const blurAmount = Math.min(24, Math.max(8, Math.round(velocity * 8 * 10) / 10));
-        const blurScale = 1 + Math.min(0.04, Math.max(0.01, velocity * 0.015));
-        document.documentElement.style.setProperty("--motion-blur-amount", `${blurAmount}px`);
-        document.documentElement.style.setProperty("--motion-blur-scale", `${blurScale}`);
-        document.body.classList.add("motion-blur-active");
-      }
-
       if (dragRafId) return;
       dragRafId = requestAnimationFrame(() => {
         dragRafId = null;
@@ -407,9 +328,6 @@ export const App: React.FC = () => {
       if (dragRafId) cancelAnimationFrame(dragRafId);
       setIsDraggingPanel(false);
       document.body.classList.remove("is-resizing");
-      document.body.classList.remove("motion-blur-active");
-      document.documentElement.style.removeProperty("--motion-blur-amount");
-      document.documentElement.style.removeProperty("--motion-blur-scale");
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -464,25 +382,75 @@ export const App: React.FC = () => {
     }
   }, [isCinemaMode, settings.libraryPosition, isRightPanelCollapsed, isLibraryCollapsed, hasActiveTrack, rightPanelWidth, leftPanelWidth, windowWidth, effectiveLeftWidth]);
 
-  // Sleep timer countdown ticker
-  useEffect(() => {
-    if (sleepTimerRemaining === null) return;
-    if (sleepTimerRemaining <= 0) {
-      audioEngine.pause();
-      setSleepTimerRemaining(null);
-      return;
+  // High-precision sleep timer target and fadeout controls
+  const sleepTimerTargetRef = useRef<number | null>(null);
+  const sleepTimerTotalSecsRef = useRef<number>(0);
+  const sleepTimerOriginalVolRef = useRef<number>(audioEngine.volume);
+  const sleepTimerFadingRef = useRef<boolean>(false);
+
+  const handleStartSleepTimer = useCallback((minutes: number) => {
+    const totalSecs = minutes * 60;
+    sleepTimerTotalSecsRef.current = totalSecs;
+    sleepTimerTargetRef.current = Date.now() + totalSecs * 1000;
+    sleepTimerOriginalVolRef.current = audioEngine.volume;
+    sleepTimerFadingRef.current = false;
+    setSleepTimerRemaining(totalSecs);
+  }, [audioEngine.volume]);
+
+  const handleExtendSleepTimer = useCallback((additionalMinutes: number) => {
+    const addSecs = additionalMinutes * 60;
+    sleepTimerTotalSecsRef.current += addSecs;
+    sleepTimerTargetRef.current = (sleepTimerTargetRef.current || Date.now()) + addSecs * 1000;
+    const remaining = Math.max(0, Math.ceil((sleepTimerTargetRef.current - Date.now()) / 1000));
+    setSleepTimerRemaining(remaining);
+    if (sleepTimerFadingRef.current) {
+      sleepTimerFadingRef.current = false;
+      audioEngine.setVolume(sleepTimerOriginalVolRef.current);
     }
+  }, [audioEngine]);
+
+  const handleCancelSleepTimer = useCallback(() => {
+    if (sleepTimerFadingRef.current) {
+      audioEngine.setVolume(sleepTimerOriginalVolRef.current);
+    }
+    sleepTimerTargetRef.current = null;
+    sleepTimerFadingRef.current = false;
+    setSleepTimerRemaining(null);
+  }, [audioEngine]);
+
+  // Active sleep timer countdown ticker with verified 10-second exponential volume fade-out
+  useEffect(() => {
+    if (sleepTimerRemaining === null && sleepTimerTargetRef.current === null) return;
+
     const interval = setInterval(() => {
-      setSleepTimerRemaining(prev => {
-        if (prev === null || prev <= 1) {
-          audioEngine.pause();
-          return null;
+      if (!sleepTimerTargetRef.current) return;
+      const now = Date.now();
+      const remainingSecs = Math.max(0, Math.ceil((sleepTimerTargetRef.current - now) / 1000));
+
+      setSleepTimerRemaining(remainingSecs);
+
+      // Start exponential fade-out over final 10 seconds
+      if (remainingSecs <= 10 && remainingSecs > 0 && !sleepTimerFadingRef.current) {
+        sleepTimerFadingRef.current = true;
+        if (audioEngine.fadeVolume) {
+          audioEngine.fadeVolume(0, remainingSecs);
         }
-        return prev - 1;
-      });
+      }
+
+      // Finish timer: pause playback and restore volume
+      if (remainingSecs <= 0) {
+        audioEngine.pause();
+        setTimeout(() => {
+          audioEngine.setVolume(sleepTimerOriginalVolRef.current);
+          sleepTimerTargetRef.current = null;
+          sleepTimerFadingRef.current = false;
+          setSleepTimerRemaining(null);
+        }, 300);
+      }
     }, 1000);
+
     return () => clearInterval(interval);
-  }, [sleepTimerRemaining, audioEngine]);
+  }, [audioEngine]);
 
   const tracksRef = useRef<Track[]>([]);
   tracksRef.current = tracks;
@@ -1329,8 +1297,10 @@ export const App: React.FC = () => {
         isOpen={isSleepTimerOpen}
         onClose={() => setIsSleepTimerOpen(false)}
         timerRemaining={sleepTimerRemaining}
-        onStartTimer={(mins) => setSleepTimerRemaining(mins * 60)}
-        onCancelTimer={() => setSleepTimerRemaining(null)}
+        totalDurationSeconds={sleepTimerTotalSecsRef.current}
+        onStartTimer={handleStartSleepTimer}
+        onExtendTimer={handleExtendSleepTimer}
+        onCancelTimer={handleCancelSleepTimer}
       />
     </div>
   );

@@ -122,10 +122,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
     }
 
     const render = (now: number) => {
-      if (document.hidden) {
-        animId = requestAnimationFrame(render);
-        return;
-      }
+      if (document.hidden) return;
 
       // Throttle to 60 FPS max
       if (now - lastRenderTime < 16) {
@@ -246,6 +243,8 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
     const handleVisibilityChange = () => {
       if (!document.hidden && isPlaying) {
         lastRenderTime = performance.now();
+        cancelAnimationFrame(animId);
+        animId = requestAnimationFrame(render);
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);

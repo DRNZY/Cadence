@@ -12,12 +12,14 @@ import { PlayerBarPosition, PlayerBarStyle, LibraryPosition, SidebarPosition, Th
 
 export type PerformanceMode = "quality" | "balanced" | "performance" | "ultra-low";
 
+export type UiDensity = "comfortable" | "compact" | "spacious";
+
 export interface AppSettings {
   performanceMode: PerformanceMode;
   themeMode?: ThemeMode;
+  uiDensity?: UiDensity;
   enableAmbientGlow: boolean;
   enableGlassBlur: boolean;
-  enableMotionBlur: boolean;
   visualizerEnabled: boolean;
   dynamicTheme: boolean;
   autoScrobble: boolean;
@@ -36,16 +38,16 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   performanceMode: "balanced",
   themeMode: "dark",
+  uiDensity: "comfortable",
   enableAmbientGlow: true,
   enableGlassBlur: true,
-  enableMotionBlur: true,
   visualizerEnabled: true,
   dynamicTheme: true,
   autoScrobble: false,
-  themePreset: "graphite",
-  accentColor: "#38bdf8",
-  customGradientStart: "#0f172a",
-  customGradientEnd: "#020617",
+  themePreset: "tokyo-night",
+  accentColor: "#7aa2f7",
+  customGradientStart: "#1f2335",
+  customGradientEnd: "#13141c",
   customGradientAngle: 145,
   glowIntensity: 0.7,
   playerBarPosition: "bottom",
@@ -583,6 +585,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                       </div>
                     </div>
+                    {/* UI Scaling & Density */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-neutral-300 px-1">UI Density & Scale</p>
+                      <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-3 grid grid-cols-3 gap-2.5">
+                        {([
+                          { id: "compact", label: "Compact", desc: "Dense layout for small screens" },
+                          { id: "comfortable", label: "Comfortable", desc: "Balanced standard view" },
+                          { id: "spacious", label: "Spacious", desc: "Generous breathing room" },
+                        ] as const).map(density => {
+                          const active = (settings.uiDensity || "comfortable") === density.id;
+                          return (
+                            <button
+                              key={density.id}
+                              onClick={() => set("uiDensity", density.id)}
+                              className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all text-xs active:scale-95 ${
+                                active
+                                  ? "bg-white/15 border-white/30 text-white shadow-sm font-bold"
+                                  : "bg-black/30 border-white/5 text-neutral-400 hover:text-white hover:border-white/15"
+                              }`}
+                            >
+                              <span className="font-semibold">{density.label}</span>
+                              <span className="text-[9px] text-neutral-500 text-center leading-tight">{density.desc}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -604,7 +633,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <Moon className="w-4 h-4 text-primary" />
                           <div className="text-left">
                             <div className="text-xs font-bold text-white">Dark</div>
-                            <div className="text-[10px] text-neutral-400">Obsidian glass</div>
+                            <div className="text-[10px] text-neutral-400">Obsidian Tokyo Night</div>
                           </div>
                         </button>
 
@@ -631,16 +660,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         checked={settings.dynamicTheme}
                         onChange={v => {
                           set("dynamicTheme", v);
-                          if (!v) handleApplyThemePreset(settings.themePreset || "graphite");
+                          if (!v) handleApplyThemePreset(settings.themePreset || "tokyo-night");
                         }}
                         label="Dynamic Album Art Glow"
-                        description="Derives accent colors directly from active album artwork."
+                        description="Derives ambient colors directly from active album artwork."
                       />
                     </div>
 
                     {/* Curated Presets */}
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold text-neutral-300 px-1">Color Presets</p>
+                      <p className="text-xs font-semibold text-neutral-300 px-1">Curated Theme Presets</p>
                       <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                         {THEME_PRESETS.map(preset => {
                           const active = !settings.dynamicTheme && settings.themePreset === preset.id;
@@ -650,16 +679,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               onClick={() => handleApplyThemePreset(preset.id)}
                               className={`p-2.5 rounded-xl border flex flex-col items-start gap-2 transition-all text-left active:scale-95 ${
                                 active
-                                  ? "border-white/40 bg-white/15 shadow-sm"
+                                  ? "border-white/40 bg-white/15 shadow-sm font-semibold"
                                   : "border-white/5 bg-black/40 hover:border-white/20 hover:bg-white/5"
                               }`}
                             >
                               <div className="flex items-center gap-2">
                                 <span
-                                  className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm"
+                                  className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm shrink-0"
                                   style={{ backgroundColor: preset.accent }}
                                 />
-                                <span className="text-xs font-semibold text-white">{preset.name}</span>
+                                <span className="text-xs font-medium text-white truncate">{preset.name}</span>
                               </div>
                               <div
                                 className="w-full h-2.5 rounded-md border border-white/10"
@@ -671,19 +700,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Custom Accent Swatches */}
+                    {/* Custom Accent Swatches & Custom Hex Input */}
                     <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-4 space-y-3">
-                      <p className="text-xs font-semibold text-white">Accent Palette</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-white">Custom Accent Color</p>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={localColors.accentColor}
+                            onChange={e => handleCustomThemeChange("accentColor", e.target.value)}
+                            className="w-6 h-6 rounded-lg border border-white/20 bg-transparent cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            value={localColors.accentColor}
+                            onChange={e => {
+                              if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) {
+                                handleCustomThemeChange("accentColor", e.target.value);
+                              }
+                            }}
+                            className="w-20 px-2 py-1 bg-black/40 border border-white/10 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-primary"
+                            placeholder="#7aa2f7"
+                          />
+                        </div>
+                      </div>
+
                       <div className="flex items-center gap-2 flex-wrap">
                         {[
+                          { name: "Tokyo Blue", color: "#7aa2f7" },
+                          { name: "Tokyo Cyan", color: "#7dcfff" },
                           { name: "Sky", color: "#38bdf8" },
                           { name: "Emerald", color: "#10b981" },
                           { name: "Amber", color: "#f59e0b" },
-                          { name: "Violet", color: "#8b5cf6" },
-                          { name: "Pink", color: "#ec4899" },
-                          { name: "Cyan", color: "#06b6d4" },
+                          { name: "Violet", color: "#bb9af7" },
                           { name: "Rose", color: "#f43f5e" },
-                          { name: "Arctic", color: "#f8fafc" },
+                          { name: "Pure White", color: "#f8fafc" },
                         ].map(swatch => {
                           const isCurrent = localColors.accentColor.toLowerCase() === swatch.color.toLowerCase();
                           return (
@@ -704,11 +755,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 )}
 
-                {/* ─── 3. PERFORMANCE TAB (CLEAN - ZERO FAKE RAM BADGES) ─── */}
+                {/* ─── 3. PERFORMANCE TAB ─── */}
                 {tab === "performance" && (
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold text-neutral-300 px-1">Performance Mode</p>
+                      <p className="text-xs font-semibold text-neutral-300 px-1">Performance Profile</p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         {PERF_MODES.map(mode => {
                           const active = settings.performanceMode === mode.id;
@@ -770,25 +821,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           checked={settings.enableAmbientGlow}
                           onChange={v => set("enableAmbientGlow", v)}
                           label="Ambient Glow"
-                          description="Reflective background illumination matching the active album art."
+                          description="Dynamic reflective illumination matching the active track."
                         />
                         <Toggle
                           checked={settings.enableGlassBlur}
                           onChange={v => set("enableGlassBlur", v)}
-                          label="Background Blur"
+                          label="Background Translucency"
                           description="Frosted glass translucent backdrop filtering."
-                        />
-                        <Toggle
-                          checked={settings.enableMotionBlur}
-                          onChange={v => set("enableMotionBlur", v)}
-                          label="Motion Blur"
-                          description="Directional velocity blur during window resizing and divider dragging."
                         />
                         <Toggle
                           checked={settings.visualizerEnabled}
                           onChange={v => set("visualizerEnabled", v)}
-                          label="Audio Spectrum"
-                          description="Real-time frequency visualizer canvas."
+                          label="Audio Spectrum Visualizer"
+                          description="Real-time frequency and waveform canvas visualizer."
                         />
                       </div>
                     </div>

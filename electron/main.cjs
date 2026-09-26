@@ -37,7 +37,12 @@ if (!gotTheLock) {
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
 app.commandLine.appendSwitch("enable-zero-copy");
-app.commandLine.appendSwitch("js-flags", "--max-old-space-size=256");
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=128 --expose-gc");
+app.commandLine.appendSwitch("disable-breakpad");
+app.commandLine.appendSwitch("disable-component-update");
+app.commandLine.appendSwitch("disable-domain-reliability");
+app.commandLine.appendSwitch("disable-sync");
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion,InterestFeedContentSuggestions,TranslateUI");
 
 function checkUrl(url) {
   return new Promise((resolve) => {
@@ -182,6 +187,18 @@ async function createWindow() {
       }
     } catch {}
     return { action: "deny" };
+  });
+
+  mainWindow.on("blur", () => {
+    if (global.gc) {
+      try { global.gc(); } catch (_) {}
+    }
+  });
+
+  mainWindow.on("minimize", () => {
+    if (global.gc) {
+      try { global.gc(); } catch (_) {}
+    }
   });
 
   mainWindow.on("closed", () => {

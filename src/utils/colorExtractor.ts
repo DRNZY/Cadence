@@ -21,17 +21,35 @@ export interface PresetTheme {
 
 export const THEME_PRESETS: PresetTheme[] = [
   {
+    id: "tokyo-night",
+    name: "Tokyo Night Storm",
+    accent: "#7aa2f7",
+    startColor: "#1f2335",
+    endColor: "#13141c",
+    angle: 145,
+    bgGradient: "radial-gradient(ellipse 85% 65% at 20% 0%, rgba(122, 162, 247, 0.15) 0%, transparent 65%), radial-gradient(ellipse 70% 55% at 80% 100%, rgba(187, 154, 247, 0.09) 0%, transparent 70%), #0c0d14"
+  },
+  {
+    id: "tokyo-moon",
+    name: "Tokyo Night Moon",
+    accent: "#82aaff",
+    startColor: "#222436",
+    endColor: "#161622",
+    angle: 150,
+    bgGradient: "radial-gradient(ellipse 85% 65% at 20% 0%, rgba(130, 170, 255, 0.14) 0%, transparent 65%), radial-gradient(ellipse 70% 55% at 80% 100%, rgba(192, 153, 255, 0.08) 0%, transparent 70%), #0e0f17"
+  },
+  {
     id: "obsidian",
     name: "Obsidian OLED",
-    accent: "#ffffff",
+    accent: "#e2e8f0",
     startColor: "#050507",
     endColor: "#000000",
     angle: 180,
-    bgGradient: "radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.04) 0%, transparent 60%), #050508"
+    bgGradient: "radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.03) 0%, transparent 60%), #000000"
   },
   {
     id: "graphite",
-    name: "Space Titanium",
+    name: "Slate Studio",
     accent: "#38bdf8",
     startColor: "#0f172a",
     endColor: "#020617",
@@ -39,8 +57,17 @@ export const THEME_PRESETS: PresetTheme[] = [
     bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(56, 189, 248, 0.12) 0%, transparent 65%), radial-gradient(ellipse 60% 50% at 80% 100%, rgba(14, 165, 233, 0.08) 0%, transparent 70%), #07090e"
   },
   {
+    id: "amber",
+    name: "Cyberpunk Amber",
+    accent: "#f59e0b",
+    startColor: "#3b1d07",
+    endColor: "#120701",
+    angle: 145,
+    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(245, 158, 11, 0.14) 0%, transparent 65%), radial-gradient(ellipse 60% 50% at 80% 100%, rgba(217, 119, 6, 0.08) 0%, transparent 70%), #080402"
+  },
+  {
     id: "emerald",
-    name: "Emerald Hi-Fi",
+    name: "Emerald Analog",
     accent: "#10b981",
     startColor: "#064e3b",
     endColor: "#022c22",
@@ -48,31 +75,31 @@ export const THEME_PRESETS: PresetTheme[] = [
     bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(16, 185, 129, 0.14) 0%, transparent 65%), radial-gradient(ellipse 60% 50% at 80% 100%, rgba(5, 150, 105, 0.08) 0%, transparent 70%), #040807"
   },
   {
-    id: "amber",
-    name: "Amber Vinyl",
-    accent: "#f59e0b",
-    startColor: "#451a03",
-    endColor: "#1c0d02",
-    angle: 145,
-    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(245, 158, 11, 0.14) 0%, transparent 65%), radial-gradient(ellipse 60% 50% at 80% 100%, rgba(217, 119, 6, 0.08) 0%, transparent 70%), #0a0604"
-  },
-  {
     id: "nordic",
-    name: "Nordic Slate",
-    accent: "#94a3b8",
-    startColor: "#1e293b",
-    endColor: "#0f172a",
+    name: "Nordic Frost",
+    accent: "#88c0d0",
+    startColor: "#2e3440",
+    endColor: "#1d212a",
     angle: 160,
-    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(148, 163, 184, 0.12) 0%, transparent 65%), #090d14"
+    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(136, 192, 208, 0.14) 0%, transparent 65%), #0c0e13"
   },
   {
     id: "crimson",
-    name: "Crimson Velvet",
+    name: "Velvet Rose",
     accent: "#f43f5e",
     startColor: "#4c0519",
     endColor: "#1f020a",
     angle: 140,
     bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(244, 63, 94, 0.14) 0%, transparent 65%), #080305"
+  },
+  {
+    id: "synthwave",
+    name: "Sunset Synth",
+    accent: "#c084fc",
+    startColor: "#2e1065",
+    endColor: "#0c0317",
+    angle: 145,
+    bgGradient: "radial-gradient(ellipse 80% 60% at 20% 0%, rgba(192, 132, 252, 0.16) 0%, transparent 65%), radial-gradient(ellipse 60% 50% at 80% 100%, rgba(236, 72, 153, 0.10) 0%, transparent 70%), #07020d"
   }
 ];
 

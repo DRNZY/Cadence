@@ -169,16 +169,3 @@ body.is-resizing .ambient-glow,
   opacity: 0.15 !important;
 }
 
-/* ─── DYNAMIC VELOCITY MOTION BLUR ─── */
-body.motion-blur-active .glass-panel,
-body.motion-blur-active .hero-surface,
-body.motion-blur-active main,
-.motion-blur-active .glass-panel,
-.motion-blur-active .hero-surface,
-.motion-blur-active main {
-  filter: blur(var(--motion-blur-amount, 12px)) !important;
-  transform: scaleX(var(--motion-blur-scale, 1.02)) translateZ(0);
-  transition: filter 0.06s ease-out, transform 0.06s ease-out;
-  will-change: filter, transform;
-}
-

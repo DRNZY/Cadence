@@ -109,10 +109,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     let animId: number;
 
     const tick = (now: number) => {
-      if (document.hidden) {
-        animId = requestAnimationFrame(tick);
-        return;
-      }
+      if (document.hidden) return;
 
       const delta = Math.min((now - lastTimeRef.current) / 1000, 0.1);
       lastTimeRef.current = now;
@@ -139,8 +136,10 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     animId = requestAnimationFrame(tick);
 
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
+      if (!document.hidden && isPlaying) {
         lastTimeRef.current = performance.now();
+        cancelAnimationFrame(animId);
+        animId = requestAnimationFrame(tick);
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);

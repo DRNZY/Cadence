@@ -24,7 +24,6 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
   const filtersRef = useRef<BiquadFilterNode[]>([]);
   const gainNodeRef = useRef<GainNode | null>(null);
   const replayGainNodeRef = useRef<GainNode | null>(null);
-  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const isNodesConnectedRef = useRef<boolean>(false);
   const filterFxRef = useRef<BiquadFilterNode | null>(null);
@@ -40,7 +39,18 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
   const [volume, setVolume] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1.0);
-  const [eqGains, setEqGains] = useState<number[]>(new Array(10).fill(0));
+  const [eqGains, setEqGains] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem("cadence_eq_gains") || localStorage.getItem("auradeck_eq_gains");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === 10) {
+          return parsed.map(v => typeof v === "number" && !isNaN(v) ? v : 0);
+        }
+      }
+    } catch {}
+    return new Array(10).fill(0);
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [baseBpm, setBaseBpm] = useState<number>(120.0);
   const [pitchRange, setPitchRange] = useState<6 | 10 | 16 | 50>(10);
@@ -56,7 +66,7 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
   const loopRef = useRef(beatLoop);
   loopRef.current = beatLoop;
 
-  // DSP Settings State
+  // DSP Settings State with persistent storage
   const [dspSettings, setDspSettings] = useState<DspSettings>(() => {
     try {
       const saved = localStorage.getItem("cadence_dsp_settings") || localStorage.getItem("auradeck_dsp_settings");
@@ -71,34 +81,42 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     };
   });
 
-  // Save DSP Settings
+  // Save DSP Settings automatically
   useEffect(() => {
     try {
       localStorage.setItem("cadence_dsp_settings", JSON.stringify(dspSettings));
     } catch {}
   }, [dspSettings]);
 
+  // Save EQ Gains automatically
+  useEffect(() => {
+    try {
+      localStorage.setItem("cadence_eq_gains", JSON.stringify(eqGains));
+    } catch {}
+  }, [eqGains]);
+
   // Apply ReplayGain calculation to replayGainNode
   const updateReplayGain = useCallback((track: Track | null, settings: DspSettings) => {
     if (!replayGainNodeRef.current || !audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
     const now = ctx.currentTime;
+    const preampDb = typeof settings.preampGain === "number" ? settings.preampGain : 0;
 
-    if (!settings.replayGainEnabled || !track || track.replayGain === undefined) {
+    if (!settings.replayGainEnabled || !track || typeof track.replayGain !== "number" || isNaN(track.replayGain)) {
       // Normal preamp without track gain
-      const targetGain = Math.pow(10, (settings.preampGain || 0) / 20);
+      const targetGain = Math.pow(10, preampDb / 20);
       replayGainNodeRef.current.gain.cancelScheduledValues(now);
-      replayGainNodeRef.current.gain.linearRampToValueAtTime(targetGain, now + 0.1);
+      replayGainNodeRef.current.gain.linearRampToValueAtTime(targetGain, now + 0.05);
       return;
     }
 
-    const totalGainDb = track.replayGain + (settings.preampGain || 0);
-    // Limit gain compensation to prevent extreme distortion (-15dB to +12dB)
-    const clampedGainDb = Math.max(-15, Math.min(12, totalGainDb));
+    const totalGainDb = track.replayGain + preampDb;
+    // Limit gain compensation to prevent extreme distortion (-15dB to +10dB)
+    const clampedGainDb = Math.max(-15, Math.min(10, totalGainDb));
     const linearGain = Math.pow(10, clampedGainDb / 20);
 
     replayGainNodeRef.current.gain.cancelScheduledValues(now);
-    replayGainNodeRef.current.gain.linearRampToValueAtTime(linearGain, now + 0.15);
+    replayGainNodeRef.current.gain.linearRampToValueAtTime(linearGain, now + 0.05);
   }, []);
 
   // Initialize Web Audio Context & Graph
@@ -125,19 +143,11 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
 
       // 3. ReplayGain & Preamp Node
       const replayGainNode = ctx.createGain();
-      replayGainNode.gain.value = 1.0;
+      const preampDb = typeof dspSettings.preampGain === "number" ? dspSettings.preampGain : 0;
+      replayGainNode.gain.value = Math.pow(10, preampDb / 20);
       replayGainNodeRef.current = replayGainNode;
 
-      // 4. Studio Peak Limiter (Soft-Knee Compressor to prevent clipping during high gain EQ/ReplayGain)
-      const compressor = ctx.createDynamicsCompressor();
-      compressor.threshold.value = -0.5; // -0.5 dB
-      compressor.knee.value = 4;
-      compressor.ratio.value = 12;
-      compressor.attack.value = 0.003;
-      compressor.release.value = 0.15;
-      compressorRef.current = compressor;
-
-      // 5. 10-Band Biquad Graphic Equalizer Filters
+      // 4. 10-Band Biquad Graphic Equalizer Filters (0dB = flat studio bypass)
       const filters = EQ_FREQUENCIES.map((freq, idx) => {
         const filter = ctx.createBiquadFilter();
         if (idx === 0) {
@@ -154,11 +164,18 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
       });
       filtersRef.current = filters;
 
+      // 5. Color FX Filter Node (DJ LPF / HPF sweep - default transparent at 20kHz)
+      const filterFx = ctx.createBiquadFilter();
+      filterFx.type = "allpass";
+      filterFx.frequency.value = 20000;
+      filterFx.Q.value = 0.7;
+      filterFxRef.current = filterFx;
+
       if (!sourceNodeRef.current && audioRef.current) {
         const source = ctx.createMediaElementSource(audioRef.current);
         sourceNodeRef.current = source;
 
-        // Audio Chain: Source -> ReplayGain -> EQ Filters -> Analyser -> Master Gain -> Limiter -> Destination
+        // Pure Bit-Perfect Audio Chain: Source -> ReplayGain / Preamp -> EQ Filters -> Color FX -> Analyser -> Master Gain -> Destination
         let prevNode: AudioNode = source;
         prevNode.connect(replayGainNode);
         prevNode = replayGainNode;
@@ -168,32 +185,26 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
           prevNode = f;
         }
 
-        // Color FX Filter Node (DJ LPF / HPF sweep)
-        const filterFx = ctx.createBiquadFilter();
-        filterFx.type = "allpass";
-        filterFx.frequency.value = 20000;
-        filterFxRef.current = filterFx;
         prevNode.connect(filterFx);
         prevNode = filterFx;
 
         prevNode.connect(analyser);
         analyser.connect(gain);
-        gain.connect(compressor);
-        compressor.connect(ctx.destination);
+        gain.connect(ctx.destination);
 
         isNodesConnectedRef.current = true;
       }
     } catch (e) {
       console.warn("Web Audio API initialization notice:", e);
     }
-  }, [volume, isMuted, eqGains]);
+  }, [volume, isMuted, eqGains, dspSettings.preampGain]);
 
   // Handle HTML5 Audio element setup
   useEffect(() => {
     const audio = new Audio();
     audio.crossOrigin = "anonymous";
     audio.preload = "auto";
-    audio.volume = volume;
+    audio.volume = 1.0;
     audio.preservesPitch = keyLock;
     audioRef.current = audio;
 
@@ -318,7 +329,7 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     } else {
       audioRef.current.src = streamUrl;
       audioRef.current.playbackRate = playbackRate;
-      audioRef.current.volume = isMuted ? 0 : volume;
+      audioRef.current.volume = 1.0;
       audioRef.current.load();
 
       try {
@@ -439,7 +450,7 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     const clamped = Math.max(0, Math.min(val, 1));
     setVolume(clamped);
     if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : clamped;
+      audioRef.current.volume = 1.0;
     }
     if (gainNodeRef.current) {
       gainNodeRef.current.gain.value = isMuted ? 0 : clamped;
@@ -450,7 +461,7 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     setIsMuted(prev => {
       const next = !prev;
       if (audioRef.current) {
-        audioRef.current.volume = next ? 0 : volume;
+        audioRef.current.volume = 1.0;
       }
       if (gainNodeRef.current) {
         gainNodeRef.current.gain.value = next ? 0 : volume;
@@ -466,6 +477,24 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     }
   }, []);
 
+  const fadeVolume = useCallback((targetVolume: number, durationSeconds: number) => {
+    if (!audioCtxRef.current || !gainNodeRef.current) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+    const gainNode = gainNodeRef.current;
+    const currentGain = gainNode.gain.value;
+    const target = Math.max(0, Math.min(1, targetVolume));
+
+    gainNode.gain.cancelScheduledValues(now);
+    gainNode.gain.setValueAtTime(Math.max(0.0001, currentGain), now);
+    if (target === 0) {
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + Math.max(0.1, durationSeconds * 0.95));
+      gainNode.gain.linearRampToValueAtTime(0, now + durationSeconds);
+    } else {
+      gainNode.gain.linearRampToValueAtTime(target, now + durationSeconds);
+    }
+  }, []);
+
   const setEqGain = useCallback((bandIndex: number, gainValue: number) => {
     setEqGains(prev => {
       const next = [...prev];
@@ -473,6 +502,9 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
       if (filtersRef.current[bandIndex]) {
         filtersRef.current[bandIndex].gain.value = gainValue;
       }
+      try {
+        localStorage.setItem("cadence_eq_gains", JSON.stringify(next));
+      } catch {}
       return next;
     });
   }, []);
@@ -484,10 +516,19 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
         filtersRef.current[idx].gain.value = gain;
       }
     });
+    try {
+      localStorage.setItem("cadence_eq_gains", JSON.stringify(newGains));
+    } catch {}
   }, []);
 
   const updateDspSettings = useCallback((newSettings: Partial<DspSettings>) => {
-    setDspSettings(prev => ({ ...prev, ...newSettings }));
+    setDspSettings(prev => {
+      const updated = { ...prev, ...newSettings };
+      try {
+        localStorage.setItem("cadence_dsp_settings", JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   }, []);
 
   // Precision DJ Tempo / BPM controls
@@ -737,6 +778,7 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     setAllEqGains,
     applyPreset: setAllEqGains,
     updateDspSettings,
+    fadeVolume,
     startScratch,
     scratch,
     endScratch,
