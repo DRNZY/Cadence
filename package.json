@@ -17,6 +17,7 @@
     "build:linux": "npm run build && electron-builder --linux AppImage tar.gz deb",
     "build:win": "npm run build && electron-builder --win nsis zip",
     "build:mac": "npm run build && electron-builder --mac zip",
+    "dist": "node scripts/dist.mjs",
     "start": "electron electron/main.cjs",
     "lint": "oxlint",
     "preview": "vite preview",

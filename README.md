@@ -39,10 +39,43 @@ npm run dev
 ### Build
 
 ```bash
-npm run build
-npm run build:server
-npm run dist
+npm run build        # typecheck, build the client, bundle the server
+npm run dist         # build, then package for the current platform
 ```
+
+`npm run dist` infers the electron-builder targets from the host platform and
+calls the same `npm run build` the other targets use:
+
+| Platform | Targets |
+|---|---|
+| Linux | AppImage, tar.gz, deb |
+| Windows | nsis, zip |
+| macOS | zip |
+
+Useful flags:
+
+```bash
+npm run dist -- --dry-run       # print the steps, build nothing
+npm run dist -- --dir           # unpacked output, no installer
+npm run dist -- --skip-build    # package whatever is already in dist/
+npm run dist -- --targets "zip" # override the inferred list
+```
+
+Per-platform scripts remain available if you want to cross-package:
+`npm run build:linux`, `npm run build:win`, `npm run build:mac`, and
+`npm run build:all` for every platform at once.
+
+### A note on `dist-server/`
+
+`npm run build:server` bundles the server to `dist-server/index.mjs`, and
+`electron/main.cjs` loads that `.mjs` file. `dist-server/` is a build directory
+and is gitignored.
+
+If a stale `dist-server/index.cjs` is sitting there, it is a leftover from an
+earlier CommonJS build. Nothing references it, but `electron-builder.json`
+packages `dist-server/**/*`, so it will still be copied into the installer.
+`npm run dist` prints a note when it finds one. Delete it if you do not want it
+shipped.
 
 ## CLI usage
 
