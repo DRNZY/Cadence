@@ -132,13 +132,29 @@ body.no-glow .ambient-glow {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
-/* Dynamic Ambient Glow */
+/* Dynamic Ambient Glow.
+ *
+ * This covered the whole viewport with `filter: blur(50px)` and then sat under
+ * every `backdrop-filter` panel in the window, so each of those panels had to
+ * re-snapshot and re-blur it on every frame. The falloff is now built into the
+ * gradient stops, which costs nothing and looks the same at this scale. */
 .ambient-glow {
   background:
-    radial-gradient(ellipse 75% 60% at 50% 35%, var(--ambient-1, var(--primary-glow)) 0%, transparent 65%),
-    radial-gradient(ellipse 65% 50% at 20% 65%, var(--ambient-2, var(--secondary-glow)) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 50% at 80% 70%, var(--ambient-3, var(--theme-tertiary)) 0%, transparent 75%);
-  filter: blur(50px);
+    radial-gradient(ellipse 90% 75% at 50% 35%,
+      var(--ambient-1, var(--primary-glow)) 0%,
+      color-mix(in srgb, var(--ambient-1, var(--primary-glow)) 45%, transparent) 32%,
+      color-mix(in srgb, var(--ambient-1, var(--primary-glow)) 18%, transparent) 58%,
+      transparent 100%),
+    radial-gradient(ellipse 80% 65% at 20% 65%,
+      var(--ambient-2, var(--secondary-glow)) 0%,
+      color-mix(in srgb, var(--ambient-2, var(--secondary-glow)) 40%, transparent) 34%,
+      color-mix(in srgb, var(--ambient-2, var(--secondary-glow)) 16%, transparent) 62%,
+      transparent 100%),
+    radial-gradient(ellipse 75% 65% at 80% 70%,
+      var(--ambient-3, var(--theme-tertiary)) 0%,
+      color-mix(in srgb, var(--ambient-3, var(--theme-tertiary)) 38%, transparent) 36%,
+      color-mix(in srgb, var(--ambient-3, var(--theme-tertiary)) 15%, transparent) 64%,
+      transparent 100%);
   transition: background 1.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.8s ease;
 }
 

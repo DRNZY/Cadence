@@ -2,16 +2,26 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
+export interface LyricWord {
+  start: number;
+  end?: number;
+  text: string;
+}
+
 export interface LyricLine {
   time: number;
   text: string;
+  words?: LyricWord[];
 }
+
+export type LyricsProvider = "lrclib";
 
 export interface LyricsResponse {
   synced: boolean;
   source: "local" | "online" | "cache" | "none";
   provider?: string;
   isInstrumental?: boolean;
+  hasWordSync?: boolean;
   lines: LyricLine[];
 }
 
@@ -31,31 +41,160 @@ export interface LyricsCandidate {
 const CACHE_DIR = path.join(os.homedir(), ".cache/cadence/lyrics");
 if (!fs.existsSync(CACHE_DIR)) {
   try {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
+    // Owner-only. The parent cache dirs default to 0755, and lyrics files are
+    // written later without an explicit mode, so without this the directory is
+    // world-readable on a multi-user machine.
+    fs.mkdirSync(CACHE_DIR, { recursive: true, mode: 0o700 });
   } catch {}
 }
 
 export function parseLrc(content: string): LyricLine[] {
+  if (!content || typeof content !== "string") return [];
   const lines = content.split(/\r?\n/);
   const result: LyricLine[] = [];
-  const timeRegex = /\[(\d{2}):(\d{2})(?:\.(\d{2,3}))?\]/g;
 
-  for (const line of lines) {
-    const text = line.replace(timeRegex, "").trim();
-    if (!text) continue;
+  const timeTagRegex = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+  const angleTagRegex = /<(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?>/g;
+  const metaTagRegex = /^\[(ti|ar|al|au|by|re|ve|tool|length|encoding):\s*(.*)\]$/i;
+  const offsetTagRegex = /^\[offset:\s*([+-]?\d+)\]/i;
 
-    timeRegex.lastIndex = 0;
-    let match;
-    while ((match = timeRegex.exec(line)) !== null) {
-      const minutes = parseInt(match[1], 10);
-      const seconds = parseInt(match[2], 10);
-      const milliseconds = match[3] ? parseInt(match[3].padEnd(3, "0").slice(0, 3), 10) : 0;
-      const totalSeconds = minutes * 60 + seconds + milliseconds / 1000;
-      result.push({ time: totalSeconds, text });
+  let globalOffsetSec = 0;
+
+  // First pass: scan for [offset: +/-ms]
+  for (const raw of lines) {
+    const trimmed = raw.trim();
+    const offsetMatch = trimmed.match(offsetTagRegex);
+    if (offsetMatch) {
+      const ms = parseInt(offsetMatch[1], 10);
+      if (!isNaN(ms)) {
+        // Standard LRC: positive offset means lyrics play earlier (audio time = stamp - offset)
+        globalOffsetSec = ms / 1000;
+      }
     }
   }
 
-  return result.sort((a, b) => a.time - b.time);
+  const parseTime = (minutesStr: string, secondsStr: string, fracRaw?: string): number => {
+    const minutes = parseInt(minutesStr, 10);
+    const seconds = parseInt(secondsStr, 10);
+    let frac = 0;
+    if (fracRaw) {
+      const normalizedFrac = fracRaw.length >= 3 ? fracRaw.slice(0, 3) : fracRaw.padEnd(3, "0");
+      frac = parseInt(normalizedFrac, 10) / 1000;
+    }
+    const rawTime = minutes * 60 + seconds + frac;
+    // Apply offset shift safely
+    return Math.max(0, rawTime - globalOffsetSec);
+  };
+
+  const stripAllTags = (s: string): string =>
+    s
+      .replace(timeTagRegex, "")
+      .replace(angleTagRegex, "")
+      .replace(/^\[[a-zA-Z]+:[^\]]*\]/g, "")
+      .trim();
+
+  for (const raw of lines) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+
+    // Ignore metadata ID tags
+    if (metaTagRegex.test(trimmed) || offsetTagRegex.test(trimmed)) {
+      continue;
+    }
+
+    // Extract all leading timestamp tags (classic multi-stamp lines: [00:12.00][00:34.00] Line)
+    const leadingTimestamps: number[] = [];
+    let lineText = raw;
+    
+    // Check for leading square bracket timestamps
+    const leadingMatchRegex = /^(?:\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\])+/;
+    const leadMatch = lineText.match(leadingMatchRegex);
+    
+    if (leadMatch) {
+      const tagBlock = leadMatch[0];
+      lineText = lineText.slice(tagBlock.length).trim();
+      
+      const singleTagRegex = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+      let tm;
+      while ((tm = singleTagRegex.exec(tagBlock)) !== null) {
+        leadingTimestamps.push(parseTime(tm[1], tm[2], tm[3]));
+      }
+    }
+
+    const cleanText = stripAllTags(lineText);
+    if (!cleanText) continue;
+
+    // If no timestamps on the line, treat as unsynced plain line only if no timestamps in overall file
+    if (leadingTimestamps.length === 0) {
+      // Check for inline angle bracket or embedded tags
+      let inlineFound = false;
+      angleTagRegex.lastIndex = 0;
+      if (angleTagRegex.test(raw)) {
+        inlineFound = true;
+      }
+      if (!inlineFound) {
+        result.push({ time: 0, text: cleanText });
+        continue;
+      }
+    }
+
+    // Check for enhanced word-level / syllable-level tags (<00:12.34> or [00:12.34] inside text)
+    const syllableTags: { time: number; index: number; end: number }[] = [];
+    angleTagRegex.lastIndex = 0;
+    let am;
+    while ((am = angleTagRegex.exec(lineText)) !== null) {
+      syllableTags.push({
+        time: parseTime(am[1], am[2], am[3]),
+        index: am.index,
+        end: angleTagRegex.lastIndex
+      });
+    }
+
+    let parsedWords: LyricWord[] | undefined = undefined;
+
+    if (syllableTags.length > 0) {
+      syllableTags.sort((a, b) => a.index - b.index);
+      parsedWords = [];
+      const baseStart = leadingTimestamps[0] ?? syllableTags[0].time;
+
+      const firstChunk = stripAllTags(lineText.slice(0, syllableTags[0].index));
+      if (firstChunk) {
+        parsedWords.push({ start: baseStart, text: firstChunk });
+      }
+
+      for (let i = 0; i < syllableTags.length; i++) {
+        const chunkStart = syllableTags[i].end;
+        const chunkEnd = syllableTags[i + 1]?.index ?? lineText.length;
+        const chunk = stripAllTags(lineText.slice(chunkStart, chunkEnd));
+        if (chunk) {
+          parsedWords.push({ start: syllableTags[i].time, text: chunk });
+        }
+      }
+
+      if (parsedWords.length > 0) {
+        for (let wi = 0; wi < parsedWords.length; wi++) {
+          const nextWordStart = parsedWords[wi + 1]?.start;
+          parsedWords[wi].end = nextWordStart ?? (parsedWords[wi].start + 0.6);
+        }
+      }
+    }
+
+    // For every leading timestamp (supports repeated chorus lines), add a LyricLine entry
+    const timestampsToAdd = leadingTimestamps.length > 0 ? leadingTimestamps : [syllableTags[0]?.time ?? 0];
+    for (const t of timestampsToAdd) {
+      result.push({
+        time: t,
+        text: cleanText,
+        words: parsedWords && parsedWords.length > 0 ? [...parsedWords] : undefined
+      });
+    }
+  }
+
+  // Filter out any duplicate 0-timestamp metadata leftovers if real timestamps exist
+  const hasRealTimestamps = result.some(l => l.time > 0);
+  const finalLines = hasRealTimestamps ? result.filter(l => l.text.length > 0) : result;
+
+  return finalLines.sort((a, b) => a.time - b.time);
 }
 
 export function getCacheKey(artist: string, title: string): string {
@@ -464,10 +603,12 @@ export async function getLyricsForTrack(
     if (fs.existsSync(lrcPath)) {
       try {
         const content = fs.readFileSync(lrcPath, "utf-8");
+        const parsed = parseLrc(content);
         return {
           synced: true,
           source: "local",
-          lines: parseLrc(content)
+          hasWordSync: parsed.some(line => line.words && line.words.length > 0),
+          lines: parsed
         };
       } catch {}
     }
@@ -498,11 +639,13 @@ export async function getLyricsForTrack(
   if (!forceRefresh && fs.existsSync(cacheFile)) {
     try {
       const content = fs.readFileSync(cacheFile, "utf-8");
+      const parsed = parseLrc(content);
       return {
         synced: true,
         source: "cache",
         provider: "LRCLIB",
-        lines: parseLrc(content)
+        hasWordSync: parsed.some(line => line.words && line.words.length > 0),
+        lines: parsed
       };
     } catch {}
   }
@@ -522,6 +665,7 @@ export async function getLyricsForTrack(
       }
 
       if (online.synced && online.lrc) {
+        const parsed = parseLrc(online.lrc);
         try {
           fs.writeFileSync(cacheFile, online.lrc, "utf-8");
         } catch {}
@@ -530,7 +674,8 @@ export async function getLyricsForTrack(
           synced: true,
           source: "online",
           provider: online.provider || "LRCLIB",
-          lines: parseLrc(online.lrc)
+          hasWordSync: parsed.some(line => line.words && line.words.length > 0),
+          lines: parsed
         };
       }
 

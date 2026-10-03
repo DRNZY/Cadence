@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Moon, X, Clock, Plus, RotateCcw } from "lucide-react";
+import { Moon, X, Clock, Plus, RotateCcw } from "./icons";
 
 interface SleepTimerModalProps {
   isOpen: boolean;
@@ -49,14 +48,9 @@ export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({
     : 0;
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 14 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 14 }}
-          transition={{ type: "spring", stiffness: 450, damping: 32 }}
-          className="relative w-full max-w-md bg-neutral-900/95 border border-white/10 rounded-3xl p-6 shadow-2xl text-neutral-100 space-y-5"
+      <div className="cadence-fade-in fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+        <div
+          className="cadence-pop-in relative w-full max-w-md bg-neutral-900/95 border border-white/10 rounded-3xl p-6 shadow-2xl text-neutral-100 space-y-5"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -197,8 +191,7 @@ export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({
           <div className="text-[11px] text-neutral-500 text-center pt-1 border-t border-white/5">
             Automatic 10-second exponential audio fade-out before playback stops.
           </div>
-        </motion.div>
+        </div>
       </div>
-    </AnimatePresence>
   );
 };

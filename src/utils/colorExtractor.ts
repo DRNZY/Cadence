@@ -189,26 +189,87 @@ interface ColorBucket {
   score: number;
 }
 
+/**
+ * Results by image URL.
+ *
+ * Every track on an album shares one cover URL, and skipping tracks walks
+ * straight back through the same ones, so without this the same JPEG was
+ * decoded and re-scanned on every single track change.
+ */
+const colorCache = new Map<string, ExtractedColors>();
+
+/** In-flight extractions, so concurrent calls for one URL share one decode. */
+const colorInFlight = new Map<string, Promise<ExtractedColors>>();
+
+/** Bound on the cache. Artwork URLs are stable per album, so this holds a whole library. */
+const COLOR_CACHE_LIMIT = 512;
+
+/** Reused across calls; resizing it per call allocated a canvas every track. */
+let scratchCanvas: HTMLCanvasElement | null = null;
+let scratchCtx: CanvasRenderingContext2D | null = null;
+
+/** Store an extraction, evicting the oldest entry once the limit is reached. */
+function remember(imgSrc: string, colors: ExtractedColors): ExtractedColors {
+  if (colorCache.size >= COLOR_CACHE_LIMIT) {
+    const oldest = colorCache.keys().next();
+    if (!oldest.done) colorCache.delete(oldest.value);
+  }
+  colorCache.set(imgSrc, colors);
+  return colors;
+}
+
 // Extract dominant top 2-3 saturated colors directly from cover art with high dynamic range
 export function extractColors(imgSrc: string): Promise<ExtractedColors> {
+  const cached = colorCache.get(imgSrc);
+  if (cached) return Promise.resolve(cached);
+
+  const pending = colorInFlight.get(imgSrc);
+  if (pending) return pending;
+
+  const work = runColorExtraction(imgSrc).finally(() => {
+    colorInFlight.delete(imgSrc);
+  });
+  colorInFlight.set(imgSrc, work);
+  return work;
+}
+
+function runColorExtraction(imgSrc: string): Promise<ExtractedColors> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "Anonymous";
     img.src = imgSrc;
 
-    img.onload = () => {
+    img.onload = async () => {
+      let bitmap: ImageBitmap | null = null;
       try {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+     const size = 64;
+        try {
+          bitmap = await createImageBitmap(img, { resizeWidth: size, resizeHeight: size, resizeQuality: "high" });
+        } catch {
+          bitmap = null;
+        }
+
+        if (!scratchCanvas) scratchCanvas = document.createElement("canvas");
+     if (!scratchCtx) {
+          scratchCtx = scratchCanvas.getContext("2d", { willReadFrequently: true });
+        }
+        const canvas = scratchCanvas;
+        const ctx = scratchCtx;
         if (!ctx) {
+          img.removeAttribute("src");
           resolve(getDefaultColors());
           return;
         }
 
-        const size = 64;
         canvas.width = size;
         canvas.height = size;
-        ctx.drawImage(img, 0, 0, size, size);
+        if (bitmap) {
+          ctx.drawImage(bitmap, 0, 0);
+          bitmap.close();
+      bitmap = null;
+        } else {
+          ctx.drawImage(img, 0, 0, size, size);
+        }
 
         const imgData = ctx.getImageData(0, 0, size, size).data;
         const NUM_BINS = 16;
@@ -305,7 +366,7 @@ export function extractColors(imgSrc: string): Promise<ExtractedColors> {
             selectedRGB.push(hslToRgb((baseH + 45) % 360, 0.80, 0.50));
             selectedRGB.push(hslToRgb((baseH + 180) % 360, 0.75, 0.48));
           } else {
-            resolve(getDefaultColors());
+remember(imgSrc, getDefaultColors());
             return;
           }
         } else if (selectedRGB.length === 1) {
@@ -335,7 +396,8 @@ export function extractColors(imgSrc: string): Promise<ExtractedColors> {
                             radial-gradient(ellipse 70% 50% at 50% 50%, rgba(${c3[0]}, ${c3[1]}, ${c3[2]}, 0.15) 0%, transparent 70%),
                             #000000`;
 
-        resolve({
+        img.removeAttribute("src");
+        remember(imgSrc, {
           primary,
           glow,
           secondary,
@@ -346,11 +408,17 @@ export function extractColors(imgSrc: string): Promise<ExtractedColors> {
           bgGradient
         });
       } catch (err) {
+        if (bitmap) {
+          bitmap.close();
+          bitmap = null;
+        }
+        img.removeAttribute("src");
         resolve(getDefaultColors());
       }
     };
 
     img.onerror = () => {
+      img.removeAttribute("src");
       resolve(getDefaultColors());
     };
   });

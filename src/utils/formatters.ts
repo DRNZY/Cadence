@@ -25,16 +25,21 @@ export function formatFileSize(bytes: number): string {
 }
 
 export function getTrackCoverUrl(
-  track?: { coverPath?: string; artist?: string; album?: string; title?: string } | null,
+  track?:
+    | { coverPath?: string; albumId?: string; artist?: string; album?: string; title?: string }
+    | null,
   accent?: string
 ): string {
   if (!track) {
-    return `/covers${accent ? `?accent=${encodeURIComponent(accent)}` : ""}`;
+ return `/covers${accent ? `?accent=${encodeURIComponent(accent)}` : ""}`;
   }
   if (track.coverPath) {
     return `/covers?path=${encodeURIComponent(track.coverPath)}`;
   }
   const params = new URLSearchParams();
+  // Carried so the server can key the cache on album identity rather than
+  // re-deriving it from the name pair.
+  if (track.albumId) params.set("albumId", track.albumId);
   if (track.artist) params.set("artist", track.artist);
   if (track.album) params.set("album", track.album);
   if (track.title) params.set("title", track.title);

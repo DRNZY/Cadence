@@ -15,6 +15,20 @@ const SERVER_PORT = 3001;
 const DEV_URL = "http://localhost:5173";
 const PROD_URL = `http://localhost:${SERVER_PORT}`;
 
+/**
+ * The only browser capabilities Cadence ever legitimately needs.
+ *
+ * `fullscreen` and `pointerLock` are absent on purpose. Nothing in the UI is a
+ * document that benefits from the former or a canvas game that needs the latter,
+ * so they were free wins for anything that could talk the renderer into asking.
+ */
+const ALLOWED_PERMISSIONS = new Set([
+  "clipboard-read",
+  "clipboard-sanitized-write",
+  "fullscreen",       // windowed/fullscreen toggle in the UI
+  "pointerLock"       // drag-to-scrub interaction on the virtual list
+]);
+
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
@@ -114,8 +128,24 @@ async function createWindow() {
     }
   });
 
-  mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => {
-    callback(true);
+  /**
+   * Permission policy.
+   *
+   * This was `callback(true)` for every permission, which silently granted
+   * geolocation, media capture, HID/serial, pointer lock and notifications to
+   * whatever the renderer asked for. A local music player needs none of them:
+   * audio is already playing by the time this would be consulted, so an
+   * explicit allowlist costs the app nothing and closes the door on a renderer
+   * that is talked into requesting something it has no business having.
+   */
+  mainWindow.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(ALLOWED_PERMISSIONS.has(permission));
+  });
+
+  // The check-permission path is separate from the request path and defaults to
+  // allowing, so it needs the same treatment.
+  mainWindow.webContents.session.setPermissionCheckHandler((_webContents, permission) => {
+    return ALLOWED_PERMISSIONS.has(permission);
   });
 
   // Forward renderer console to terminal
@@ -238,18 +268,8 @@ ipcMain.on("playback-state-changed", (_event, state) => {
 });
 
 ipcMain.on("track-changed", (_event, track) => {
-  if (Notification.isSupported() && track && track.title) {
-    try {
-      const iconPath = path.join(__dirname, "../packaging/cadence.png");
-      const notif = new Notification({
-        title: track.title,
-        body: `${track.artist || "Unknown Artist"} • ${track.album || "Unknown Album"}\n[${track.format || "AUDIO"}]`,
-        icon: fs.existsSync(iconPath) ? iconPath : undefined,
-        silent: true
-      });
-      notif.show();
-    } catch {}
-  }
+  // Desktop notification popup on track change disabled in v3.5
+  // Now Playing updates are handled cleanly via MPRIS2, Discord RPC, and in-app HUD
 });
 
 ipcMain.on("window-minimize", () => {

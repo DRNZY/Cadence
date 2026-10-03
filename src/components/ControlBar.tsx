@@ -1,18 +1,5 @@
 import React, { useState } from "react";
-import { motion } from "framer-motion";
-import {
-  Play,
-  Pause,
-  SkipBack,
-  SkipForward,
-  Shuffle,
-  Repeat,
-  Repeat1,
-  Volume2,
-  VolumeX,
-  Sliders,
-  Disc3
-} from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Sliders, Disc3 } from "./icons";
 import { Track, PlayerBarPosition, PlayerBarStyle } from "../types";
 import { getTrackCoverUrl } from "../utils/formatters";
 
@@ -126,10 +113,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             <SkipBack className="w-4 h-4 fill-current" />
           </button>
 
-          <motion.button
-            whileTap={{ scale: 0.9 }}
+          <button
             onClick={onTogglePlay}
-            className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
+            className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-90 transition-transform"
             title={isPlaying ? "Pause" : "Play"}
           >
             {isPlaying ? (
@@ -137,7 +123,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             ) : (
               <Play className="w-4 h-4 fill-black ml-0.5" />
             )}
-          </motion.button>
+          </button>
 
           <button
             onClick={onNext}
@@ -256,10 +242,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             </button>
 
             {/* Play/Pause Main Button with Apple Tactile Spring */}
-            <motion.button
-              whileTap={{ scale: 0.92 }}
+            <button
               onClick={onTogglePlay}
-              className="cadence-play-button w-10 h-10 md:w-11 md:h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
+              className="cadence-play-button w-10 h-10 md:w-11 md:h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-[0.92] transition-transform"
               title={isPlaying ? "Pause" : "Play"}
             >
               {isPlaying ? (
@@ -267,7 +252,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
               ) : (
                 <Play className="w-4 h-4 md:w-5 md:h-5 fill-current ml-0.5" />
               )}
-            </motion.button>
+            </button>
 
             <button
               onClick={onNext}

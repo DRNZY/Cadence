@@ -1,25 +1,42 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import {
-  Disc3, LayoutGrid, BookOpen,
-  Music2, Maximize2, Minimize2, Settings2,
-  Minus, Square, X, Moon, PanelLeftClose, PanelLeft,
-  PanelRightClose, PanelRight, Search, FolderSync, Film
-} from "lucide-react";
+  Disc3, LayoutGrid, BookOpen, Music2, Maximize2, Minimize2, Settings2, Minus, Square, X, Moon, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Search, FolderSync, Film } from "./components/icons";
 import type { Track, DeckMode, VisualizerMode, LayoutMode } from "./types";
 import { useAudioEngine } from "./hooks/useAudioEngine";
 import { useLastFmScrobbler } from "./hooks/useLastFmScrobbler";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { extractColors, applyThemeColors, THEME_PRESETS, buildCustomGradient } from "./utils/colorExtractor";
-import { LibraryBrowser } from "./components/LibraryBrowser";
-import { VinylDeck } from "./components/VinylDeck";
-import { LyricsDeck } from "./components/LyricsDeck";
-import { WidgetContainer } from "./components/WidgetContainer";
+import { lazy, Suspense } from "react";
+/** In-panel placeholder. Small, local, and it does not take the window down. */
+const PanelLoading = () => (
+  <div className="flex-1 min-h-0 flex items-center justify-center">
+    <div className="w-6 h-6 rounded-full border-2 border-primary/40 border-t-transparent animate-spin" />
+  </div>
+);
+
+/**
+ * Panel scope.
+ *
+ * A throw while rendering any one panel would otherwise unmount the whole tree,
+ * which includes the transport controls, leaving playback running with no way to
+ * stop it from the interface. Each heavy panel is wrapped so a failure costs that
+ * panel and nothing else.
+ */
+const Panel = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <ErrorBoundary label={label}>{children}</ErrorBoundary>
+);
+
+const LibraryBrowser = lazy(() => import("./components/LibraryBrowser").then(m => ({ default: m.LibraryBrowser })));
+const VinylDeck = lazy(() => import("./components/VinylDeck").then(m => ({ default: m.VinylDeck })));
+const LyricsDeck = lazy(() => import("./components/LyricsDeck").then(m => ({ default: m.LyricsDeck })));
+const WidgetContainer = lazy(() => import("./components/WidgetContainer").then(m => ({ default: m.WidgetContainer })));
+const EqualizerModal = lazy(() => import("./components/EqualizerModal").then(m => ({ default: m.EqualizerModal })));
+const SettingsModal = lazy(() => import("./components/SettingsModal").then(m => ({ default: m.SettingsModal })));
 import { ControlBar } from "./components/ControlBar";
-import { EqualizerModal } from "./components/EqualizerModal";
-import { SettingsModal, loadSettings } from "./components/SettingsModal";
 import { SleepTimerModal } from "./components/SleepTimerModal";
-import type { AppSettings } from "./components/SettingsModal";
+import { loadSettings } from "./utils/settings";
+import type { AppSettings } from "./utils/settings";
 import { getTrackCoverUrl } from "./utils/formatters";
 
 function findBestTrackMatch(all: Track[], query: string): Track | null {
@@ -336,6 +353,15 @@ export const App: React.FC = () => {
     window.addEventListener("mouseup", onMouseUp);
   };
 
+  /**
+   * Refs for the callbacks the SSE subscription invokes.
+   *
+   * `fetchLibrary` is stable, but the playback handlers are not: they change
+   * whenever the queue, the track list or the index changes. Reading them
+   * through refs is what lets that subscription have no dependencies at all.
+   */
+  const fetchLibraryRef = useRef<() => void>(() => {});
+  const handlePlayTrackRef = useRef<(track: Track) => void>(() => {});
   const handleTrackEndRef = useRef<() => void>(() => {});
   const handlePreviousRef = useRef<() => void>(() => {});
   const handleNextRef = useRef<() => void>(() => {});
@@ -343,8 +369,27 @@ export const App: React.FC = () => {
   const audioEngine = useAudioEngine({
     onTrackEnd: () => handleTrackEndRef.current(),
     onPreviousTrack: () => handlePreviousRef.current(),
-    onNextTrack: () => handleNextRef.current()
+ onNextTrack: () => handleNextRef.current()
   });
+
+  /**
+   * Always points at the current engine.
+   *
+   * `audioEngine` is a new object whenever the playhead moves, so anything that
+   * puts it in a dependency array tears itself down several times a second.
+   * Long-lived subscriptions and stable callbacks read through this ref instead,
+   * which is what makes their own dependencies empty.
+   */
+  const audioEngineRef = useRef(audioEngine);
+  audioEngineRef.current = audioEngine;
+
+  /**
+   * Stable playhead getter for the vinyl deck.
+   *
+   * Passing `currentTime` as a prop made the deck re-render on every tick.
+   * This identity never changes, so the deck's `React.memo` can hold.
+   */
+  const getCurrentTime = useCallback(() => audioEngineRef.current.currentTime, []);
 
   const lastFm = useLastFmScrobbler(
     audioEngine.currentTrack,
@@ -392,10 +437,10 @@ export const App: React.FC = () => {
     const totalSecs = minutes * 60;
     sleepTimerTotalSecsRef.current = totalSecs;
     sleepTimerTargetRef.current = Date.now() + totalSecs * 1000;
-    sleepTimerOriginalVolRef.current = audioEngine.volume;
+    sleepTimerOriginalVolRef.current = audioEngineRef.current.volume;
     sleepTimerFadingRef.current = false;
     setSleepTimerRemaining(totalSecs);
-  }, [audioEngine.volume]);
+  }, []);
 
   const handleExtendSleepTimer = useCallback((additionalMinutes: number) => {
     const addSecs = additionalMinutes * 60;
@@ -405,18 +450,18 @@ export const App: React.FC = () => {
     setSleepTimerRemaining(remaining);
     if (sleepTimerFadingRef.current) {
       sleepTimerFadingRef.current = false;
-      audioEngine.setVolume(sleepTimerOriginalVolRef.current);
+      audioEngineRef.current.setVolume(sleepTimerOriginalVolRef.current);
     }
-  }, [audioEngine]);
+  }, []);
 
   const handleCancelSleepTimer = useCallback(() => {
     if (sleepTimerFadingRef.current) {
-      audioEngine.setVolume(sleepTimerOriginalVolRef.current);
+      audioEngineRef.current.setVolume(sleepTimerOriginalVolRef.current);
     }
     sleepTimerTargetRef.current = null;
     sleepTimerFadingRef.current = false;
     setSleepTimerRemaining(null);
-  }, [audioEngine]);
+  }, []);
 
   // Active sleep timer countdown ticker with verified 10-second exponential volume fade-out
   useEffect(() => {
@@ -432,16 +477,14 @@ export const App: React.FC = () => {
       // Start exponential fade-out over final 10 seconds
       if (remainingSecs <= 10 && remainingSecs > 0 && !sleepTimerFadingRef.current) {
         sleepTimerFadingRef.current = true;
-        if (audioEngine.fadeVolume) {
-          audioEngine.fadeVolume(0, remainingSecs);
-        }
+        audioEngineRef.current.fadeVolume(0, remainingSecs);
       }
 
       // Finish timer: pause playback and restore volume
       if (remainingSecs <= 0) {
-        audioEngine.pause();
+audioEngineRef.current.pause();
         setTimeout(() => {
-          audioEngine.setVolume(sleepTimerOriginalVolRef.current);
+          audioEngineRef.current.setVolume(sleepTimerOriginalVolRef.current);
           sleepTimerTargetRef.current = null;
           sleepTimerFadingRef.current = false;
           setSleepTimerRemaining(null);
@@ -450,7 +493,10 @@ export const App: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [audioEngine]);
+    // Reads the engine through the ref. Depending on `audioEngine` reset this
+    // interval on every playhead tick while a timer was running, so the
+    // one-second countdown could never reliably reach its next tick.
+  }, []);
 
   const tracksRef = useRef<Track[]>([]);
   tracksRef.current = tracks;
@@ -460,8 +506,12 @@ export const App: React.FC = () => {
     const all = tracksRef.current;
     const idx = all.findIndex(t => t.id === track.id);
     if (idx !== -1) setCurrentIndex(idx);
-    audioEngine.playTrack(track);
-  }, [audioEngine]);
+    audioEngineRef.current.playTrack(track);
+    // Stable: the engine is read through a ref, so this callback keeps its
+    // identity for the lifetime of the component. It is passed to LibraryBrowser,
+    // which is React.memo'd; when this identity churned, that memo could never
+    // succeed and the whole library panel re-rendered on every tick.
+  }, []);
 
   const handlePlayAlbum = useCallback((albumTracks: Track[]) => {
     if (albumTracks.length === 0) return;
@@ -491,15 +541,16 @@ export const App: React.FC = () => {
 
   // Track end callback
   const handleTrackEnd = useCallback(() => {
-    if (repeatMode === "one" && audioEngine.currentTrack) {
-      audioEngine.playTrack(audioEngine.currentTrack);
+    const engine = audioEngineRef.current;
+    if (repeatMode === "one" && engine.currentTrack) {
+      engine.playTrack(engine.currentTrack);
       return;
     }
 
     if (queue.length > 0) {
       const nextTrack = queue[0];
       setQueue(prev => prev.slice(1));
-      audioEngine.playTrack(nextTrack);
+      engine.playTrack(nextTrack);
       return;
     }
 
@@ -512,21 +563,22 @@ export const App: React.FC = () => {
         else return;
       }
       setCurrentIndex(nextIdx);
-      audioEngine.playTrack(tracks[nextIdx]);
+      engine.playTrack(tracks[nextIdx]);
     }
-  }, [queue, tracks, currentIndex, isShuffle, repeatMode, audioEngine]);
+  }, [queue, tracks, currentIndex, isShuffle, repeatMode]);
 
   const handlePrevious = useCallback(() => {
-    if (audioEngine.currentTime > 3) {
-      audioEngine.seek(0);
+    const engine = audioEngineRef.current;
+    if (engine.currentTime > 3) {
+      engine.seek(0);
       return;
     }
     if (tracks.length > 0 && currentIndex > 0) {
       const prevIdx = currentIndex - 1;
       setCurrentIndex(prevIdx);
-      audioEngine.playTrack(tracks[prevIdx]);
+      engine.playTrack(tracks[prevIdx]);
     }
-  }, [audioEngine, tracks, currentIndex]);
+  }, [tracks, currentIndex]);
 
   const handleNext = useCallback(() => {
     handleTrackEnd();
@@ -536,6 +588,7 @@ export const App: React.FC = () => {
   handleTrackEndRef.current = handleTrackEnd;
   handlePreviousRef.current = handlePrevious;
   handleNextRef.current = handleNext;
+  handlePlayTrackRef.current = handlePlayTrack;
 
   // Fetch initial music library
   const fetchLibrary = useCallback(async () => {
@@ -548,6 +601,7 @@ export const App: React.FC = () => {
       console.error("[Cadence] Error fetching tracks:", err);
     }
   }, []);
+  fetchLibraryRef.current = fetchLibrary;
 
   useEffect(() => {
     fetchLibrary();
@@ -564,6 +618,29 @@ export const App: React.FC = () => {
       document.documentElement.removeAttribute("data-theme");
     }
   }, [settings.themeMode]);
+
+  /**
+   * Apply the render-cost settings to the document.
+   *
+   * `enableAmbientGlow` and `enableGlassBlur` were both user-toggleable in the
+   * settings modal and both defaulted to on, but nothing ever read them. The
+   * `body.no-glow` / `body.no-glass` rules that were written to honour them
+   * existed in the stylesheet and were never applied to anything, so the toggles
+   * did nothing at all and the expensive compositing ran unconditionally.
+   *
+   * `performanceMode` folds in on top of the two toggles, because "performance"
+   * and "ultra-low" mean the same thing compositing-wise.
+   */
+  useEffect(() => {
+    const mode = settings.performanceMode;
+    const lean = mode === "performance" || mode === "ultra-low";
+    document.body.classList.toggle("no-glow", !settings.enableAmbientGlow || lean);
+    document.body.classList.toggle("no-glass", !settings.enableGlassBlur || lean);
+  }, [
+    settings.enableAmbientGlow,
+    settings.enableGlassBlur,
+    settings.performanceMode
+  ]);
 
   // Dynamic Ambient Theme Color Extraction
   useEffect(() => {
@@ -597,58 +674,64 @@ export const App: React.FC = () => {
   useEffect(() => {
     const sse = new EventSource("/api/ctl/events");
     sse.onmessage = (event) => {
+      // Resolved per message rather than captured: a captured engine would be a
+      // snapshot of whatever the hook returned when the subscription was made.
+      const engine = audioEngineRef.current;
       try {
-        const cmd = JSON.parse(event.data);
+    const cmd = JSON.parse(event.data);
         if (cmd.action === "play") {
           if (cmd.track) {
-            handlePlayTrack(cmd.track);
+            handlePlayTrackRef.current(cmd.track);
           } else if (cmd.query && tracksRef.current.length > 0) {
             const found = findBestTrackMatch(tracksRef.current, cmd.query);
-            if (found) handlePlayTrack(found);
+            if (found) handlePlayTrackRef.current(found);
           } else {
-            audioEngine.play();
+            engine.play();
           }
         } else if (cmd.action === "pause") {
-          audioEngine.pause();
+          engine.pause();
         } else if (cmd.action === "resume") {
-          audioEngine.play();
+          engine.play();
         } else if (cmd.action === "toggle") {
-          audioEngine.togglePlay();
+          engine.togglePlay();
         } else if (cmd.action === "next") {
-          handleNext();
+          handleNextRef.current();
         } else if (cmd.action === "prev" || cmd.action === "previous") {
-          handlePrevious();
+          handlePreviousRef.current();
         } else if (cmd.action === "stop") {
-          audioEngine.pause();
-          audioEngine.seek(0);
+          engine.pause();
+          engine.seek(0);
         } else if (cmd.action === "shuffle") {
           setIsShuffle(prev => !prev);
         } else if (cmd.action === "seek" && typeof cmd.time === "number") {
-          audioEngine.seek(cmd.time);
+          engine.seek(cmd.time);
         } else if (cmd.type === "favorites_updated" && Array.isArray(cmd.favorites)) {
           window.dispatchEvent(new CustomEvent("cadence:favorites_updated", { detail: cmd.favorites }));
         } else if (cmd.type === "playlists_updated" && Array.isArray(cmd.playlists)) {
           window.dispatchEvent(new CustomEvent("cadence:playlists_updated", { detail: cmd.playlists }));
+        } else if (cmd.type === "library_updated") {
+          fetchLibraryRef.current();
         }
       } catch (err) {
         console.warn("[Cadence SSE error]:", err);
       }
     };
 
-    const unbindPlay = (window as any).electronAPI?.onPlayCommand?.((payload: any) => {
+const unbindPlay = (window as any).electronAPI?.onPlayCommand?.((payload: any) => {
       if (payload?.query && tracksRef.current.length > 0) {
-        const found = findBestTrackMatch(tracksRef.current, payload.query);
-        if (found) handlePlayTrack(found);
+  const found = findBestTrackMatch(tracksRef.current, payload.query);
+        if (found) handlePlayTrackRef.current(found);
       }
     });
 
     const unbindMedia = (window as any).electronAPI?.onMediaKey?.((action: string) => {
-      if (action === "play-pause") audioEngine.togglePlay();
-      else if (action === "next") handleNext();
-      else if (action === "previous") handlePrevious();
+      const engine = audioEngineRef.current;
+      if (action === "play-pause") engine.togglePlay();
+      else if (action === "next") handleNextRef.current();
+      else if (action === "previous") handlePreviousRef.current();
       else if (action === "stop") {
-        audioEngine.pause();
-        audioEngine.seek(0);
+        engine.pause();
+        engine.seek(0);
       }
     });
 
@@ -657,57 +740,92 @@ export const App: React.FC = () => {
       unbindPlay?.();
       unbindMedia?.();
     };
-  }, [audioEngine, handlePlayTrack, handleNext, handlePrevious]);
+    // Empty on purpose. This is a subscription, not a derivation: it has to keep
+    // working against the latest handlers without being rebuilt for them.
+    // Listing `audioEngine` here (or any callback derived from it) meant every
+    // `timeupdate` tick closed the EventSource and opened a new one, which is a
+    // fresh TCP connection plus a new server-side keep-alive timer several times
+    // a second, for as long as audio was playing. The handlers are read through
+    // refs instead.
+  }, []);
 
   // Update server playback state for CLI status reporting and Discord RPC
+  //
+  // Gated on whole seconds rather than fired per `timeupdate`. The old version
+  // ran on every tick, and the tick rate goes *up* when the stream is
+  // struggling, so a track that had started dropping frames produced more state
+  // reports. Each one stringified the whole Track (its id alone is ~48
+  // characters), POSTed it, fanned it out to every SSE client, and wrote a
+  // SET_ACTIVITY frame to the Discord socket. One second is all that status
+  // output and rich presence can actually display.
   useEffect(() => {
-    const statePayload = {
+    const wholeSecond = Math.floor(audioEngine.currentTime);
+    const payload = {
       status: audioEngine.isPlaying ? "playing" : audioEngine.currentTrack ? "paused" : "stopped",
       currentTrack: audioEngine.currentTrack,
-      currentTime: audioEngine.currentTime,
+      currentTime: wholeSecond,
       duration: audioEngine.duration
     };
 
     fetch("/api/ctl/state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(statePayload)
+      body: JSON.stringify(payload)
     }).catch(() => {});
 
     if ((window as any).electronAPI?.updatePlaybackState) {
-      (window as any).electronAPI.updatePlaybackState(statePayload);
+      (window as any).electronAPI.updatePlaybackState(payload);
     }
-  }, [audioEngine.isPlaying, audioEngine.currentTrack, audioEngine.currentTime, audioEngine.duration]);
+  }, [
+    audioEngine.isPlaying,
+    audioEngine.currentTrack,
+    Math.floor(audioEngine.currentTime),
+    audioEngine.duration
+  ]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen().catch(() => {});
+  document.exitFullscreen().catch(() => {});
       setIsFullscreen(false);
     }
   };
+  const toggleFullscreenRef = useRef<() => void>(() => {});
+  toggleFullscreenRef.current = toggleFullscreen;
 
   // Global Keyboard Shortcuts
-  useKeyboardShortcuts({
-    onTogglePlayPause: () => audioEngine.togglePlay(),
-    onSeekRelative: (delta) => audioEngine.seek(audioEngine.currentTime + delta),
-    onAdjustVolume: (delta) => audioEngine.setVolume(audioEngine.volume + delta),
-    onToggleMute: () => audioEngine.toggleMute(),
+  //
+  // Memoised, and the engine is read through the ref. Inline arrows here meant
+  // `useKeyboardShortcuts` received a new object every render, so it detached
+  // and reattached the document keydown listener every render.
+  const shortcuts = useMemo(() => ({
+    onTogglePlayPause: () => audioEngineRef.current.togglePlay(),
+    onSeekRelative: (delta: number) => {
+      const e = audioEngineRef.current;
+      e.seek(e.currentTime + delta);
+    },
+    onAdjustVolume: (delta: number) => {
+  const e = audioEngineRef.current;
+      e.setVolume(e.volume + delta);
+    },
+    onToggleMute: () => audioEngineRef.current.toggleMute(),
     onToggleLyrics: () => setIsRightPanelCollapsed(prev => !prev),
     onToggleQueue: () => setIsRightPanelCollapsed(prev => !prev),
     onToggleLibrary: () => setIsLibraryCollapsed(prev => !prev),
     onToggleSidebar: () => setIsRightPanelCollapsed(prev => !prev),
     onToggleCinemaMode: () => setIsCinemaMode(prev => !prev),
-    onToggleFullscreen: () => toggleFullscreen(),
+    onToggleFullscreen: () => toggleFullscreenRef.current(),
     onCloseModals: () => {
       setIsEqualizerOpen(false);
       setIsSettingsOpen(false);
       setIsSleepTimerOpen(false);
     },
     enabled: true,
-  });
+  }), []);
+
+  useKeyboardShortcuts(shortcuts);
 
   // Render Left Column Content
   const renderLibraryPanel = () => {
@@ -758,6 +876,7 @@ export const App: React.FC = () => {
 
     return (
       <div className="h-full glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+        <Panel label="Library">
         <LibraryBrowser
           tracks={tracks}
           currentTrack={audioEngine.currentTrack}
@@ -767,6 +886,7 @@ export const App: React.FC = () => {
           onPlayAlbum={handlePlayAlbum}
           onRescan={fetchLibrary}
         />
+        </Panel>
       </div>
     );
   };
@@ -774,10 +894,11 @@ export const App: React.FC = () => {
   // Render Hero Deck Center
   const renderHeroDeck = () => (
     <div className="h-full glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl min-w-0">
+      <Panel label="Deck">
       <VinylDeck
         currentTrack={audioEngine.currentTrack}
         isPlaying={audioEngine.isPlaying}
-        currentTime={audioEngine.currentTime}
+        getCurrentTime={getCurrentTime}
         duration={audioEngine.duration}
         playbackRate={audioEngine.playbackRate}
         deckMode={deckMode}
@@ -792,11 +913,13 @@ export const App: React.FC = () => {
         onShufflePlay={handleShuffleAll}
         onOpenLibrary={() => setIsLibraryCollapsed(false)}
       />
+      </Panel>
     </div>
   );
 
   // Render Sidebar Stack (Modular Drag & Drop Widgets)
   const renderSidebarStack = () => (
+    <Panel label="Widgets">
     <WidgetContainer
       currentTrack={audioEngine.currentTrack}
       isPlaying={audioEngine.isPlaying}
@@ -822,9 +945,14 @@ export const App: React.FC = () => {
       onSeek={audioEngine.seek}
       visualizerEnabled={settings.visualizerEnabled}
     />
+    </Panel>
   );
 
   return (
+    <>
+      {/* Per-panel fallbacks rather than one app-wide boundary. A chunk that was not warm
+          used to blank the entire interface, transport included. */}
+      <Suspense fallback={<PanelLoading />}>
     <div
       id="app-root"
       className={`flex h-screen w-screen relative overflow-hidden select-none transition-colors duration-500 ${
@@ -843,22 +971,16 @@ export const App: React.FC = () => {
       <div className={`absolute inset-0 pointer-events-none z-0 ambient-glow ${isCinemaMode ? "opacity-50" : "opacity-30"} transition-opacity duration-700`} />
 
       {/* Floating Cinema Mode Exit Button */}
-      <AnimatePresence>
         {isCinemaMode && (
-          <motion.button
-            initial={{ opacity: 0, y: -16, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -16, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 420, damping: 28 }}
+          <button
             onClick={() => setIsCinemaMode(false)}
-            className="absolute top-4 right-5 z-50 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-neutral-900/85 hover:bg-neutral-800 border border-white/15 text-neutral-300 hover:text-white text-xs font-mono shadow-2xl backdrop-blur-xl transition-all active:scale-95 group"
+            className="cadence-pop-in absolute top-4 right-5 z-50 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-neutral-900/85 hover:bg-neutral-800 border border-white/15 text-neutral-300 hover:text-white text-xs font-mono shadow-2xl backdrop-blur-xl transition-all active:scale-95 group"
             title="Exit Cinema Mode (C)"
           >
             <Film className="w-3.5 h-3.5 text-primary group-hover:scale-110 transition-transform" />
             <span>Exit Cinema (C)</span>
-          </motion.button>
+          </button>
         )}
-      </AnimatePresence>
 
       {/* Left Sidebar Player Bar Position (Optional) */}
       {settings.playerBarPosition === "left" && (
@@ -1012,7 +1134,7 @@ export const App: React.FC = () => {
             </button>
 
             {/* Integrated Window Control Action Buttons */}
-            <div className="flex items-center ml-1.5 space-x-1 pl-2 border-l border-white/10">
+            <div className="cadence-window-controls flex items-center ml-1.5 space-x-1 pl-2 border-l border-white/10">
               <button
                 onClick={() => (window as any).electronAPI?.minimize?.()}
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
@@ -1220,11 +1342,14 @@ export const App: React.FC = () => {
               </div>
               {!isCinemaMode && (
                 <div className="lg:col-span-5 h-full glass-panel rounded-3xl overflow-hidden shadow-xl min-w-0 transition-all duration-500">
+                  <Panel label="Lyrics">
                   <LyricsDeck
                     currentTrack={audioEngine.currentTrack}
                     currentTime={audioEngine.currentTime}
+                    isPlaying={audioEngine.isPlaying}
                     onSeek={audioEngine.seek}
                   />
+                  </Panel>
                 </div>
               )}
             </div>
@@ -1278,10 +1403,21 @@ export const App: React.FC = () => {
         isOpen={isEqualizerOpen}
         onClose={() => setIsEqualizerOpen(false)}
         gains={audioEngine.equalizerGains}
+        eqQs={audioEngine.eqQs}
+        eqBypassed={audioEngine.eqBypassed}
+        currentTrack={audioEngine.currentTrack}
+        audioInfo={{
+          sampleRate: audioEngine.sampleRate,
+          baseLatency: audioEngine.baseLatency,
+          outputLatency: audioEngine.outputLatency
+        }}
         onSetGain={audioEngine.setEqualizerGain}
+        onSetQ={audioEngine.setEqQ}
+        onSetBypass={audioEngine.setEqBypass}
         onApplyPreset={audioEngine.applyPreset}
         dspSettings={audioEngine.dspSettings}
         onUpdateDspSettings={audioEngine.updateDspSettings}
+        onLoadImpulseResponse={audioEngine.loadImpulseResponse}
       />
 
       {/* Settings & Themes Modal */}
@@ -1303,6 +1439,8 @@ export const App: React.FC = () => {
         onCancelTimer={handleCancelSleepTimer}
       />
     </div>
+      </Suspense>
+    </>
   );
 };
 

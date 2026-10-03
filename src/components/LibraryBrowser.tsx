@@ -1,8 +1,27 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Search, User, Play, Plus, Mic2, FolderSync, ListMusic, Download, Upload, Trash2, ShieldCheck, Heart, Shuffle } from "lucide-react";
+import { Search, User, Play, Plus, Mic2, FolderSync, ListMusic, Download, Upload, Trash2, ShieldCheck, Heart, Shuffle } from "./icons";
 import { Track, Playlist } from "../types";
 import { getTrackCoverUrl } from "../utils/formatters";
+import { VirtualTrackList } from "./VirtualTrackList";
+import { makeAlbumId, extractPrimaryArtist, isPlaceholderAlbum } from "../../shared/albumIdentity";
+
+/**
+ * One album row in the Albums tab.
+ *
+ * `key` is the stable album identity and is what React keys the card on. It used
+ * to be rebuilt from `` `${artist}-${album}` `` at the render site while the
+ * grouping used `` `${artist} - ${album}` ``, two different functions that do not
+ * agree once an artist or album name contains a hyphen.
+ */
+interface AlbumGroup {
+  key: string;
+  album: string;
+  artist: string;
+  year?: string;
+  coverPath?: string;
+  discNumber?: number;
+  tracks: Track[];
+}
 
 interface LibraryBrowserProps {
   tracks: Track[];
@@ -27,13 +46,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
   const [formatFilter, setFormatFilter] = useState<"ALL" | "FLAC" | "MP3" | "LYRICS">("ALL");
   const [activeTab, setActiveTab] = useState<"albums" | "tracks" | "artists" | "playlists" | "favorites">("albums");
-  const [previewAlbum, setPreviewAlbum] = useState<{
-    album: string;
-    artist: string;
-    year?: string;
-    coverPath?: string;
-    tracks: Track[];
-  } | null>(null);
+  const [previewAlbum, setPreviewAlbum] = useState<AlbumGroup | null>(null);
 
   // Favorites State
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -46,6 +59,8 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
   const [newPlaylistDesc, setNewPlaylistDesc] = useState("");
   const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mainScrollRef = useRef<HTMLDivElement | null>(null);
+  const albumScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch Playlists & Favorites from backend
   const fetchPlaylists = () => {
@@ -206,35 +221,94 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
     e.target.value = "";
   };
 
-  const safeTracks = Array.isArray(tracks) ? tracks : [];
+  // Memoised on purpose. A bare `Array.isArray(tracks) ? tracks : []` produces a
+  // brand-new array identity on every render whenever `tracks` is not an array,
+  // which invalidates every memo below and makes the whole panel recompute on
+  // every timeupdate tick.
+  const safeTracks = useMemo(() => (Array.isArray(tracks) ? tracks : []), [tracks]);
 
   // Extract unique artists
   const artists = useMemo(() => {
     const map = new Map<string, number>();
     for (const t of safeTracks) {
-      map.set(t.artist, (map.get(t.artist) || 0) + 1);
+      const primary = t.albumArtist && !isPlaceholderAlbum(t.albumArtist)
+        ? t.albumArtist
+        : (extractPrimaryArtist(t.artist) || t.artist || "Unknown Artist");
+      map.set(primary, (map.get(primary) || 0) + 1);
     }
-    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+    return Array.from(map.entries()).map(([name, count]) => ({ name, count })).sort(
+      (a, b) => a.name.localeCompare(b.name)
+    );
   }, [safeTracks]);
+
+  /**
+   * The key an album group is stored under.
+   *
+   * Prefers the server's `albumId`, which is MusicBrainz-derived when tagged and
+   * otherwise normalised across album artist and album title. Falls back
+   * to computing the same key locally so a library cached by an older server
+   * still groups correctly rather than collapsing every untagged variation into
+   * one entry.
+   */
+  const albumGroupKey = useCallback((t: Track): string => {
+    if (t.albumId) return t.albumId;
+    return makeAlbumId(null, t.albumArtist || t.artist, t.album, t.discNumber);
+  }, []);
 
   // Group tracks by album
   const albums = useMemo(() => {
-    const map = new Map<string, { album: string; artist: string; year?: string; coverPath?: string; tracks: Track[] }>();
+    const map = new Map<string, AlbumGroup>();
     for (const t of safeTracks) {
-      const key = `${t.artist} - ${t.album}`;
-      if (!map.has(key)) {
+      const key = albumGroupKey(t);
+      const existing = map.get(key);
+      if (existing) {
+        existing.tracks.push(t);
+        // Prefer a real cover over a missing one.
+        if (!existing.coverPath && t.coverPath) existing.coverPath = t.coverPath;
+        // Likewise a year.
+        if (!existing.year && t.year) existing.year = t.year;
+        // Upgrade artist display name if a cleaner / non-feature credit is found
+        if (t.albumArtist && !isPlaceholderAlbum(t.albumArtist)) {
+          existing.artist = t.albumArtist;
+        } else if (existing.artist.includes(" feat.") || existing.artist.includes(" ft.")) {
+          const cleaner = extractPrimaryArtist(t.artist);
+          if (cleaner && !cleaner.includes(" feat.") && !cleaner.includes(" ft.")) {
+            existing.artist = cleaner;
+          }
+        }
+      } else {
+        const displayArtist = t.albumArtist && !isPlaceholderAlbum(t.albumArtist)
+          ? t.albumArtist
+          : (extractPrimaryArtist(t.artist) || t.artist || "Unknown Artist");
         map.set(key, {
-          album: t.album,
-          artist: t.artist,
+          key,
+          album: t.album || "Unknown Album",
+          artist: displayArtist,
           year: t.year,
           coverPath: t.coverPath,
-          tracks: []
+          discNumber: t.discNumber,
+          tracks: [t]
         });
       }
-      map.get(key)!.tracks.push(t);
     }
-    return Array.from(map.values()).sort((a, b) => a.artist.localeCompare(b.artist));
-  }, [safeTracks]);
+
+    // Sort tracks inside each album by discNumber then trackNumber then title
+    for (const group of map.values()) {
+      group.tracks.sort((a, b) => {
+        const discA = a.discNumber || 1;
+        const discB = b.discNumber || 1;
+        if (discA !== discB) return discA - discB;
+        const trkA = a.trackNumber || 0;
+        const trkB = b.trackNumber || 0;
+        if (trkA !== trkB) return trkA - trkB;
+        return (a.title || "").localeCompare(b.title || "");
+      });
+    }
+
+    return Array.from(map.values()).sort(
+      (a, b) => a.artist.localeCompare(b.artist) || a.album.localeCompare(b.album)
+    );
+  }, [safeTracks, albumGroupKey]);
 
   // Smart Collections
   const hiResTracks = useMemo(() => safeTracks.filter(t => t.format === "FLAC"), [safeTracks]);
@@ -399,7 +473,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto pt-4 px-1.5 no-scrollbar space-y-4">
+      <div ref={mainScrollRef} className="flex-1 overflow-y-auto pt-4 px-1.5 no-scrollbar space-y-4">
         {/* Active Artist Filter Chip */}
         {selectedArtist && (
           <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-2xl px-4 py-2">
@@ -418,18 +492,25 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
         {/* 1. Albums Grid View */}
         {activeTab === "albums" && (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(135px,1fr))] gap-3 pb-8">
-            {filteredAlbums.map(item => {
-              const coverUrl = item.coverPath
-                ? `/covers?path=${encodeURIComponent(item.coverPath)}`
-                : `/covers?artist=${encodeURIComponent(item.artist)}&album=${encodeURIComponent(item.album)}`;
-              const isCurrentAlbum = currentTrack?.album === item.album;
+{filteredAlbums.map(item => {
+         // The album identity travels to the server so an online fallback
+        // lookup lands in the same cache entry the local paths use. Sending only
+         // artist+album meant the two layers computed different filenames and the
+         // downloaded art was never found again.
+      const coverUrl = item.coverPath
+    ? `/covers?path=${encodeURIComponent(item.coverPath)}`
+     : `/covers?albumId=${encodeURIComponent(item.key)}&artist=${encodeURIComponent(item.artist)}&album=${encodeURIComponent(item.album)}`;
+              // Compare identity, not the album *name*. Two different albums
+   // called "Greatest Hits" were both highlighted as now-playing before.
+              const isCurrentAlbum = currentTrack
+ ? albumGroupKey(currentTrack) === item.key
+          : false;
 
               return (
-                <motion.div
-                  key={`${item.artist}-${item.album}`}
-                  whileHover={{ y: -4, scale: 1.02 }}
+         <div
+   key={item.key}
                   onClick={() => setPreviewAlbum(item)}
-                  className={`group relative bg-white/[0.03] hover:bg-white/[0.07] border rounded-2xl p-3 transition-all flex flex-col justify-between shadow-lg cursor-pointer ${
+                  className={`group relative bg-white/[0.03] hover:bg-white/[0.07] border rounded-2xl p-3 transition-all hover:-translate-y-1 flex flex-col justify-between shadow-lg cursor-pointer ${
                     isCurrentAlbum && isPlaying
                       ? "border-primary/50 shadow-primary/10 bg-white/[0.05]"
                       : "border-white/5 hover:border-white/20"
@@ -479,7 +560,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                       <span>{item.tracks[0]?.format}</span>
                     </div>
                   </div>
-                </motion.div>
+                </div>
               );
             })}
           </div>
@@ -488,7 +569,11 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
         {/* 2. Tracks Table View */}
         {activeTab === "tracks" && (
           <div className="space-y-1 pb-8">
-            {filteredTracks.map(t => {
+            <VirtualTrackList
+              items={filteredTracks}
+              rowHeight={56}
+              scrollRef={mainScrollRef}
+              renderItem={(t) => {
               const isSelected = currentTrack?.id === t.id;
               const coverUrl = getTrackCoverUrl(t);
 
@@ -566,7 +651,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                   </div>
                 </div>
               );
-            })}
+            }} />
           </div>
         )}
 
@@ -760,7 +845,11 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                 </div>
 
                 <div className="space-y-1">
-                  {selectedPlaylistTracks.map(t => (
+                  <VirtualTrackList
+                    items={selectedPlaylistTracks}
+                    rowHeight={48}
+                    scrollRef={mainScrollRef}
+                    renderItem={(t) => (
                     <div
                       key={t.id}
                       onDoubleClick={() => onPlayTrack(t)}
@@ -791,7 +880,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                         </button>
                       </div>
                     </div>
-                  ))}
+                  )} />
                 </div>
               </div>
             )}
@@ -843,7 +932,11 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
               </div>
             ) : (
               <div className="space-y-1">
-                {likedTracks.map((t, idx) => {
+                <VirtualTrackList
+                  items={likedTracks}
+                  rowHeight={56}
+                  scrollRef={mainScrollRef}
+                  renderItem={(t, idx) => {
                   const isSelected = currentTrack?.id === t.id;
                   const coverUrl = getTrackCoverUrl(t);
 
@@ -909,7 +1002,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                       </div>
                     </div>
                   );
-                })}
+                }} />
               </div>
             )}
           </div>
@@ -994,18 +1087,14 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
       )}
 
       {/* Modal: Album Preview & Song Selector */}
-      <AnimatePresence>
         {previewAlbum && (
           <div
             onClick={() => setPreviewAlbum(null)}
-            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xl flex items-center justify-center p-4 md:p-8"
+            className="cadence-fade-in fixed inset-0 z-50 bg-black/75 backdrop-blur-xl flex items-center justify-center p-4 md:p-8"
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            <div
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#0e1017]/95 border border-white/15 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl shadow-black/90 relative"
+              className="cadence-pop-in bg-[#0e1017]/95 border border-white/15 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl shadow-black/90 relative"
             >
               {/* Header Hero */}
               <div className="p-6 pb-4 border-b border-white/10 bg-gradient-to-b from-white/[0.04] to-transparent flex flex-col md:flex-row gap-5 items-start md:items-center justify-between shrink-0">
@@ -1015,7 +1104,7 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                       src={
                         previewAlbum.coverPath
                           ? `/covers?path=${encodeURIComponent(previewAlbum.coverPath)}`
-                          : `/covers?artist=${encodeURIComponent(previewAlbum.artist)}&album=${encodeURIComponent(previewAlbum.album)}`
+                          : `/covers?albumId=${encodeURIComponent(previewAlbum.key)}&artist=${encodeURIComponent(previewAlbum.artist)}&album=${encodeURIComponent(previewAlbum.album)}`
                       }
                       alt={previewAlbum.album}
                       className="w-full h-full object-cover"
@@ -1087,8 +1176,12 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
               </div>
 
               {/* Tracklist table */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-1.5 no-scrollbar">
-                {previewAlbum.tracks.map((track, idx) => {
+              <div ref={albumScrollRef} className="flex-1 overflow-y-auto p-4 space-y-1.5 no-scrollbar">
+                <VirtualTrackList
+                  items={previewAlbum.tracks}
+                  rowHeight={56}
+                  scrollRef={albumScrollRef}
+                  renderItem={(track, idx) => {
                   const isCurrent = currentTrack?.id === track.id;
                   return (
                     <div
@@ -1139,12 +1232,11 @@ export const LibraryBrowser: React.FC<LibraryBrowserProps> = React.memo(({
                       </div>
                     </div>
                   );
-                })}
+                }} />
               </div>
-            </motion.div>
+            </div>
           </div>
         )}
-      </AnimatePresence>
     </div>
   );
 });

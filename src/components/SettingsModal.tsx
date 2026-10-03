@@ -1,60 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  X, Zap, Cpu, Sparkles, Monitor, CheckCircle2,
-  Volume2, RefreshCw, HardDrive, Radio,
-  User, Lock, Layout, Palette, Check, AlertCircle,
-  LogOut, AlignLeft, ArrowDown, ArrowUp, Sun, Moon,
-  Dock
-} from "lucide-react";
+import { X, Zap, Cpu, Sparkles, Monitor, CheckCircle2, Volume2, RefreshCw, HardDrive, Radio, User, Lock, Layout, Palette, Check, AlertCircle, LogOut, AlignLeft, ArrowDown, ArrowUp, Sun, Moon, Dock } from "./icons";
 import { THEME_PRESETS, buildCustomGradient, applyThemeColors } from "../utils/colorExtractor";
-import { PlayerBarPosition, PlayerBarStyle, LibraryPosition, SidebarPosition, ThemeMode } from "../types";
-
-export type PerformanceMode = "quality" | "balanced" | "performance" | "ultra-low";
-
-export type UiDensity = "comfortable" | "compact" | "spacious";
-
-export interface AppSettings {
-  performanceMode: PerformanceMode;
-  themeMode?: ThemeMode;
-  uiDensity?: UiDensity;
-  enableAmbientGlow: boolean;
-  enableGlassBlur: boolean;
-  visualizerEnabled: boolean;
-  dynamicTheme: boolean;
-  autoScrobble: boolean;
-  themePreset: string;
-  accentColor: string;
-  customGradientStart: string;
-  customGradientEnd: string;
-  customGradientAngle: number;
-  glowIntensity: number;
-  playerBarPosition: PlayerBarPosition;
-  playerBarStyle?: PlayerBarStyle;
-  libraryPosition: LibraryPosition;
-  sidebarPosition: SidebarPosition;
-}
-
-const DEFAULT_SETTINGS: AppSettings = {
-  performanceMode: "balanced",
-  themeMode: "dark",
-  uiDensity: "comfortable",
-  enableAmbientGlow: true,
-  enableGlassBlur: true,
-  visualizerEnabled: true,
-  dynamicTheme: true,
-  autoScrobble: false,
-  themePreset: "tokyo-night",
-  accentColor: "#7aa2f7",
-  customGradientStart: "#1f2335",
-  customGradientEnd: "#13141c",
-  customGradientAngle: 145,
-  glowIntensity: 0.7,
-  playerBarPosition: "bottom",
-  playerBarStyle: "floating",
-  libraryPosition: "left",
-  sidebarPosition: "right"
-};
+import { AppSettings, PerformanceMode } from "../utils/settings";
 
 const PERF_MODES: {
   id: PerformanceMode;
@@ -402,25 +349,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   ] as const;
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6"
-          onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-        >
+    isOpen && (
+      <div
+        className="cadence-fade-in fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6"
+        onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      >
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/75 backdrop-blur-md" />
 
           {/* Apple macOS-Style Settings Dialog */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 12 }}
-            transition={{ type: "spring", stiffness: 450, damping: 32 }}
-            className="settings-modal-dialog relative w-full max-w-3xl h-[620px] max-h-[90vh] flex rounded-3xl border border-white/10 overflow-hidden shadow-2xl transition-colors duration-200"
+          <div
+            className="cadence-pop-in settings-modal-dialog relative w-full max-w-3xl h-[620px] max-h-[90vh] flex rounded-3xl border border-white/10 overflow-hidden shadow-2xl transition-colors duration-200"
             style={{
               background: settings.themeMode === "light" ? "rgba(255, 255, 255, 0.98)" : "rgba(13, 14, 20, 0.97)"
             }}
@@ -863,6 +802,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     <div className="space-y-2">
+                      <p className="text-xs font-semibold text-neutral-300 px-1">Synced Karaoke Lyrics Engine</p>
+                      <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-4 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-white">LRCLIB + Genius Cascade</span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                            ZERO-CONFIG ACTIVE
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-neutral-400 leading-relaxed">
+                          Cadence v3.5 uses high-performance crowd-sourced LRCLIB with word-level sync and intelligent multi-candidate scoring, falling back to Genius and local sidecar <code className="text-white font-mono bg-white/5 px-1.5 py-0.5 rounded">.lrc</code> files automatically. No setup or external server required.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
                       <p className="text-xs font-semibold text-neutral-300 px-1">Local Library</p>
                       <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-4 space-y-3">
                         <div className="flex items-center gap-2 text-xs text-neutral-300">
@@ -1035,18 +990,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
               </div>
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </div>
+        </div>
+    )
   );
 };
-
-// Load settings from localStorage with fallback
-export function loadSettings(): AppSettings {
-  try {
-    const saved = localStorage.getItem("cadence_settings");
-    if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-  } catch {}
-  return DEFAULT_SETTINGS;
-}

@@ -335,6 +335,27 @@ body.light #app-root {
     transform: rotate(360deg);
   }
 }
+/* ---------- Motion (CSS) ---------- */
+@keyframes cadence-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes cadence-pop-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes cadence-slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes cadence-collapse-in {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 260px; }
+}
+.cadence-fade-in { animation: cadence-fade-in 160ms ease-out both; }
+.cadence-pop-in { animation: cadence-pop-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.cadence-slide-up { animation: cadence-slide-up 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.cadence-collapse-in { animation: cadence-collapse-in 220ms ease-out both; }
 .vinyl-grooves {
   background:
     radial-gradient(circle at 50% 50%, transparent 30.5%, rgb(255 255 255 / 0.02) 31%, transparent 32%),
@@ -441,22 +462,26 @@ body.light #app-root {
   animation: cadence-scan-sweep 1.5s cubic-bezier(0.45, 0, 0.25, 1) infinite;
 }
 
-/* Fluid dynamic ambient mesh animations */
+/* Fluid dynamic ambient mesh animations.
+ *
+ * Translation only, no scale. A scale forces the gradient underneath to be
+ * re-rasterised every frame; on a diffuse glow several hundred pixels wide the
+ * difference is not visible, and these run forever. */
 @keyframes float-ambient-1 {
   0%, 100% {
-    transform: translate(0, 0) scale(1);
+    transform: translate(0, 0);
   }
   50% {
-    transform: translate(3%, 4%) scale(1.06);
+    transform: translate(3%, 4%);
   }
 }
 
 @keyframes float-ambient-2 {
   0%, 100% {
-    transform: translate(0, 0) scale(1.04);
+    transform: translate(0, 0);
   }
   50% {
-    transform: translate(-4%, -3%) scale(0.96);
+    transform: translate(-4%, -3%);
   }
 }
 
@@ -468,12 +493,204 @@ body.light #app-root {
   animation: float-ambient-2 18s ease-in-out infinite alternate;
 }
 
+/* ============================================================
+   KINETIC KARAOKE & LYRICS MOTION ENGINE (Apple Music / Spicy)
+   ============================================================ */
+
+.apple-lyrics-container {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 14%,
+    black 84%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 14%,
+    black 84%,
+    transparent 100%
+  );
+}
+
+.apple-lyrics-ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    70% 55% at 30% 45%,
+    color-mix(in oklab, var(--m3-primary, #cdbdff) 22%, transparent),
+    transparent 85%
+  );
+  filter: blur(54px);
+  opacity: 0.85;
+  transition: background 1.2s ease, opacity 0.8s ease;
+}
+
+.apple-lyric-line {
+  position: relative;
+  transition: transform 420ms cubic-bezier(0.2, 0, 0, 1),
+              filter 420ms cubic-bezier(0.2, 0, 0, 1),
+              opacity 420ms cubic-bezier(0.2, 0, 0, 1),
+              background-color 200ms ease;
+    /* No will-change. It used to list transform, filter and opacity here, on every
+     * line of the song: a 143-line lyric sheet promoted 143 elements to their own
+     * GPU render surfaces, inside a mask-image scroller, on an integrated GPU.
+     * `will-change` is meant for the handful of elements about to animate, not
+     * for every node in a list, and the layer explosion costs far more than the
+     * promotion ever saved. */
+  border-radius: 1.25rem;
+}
+
+.apple-lyric-line.is-active {
+  opacity: 1 !important;
+  transform: translateX(12px) scale(1.05) !important;
+  filter: blur(0px) !important;
+  color: #ffffff !important;
+  font-weight: 800;
+  text-shadow: 0 0 28px rgba(255, 255, 255, 0.5), 0 0 45px var(--m3-primary, rgba(205, 189, 255, 0.7));
+}
+
+.apple-lyric-line.is-near {
+  opacity: 0.48;
+  transform: translateX(0px) scale(0.975);
+}
+
+.apple-lyric-line.is-far-past {
+  opacity: 0.18;
+  transform: translateX(0px) scale(0.93);
+}
+
+.apple-lyric-line.is-far-future {
+  opacity: 0.24;
+  transform: translateX(0px) scale(0.93);
+}
+
+.apple-lyric-line.blur-on.is-near {
+  filter: blur(0.5px);
+}
+
+.apple-lyric-line.blur-on.is-far-past,
+.apple-lyric-line.blur-on.is-far-future {
+  filter: blur(1.8px);
+}
+
+.apple-lyric-line:hover {
+  opacity: 0.95 !important;
+  filter: blur(0px) !important;
+  transform: translateX(6px) scale(0.99) !important;
+  background-color: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
+/* Light mode overrides */
+.light .apple-lyric-line.is-active {
+  color: #0f172a !important;
+  text-shadow: 0 0 20px rgba(15, 23, 42, 0.25), 0 0 35px rgba(99, 102, 241, 0.4) !important;
+}
+
+.light .apple-lyric-line:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.karaoke-word {
+  display: inline-block;
+  position: relative;
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+              filter 220ms cubic-bezier(0.16, 1, 0.3, 1),
+              color 220ms ease;
+  /* See .apple-lyric-line: will-change on every word of every line
+   * was promoting hundreds of compositor layers for no benefit. */
+}
+
+.karaoke-word-active {
+  transform: translateY(-2px) scale(1.06);
+  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.85))
+          drop-shadow(0 0 32px var(--m3-primary, rgba(205, 189, 255, 0.9)));
+}
+
+.karaoke-word-wipe {
+  background: linear-gradient(
+    90deg,
+    #ffffff 0%,
+    #ffffff calc(var(--prog, 0) * 100%),
+    rgba(255, 255, 255, 0.30) calc(var(--prog, 0) * 100% + 2%),
+    rgba(255, 255, 255, 0.30) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.karaoke-word-past {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+
+.karaoke-word-upcoming {
+  color: rgba(255, 255, 255, 0.30);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.30);
+}
+
+/* Light mode overrides for karaoke text */
+.light .karaoke-word-wipe {
+  background: linear-gradient(
+    90deg,
+    #0f172a 0%,
+    #0f172a calc(var(--prog, 0) * 100%),
+    rgba(15, 23, 42, 0.30) calc(var(--prog, 0) * 100% + 2%),
+    rgba(15, 23, 42, 0.30) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.light .karaoke-word-past {
+  color: #0f172a;
+  -webkit-text-fill-color: #0f172a;
+}
+
+.light .karaoke-word-upcoming {
+  color: rgba(15, 23, 42, 0.30);
+  -webkit-text-fill-color: rgba(15, 23, 42, 0.30);
+}
+
+.light .karaoke-word-active {
+  transform: translateY(-2px) scale(1.06);
+  filter: drop-shadow(0 0 14px rgba(79, 70, 229, 0.55));
+}
+
+/* Lead-in rhythmic countdown dots */
+@keyframes lead-in-pulse {
+  0% {
+    transform: scale(0.65);
+    opacity: 0.2;
+  }
+  50% {
+    transform: scale(1.45);
+    opacity: 1;
+    filter: drop-shadow(0 0 14px var(--m3-primary, #cdbdff));
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.95;
+  }
+}
+
+.animate-lead-dot {
+  animation: lead-in-pulse 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cadence-eq-bar,
   .cadence-scan-sweep,
   .animate-ambient-1,
-  .animate-ambient-2 {
+  .animate-ambient-2,
+  .apple-lyric-line,
+  .karaoke-word,
+  .animate-lead-dot {
     animation: none;
+    transition: none;
   }
 }
 

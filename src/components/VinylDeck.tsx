@@ -1,13 +1,21 @@
 import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Disc3, Disc, Sparkles, Image as ImageIcon } from "lucide-react";
+import { Disc3, Disc, Sparkles, ImageIcon } from "./icons";
 import { Track, DeckMode } from "../types";
 import { formatBitrate } from "../utils/formatters";
 
 interface VinylDeckProps {
   currentTrack: Track | null;
   isPlaying: boolean;
-  currentTime: number;
+  /**
+   * Reads the playhead rather than being handed it.
+   *
+   * This was a `currentTime: number` prop, which meant this component re-rendered
+   * on every `timeupdate` tick and reconciled a 700-line tree, for a single piece
+   * of output: the tonearm angle. The angle is now written straight to the
+   * element's transform inside the rotation loop, so the component can sit still
+   * and its `React.memo` can actually succeed.
+   */
+  getCurrentTime: () => number;
   duration: number;
   playbackRate: number;
   deckMode: DeckMode;
@@ -33,7 +41,7 @@ const DECK_MODES: { id: DeckMode; label: string; icon: React.ReactNode }[] = [
 export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   currentTrack,
   isPlaying,
-  currentTime,
+  getCurrentTime,
   duration,
   playbackRate,
   deckMode,
@@ -48,8 +56,22 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
 }) => {
   const [isScratching, setIsScratching] = useState(false);
   const [scratchRpmDisplay, setScratchRpmDisplay] = useState<number>(0);
-  const [tilt, setTilt] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  /**
+   * Hover tilt is written straight to a transform on one element.
+   *
+   * It used to be `useState` set from inside a rAF callback, so sweeping the
+   * mouse across the sleeve re-rendered this whole component once per animation
+   * frame, geometry maths and full sub-tree included. A CSS transform needs
+   * none of that.
+   */
+  const tiltRef = useRef<HTMLDivElement | null>(null);
   const tiltRafRef = useRef<number | null>(null);
+
+  const applyTilt = (x: number, y: number) => {
+    if (tiltRef.current) {
+      tiltRef.current.style.transform = `rotateX(${y}deg) rotateY(${x}deg)`;
+    }
+  };
 
   const platterRef = useRef<HTMLDivElement | null>(null);
   const cdDiscRef = useRef<HTMLDivElement | null>(null);
@@ -108,8 +130,18 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
 
     let animId: number;
 
-    const tick = (now: number) => {
-      if (document.hidden) return;
+const tick = (now: number) => {
+   // Keep rescheduling even while hidden. Returning here without scheduling
+      // another frame ends the rAF chain for good: the platter stops dead if the
+      // document becomes hidden between frames and nothing restarts it, because
+      // `requestAnimationFrame` does not fire at all in a hidden document and so
+      // the loop never gets the chance to notice it has become visible again.
+      // The visibility listener below is a belt-and-braces restart.
+      if (document.hidden) {
+        lastTimeRef.current = now;
+        animId = requestAnimationFrame(tick);
+        return;
+      }
 
       const delta = Math.min((now - lastTimeRef.current) / 1000, 0.1);
       lastTimeRef.current = now;
@@ -119,13 +151,24 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
         const speedMultiplier = playbackRate;
         const degPerSec = 200 * speedMultiplier;
         rotationAngleRef.current = (rotationAngleRef.current + degPerSec * delta) % 360;
-        cdAngleRef.current = (cdAngleRef.current + (degPerSec * 1.5) * delta) % 360;
+ cdAngleRef.current = (cdAngleRef.current + (degPerSec * 1.5) * delta) % 360;
 
         if (platterRef.current) {
           platterRef.current.style.transform = `rotate(${rotationAngleRef.current}deg)`;
         }
         if (cdDiscRef.current) {
           cdDiscRef.current.style.transform = `rotate(${cdAngleRef.current}deg)`;
+        }
+
+        // Tonearm sweep, read from the getter so no prop has to change for it.
+        // Resting angle is 21 degrees and it travels 16 across the side.
+        if (toneArmRef.current) {
+          const armRatio =
+        duration > 0
+              ? Math.max(0, Math.min(1, getCurrentTime() / duration))
+    : 0;
+    const wobble = isScratchingRef.current ? smoothVelocityRef.current / 300 : 0;
+          toneArmRef.current.style.transform = `rotate(${21 + armRatio * 16 + wobble}deg)`;
         }
       }
 
@@ -148,11 +191,13 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
       cancelAnimationFrame(animId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isPlaying, playbackRate]);
+    // `duration` and `getCurrentTime` are read inside the loop for the tonearm.
+  }, [isPlaying, playbackRate, duration, getCurrentTime]);
 
-  // Tone arm angle for Vinyl only: 0deg = rested on cradle, 21deg to 37deg across the record
-  const progressRatio = duration > 0 ? currentTime / duration : 0;
-  const toneArmAngle = isPlaying ? 21 + progressRatio * 16 : 0;
+  // Tone arm for Vinyl only: 0deg rests on the cradle, 21deg to 37deg across the
+  // record. Written imperatively by the rotation loop above rather than from
+  // render, so the playhead never has to reach this component as a prop.
+  const toneArmRef = useRef<HTMLDivElement | null>(null);
 
   const coverUrl = currentTrack?.coverPath
     ? `/covers?path=${encodeURIComponent(currentTrack.coverPath)}`
@@ -234,7 +279,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     if (onScratch) {
       onScratch(smoothVelocityRef.current, delta);
     } else if (duration > 0 && Math.abs(delta) > 1) {
-      const scrubTime = currentTime + (delta / 360) * 1.8;
+      const scrubTime = getCurrentTime() + (delta / 360) * 1.8;
       onSeek(Math.max(0, Math.min(scrubTime, duration)));
     }
   };
@@ -255,13 +300,13 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
     const y = (e.clientY - rect.top) / rect.height - 0.5;
     if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
     tiltRafRef.current = requestAnimationFrame(() => {
-      setTilt({ x: x * 14, y: -y * 14 });
+      applyTilt(x * 14, -y * 14);
     });
   };
 
   const handleCoverMouseLeave = () => {
     if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
-    setTilt({ x: 0, y: 0 });
+    applyTilt(0, 0);
   };
 
   return (
@@ -294,11 +339,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                   }`}
                 >
                   {isActive && (
-                    <motion.div
-                      layoutId="active-deck-pill"
-                      transition={{ type: "spring", stiffness: 450, damping: 32 }}
-                      className="absolute inset-0 rounded-full bg-white/20 border border-white/20 shadow-md backdrop-blur-md"
-                    />
+                    <div className="cadence-pop-in absolute inset-0 rounded-full bg-white/20 border border-white/20 shadow-md backdrop-blur-md" />
                   )}
                   <span className="relative z-10">{mode.icon}</span>
                   <span className="relative z-10">{mode.label}</span>
@@ -312,42 +353,54 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
       {/* Main Deck Hero Surface */}
       <div className="flex-1 w-full flex items-center justify-center relative my-auto min-h-0 overflow-hidden">
 
-        {/* Dynamic Multi-Layer Full-Panel Ambient Canvas with Enhanced Dynamic Range */}
+        {/* Dynamic Multi-Layer Full-Panel Ambient Canvas with Enhanced Dynamic Range
+         *
+         * These three layers used to carry `blur-[160px]`, `blur-[180px]` and
+         * `blur-[130px]` on top of a soft radial gradient. That was a
+         * 130-180px Gaussian blur over roughly a thousand-pixel-wide surface,
+         * with `scale()` inside the keyframes, three deep, continuously
+         * animating, stacked underneath a dozen `backdrop-filter` panels. On an
+         * integrated GPU that is the single most expensive thing in the window,
+         * and it is close to pure waste: blurring a radial gradient that already
+         * fades to transparent from 70% outward mostly widens its own falloff.
+         *
+         * The falloff is now written into the gradient stops directly, so the
+         * result is visually near-identical and the animation is pure compositing.
+         */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
-          <div 
-            className={`absolute -top-1/4 -left-1/4 w-[90%] h-[90%] rounded-full blur-[160px] transform-gpu transition-all duration-1000 ${
-              isPlaying ? "opacity-70 scale-110 animate-ambient-1" : "opacity-25 scale-95"
+          <div
+            className={`absolute -top-1/4 -left-1/4 w-[120%] h-[120%] transform-gpu transition-opacity duration-1000 ${
+              isPlaying ? "opacity-70 animate-ambient-1" : "opacity-25"
             }`}
             style={{
-              background: "radial-gradient(circle, var(--ambient-1, var(--primary-glow)) 0%, transparent 70%)"
+              background:
+                "radial-gradient(circle closest-side, var(--ambient-1, var(--primary-glow)) 0%, color-mix(in srgb, var(--ambient-1, var(--primary-glow)) 55%, transparent) 34%, color-mix(in srgb, var(--ambient-1, var(--primary-glow)) 22%, transparent) 58%, transparent 100%)"
             }}
           />
-          <div 
-            className={`absolute -bottom-1/4 -right-1/4 w-[90%] h-[90%] rounded-full blur-[180px] transform-gpu transition-all duration-1000 ${
-              isPlaying ? "opacity-65 scale-110 animate-ambient-2" : "opacity-25 scale-95"
+          <div
+            className={`absolute -bottom-1/4 -right-1/4 w-[120%] h-[120%] transform-gpu transition-opacity duration-1000 ${
+              isPlaying ? "opacity-65 animate-ambient-2" : "opacity-25"
             }`}
             style={{
-              background: "radial-gradient(circle, var(--ambient-2, var(--secondary-glow)) 0%, transparent 70%)"
+              background:
+                "radial-gradient(circle closest-side, var(--ambient-2, var(--secondary-glow)) 0%, color-mix(in srgb, var(--ambient-2, var(--secondary-glow)) 55%, transparent) 34%, color-mix(in srgb, var(--ambient-2, var(--secondary-glow)) 22%, transparent) 58%, transparent 100%)"
             }}
           />
-          <div 
-            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl h-[90%] rounded-full blur-[130px] transform-gpu transition-all duration-700 ${
-              isPlaying ? "opacity-75 scale-105" : "opacity-30 scale-95"
+          <div
+            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl h-[100%] transition-opacity duration-700 ${
+              isPlaying ? "opacity-75" : "opacity-30"
             }`}
             style={{
-              background: "radial-gradient(circle, var(--ambient-1, var(--primary-glow)) 0%, var(--ambient-2, var(--secondary-glow)) 45%, var(--ambient-3, transparent) 70%, transparent 85%)"
+              background:
+                "radial-gradient(ellipse closest-side, var(--ambient-1, var(--primary-glow)) 0%, color-mix(in srgb, var(--ambient-1, var(--primary-glow)) 40%, transparent) 30%, var(--ambient-2, var(--secondary-glow)) 55%, color-mix(in srgb, var(--ambient-3, transparent) 30%, transparent) 78%, transparent 100%)"
             }}
           />
         </div>
 
         {/* ─── MODE 1: SQUARE ALBUM COVER HERO ─── */}
         {deckMode === "cover" && currentTrack && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.94 }}
-            transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="relative flex flex-col items-center justify-center w-full max-w-5xl 2xl:max-w-6xl my-auto px-4 z-10 hero-surface"
+          <div
+            className="cadence-pop-in relative flex flex-col items-center justify-center w-full max-w-5xl 2xl:max-w-6xl my-auto px-4 z-10 hero-surface"
           >
             {/* Sleeve + Peeking Vinyl Record Presentation (Fluid Dynamic Scaling & Centered Envelope) */}
             <div 
@@ -362,20 +415,12 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               }}
             >
               {/* Unified 3D Tilt Assembly (Jacket & Vinyl Plate move in lockstep with zero input lag) */}
-              <motion.div
+              <div
+                ref={tiltRef}
                 className="relative w-full h-full flex items-center justify-center"
                 style={{
-                  transformStyle: "preserve-3d"
-                }}
-                animate={{
-                  rotateX: tilt.y,
-                  rotateY: tilt.x
-                }}
-                transition={{
-                  type: "spring",
-                  stiffness: 450,
-                  damping: 32,
-                  mass: 0.1
+                  transformStyle: "preserve-3d",
+                  transition: "transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)"
                 }}
               >
                 {/* Vinyl Record that slides out smoothly from behind sleeve */}
@@ -428,7 +473,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                   {/* Glass sheen highlight */}
                   <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
                 </div>
-              </motion.div>
+              </div>
 
               {/* Ambient Floor Shadow / Reflection */}
               <div 
@@ -502,16 +547,12 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                   )}
                 </div>
               </div>
-            </motion.div>
+            </div>
         )}
 
         {/* ─── MODE 2: ANALOG TURNTABLE (VINYL ONLY) ─── */}
         {deckMode === "vinyl" && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.94 }}
-            transition={{ type: "spring", stiffness: 380, damping: 28 }}
+          <div
             ref={deckRef}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
@@ -521,16 +562,11 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
               width: `${dynamicPlatterSize}px`,
               height: `${dynamicPlatterSize}px`
             }}
-            className="relative aspect-square flex items-center justify-center cursor-grab active:cursor-grabbing my-auto transition-all duration-300"
+            className="cadence-pop-in relative aspect-square flex items-center justify-center cursor-grab active:cursor-grabbing my-auto transition-all duration-300"
           >
             {/* Real-time DJ Scratch HUD Indicator */}
-            <AnimatePresence>
               {isScratching && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.85, y: -10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.85, y: -10 }}
-                  className="absolute -top-6 z-40 px-3.5 py-1 rounded-full bg-primary/95 text-white text-[11px] font-mono font-black tracking-wider flex items-center gap-1.5 shadow-2xl shadow-primary/50 border border-white/20 backdrop-blur-md"
+                <div className="cadence-slide-up absolute -top-6 z-40 px-3.5 py-1 rounded-full bg-primary/95 text-white text-[11px] font-mono font-black tracking-wider flex items-center gap-1.5 shadow-2xl shadow-primary/50 border border-white/20 backdrop-blur-md"
                 >
                   <span>
                     {scratchRpmDisplay === 0
@@ -539,9 +575,8 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                       ? `SCRATCH +${scratchRpmDisplay} RPM`
                       : `SCRATCH ${scratchRpmDisplay} RPM`}
                   </span>
-                </motion.div>
+</div>
               )}
-            </AnimatePresence>
 
             {/* Turntable Outer Chassis Plate */}
             <div className="absolute inset-0 rounded-full bg-gradient-to-b from-neutral-900 via-neutral-950 to-black p-3.5 shadow-2xl border border-white/10">
@@ -585,15 +620,15 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
 
             {/* Realistic Physical Tone-Arm (Proportionally scaled to platter) */}
             <div
-              className="absolute pointer-events-none z-30 origin-top-right transition-transform duration-700 ease-out"
+              ref={toneArmRef}
+              className="absolute pointer-events-none z-30 origin-top-right"
               style={{
                 top: `${Math.round(dynamicPlatterSize * 0.015)}px`,
                 right: `${Math.round(dynamicPlatterSize * 0.025)}px`,
                 width: `${Math.round(dynamicPlatterSize * 0.28)}px`,
                 height: `${Math.round(dynamicPlatterSize * 0.62)}px`,
-                transform: `rotate(${isScratching ? toneArmAngle + (smoothVelocityRef.current / 300) : toneArmAngle}deg)`,
-                transformOrigin: "85% 15%",
-                willChange: "transform"
+                transform: `rotate(${isPlaying ? 21 : 0}deg)`,
+                           transformOrigin: "85% 15%"
               }}
             >
               {/* Tone-Arm Base Pivot Gimbal */}
@@ -621,21 +656,17 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* ─── MODE 3: HOLOGRAPHIC COMPACT DISC (NO NEEDLE / NO TONEARM!) ─── */}
         {deckMode === "cd" && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.94 }}
-            transition={{ type: "spring", stiffness: 380, damping: 28 }}
+          <div
             style={{
               width: `${dynamicCdSize}px`,
               height: `${dynamicCdSize}px`
             }}
-            className="relative aspect-square flex items-center justify-center my-auto transition-all duration-300"
+            className="cadence-pop-in relative aspect-square flex items-center justify-center my-auto transition-all duration-300"
           >
             {/* Jewel Case Crystal Tray */}
             <div className="w-full h-full rounded-3xl bg-white/[0.03] border border-white/15 p-4 shadow-2xl backdrop-blur-2xl flex items-center justify-center relative overflow-hidden">
@@ -686,17 +717,13 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* ─── MODE 4: ZEN MINIMAL (Fluid Scaling) ─── */}
         {deckMode === "minimal" && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.94 }}
-            transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="w-full flex flex-col items-center justify-center text-center p-4 space-y-5 my-auto"
+          <div
+            className="cadence-pop-in w-full flex flex-col items-center justify-center text-center p-4 space-y-5 my-auto"
           >
             {/* Soft Ambient Album Aura */}
             <div 
@@ -728,7 +755,7 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
                 {currentTrack ? `${currentTrack.artist} • ${currentTrack.album}` : "Choose music from your library"}
               </p>
             </div>
-          </motion.div>
+          </div>
         )}
       </div>
 

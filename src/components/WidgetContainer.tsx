@@ -1,24 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { 
-  GripVertical, 
-  EyeOff, 
-  Plus, 
-  Activity, 
-  Mic2, 
-  ListMusic, 
-  Info, 
-  RotateCcw,
-  Sparkles,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  RefreshCw,
-  Radio,
-  Waves,
-  Zap,
-  Trash2
-} from "lucide-react";
-import { Reorder, useDragControls } from "framer-motion";
+import { GripVertical, EyeOff, Plus, Activity, Mic2, ListMusic, Info, RotateCcw, Sparkles, ChevronDown, ChevronUp, Search, RefreshCw, Radio, Waves, Zap, Trash2 } from "./icons";
 import { Track, VisualizerMode, WidgetId, LyricsState } from "../types";
 import { SpectrumVisualizer } from "./SpectrumVisualizer";
 import { LyricsDeck, LyricsDeckHandle } from "./LyricsDeck";
@@ -69,6 +50,9 @@ interface WidgetCardItemProps {
   hasAnyLyrics: boolean;
   onToggleMinimize: () => void;
   onToggleWidget: () => void;
+  onWidgetDragStart: (id: WidgetId) => void;
+  onWidgetDragEnd: () => void;
+  onWidgetDrop: (targetId: WidgetId) => void;
   // Visualizer props
   isPlaying: boolean;
   visualizerMode: VisualizerMode;
@@ -100,6 +84,9 @@ const WidgetCardItem = React.memo<WidgetCardItemProps>(({
   hasAnyLyrics,
   onToggleMinimize,
   onToggleWidget,
+  onWidgetDragStart,
+  onWidgetDragEnd,
+  onWidgetDrop,
   isPlaying,
   visualizerMode,
   onSetVisualizerMode,
@@ -118,7 +105,7 @@ const WidgetCardItem = React.memo<WidgetCardItemProps>(({
   onMoveQueueItem,
   visibleWidgets
 }) => {
-  const dragControls = useDragControls();
+  const [headerDraggable, setHeaderDraggable] = useState<boolean>(true);
 
   // Dynamic height determination: prioritize Lyrics deck visibility
   const heightClass = isMinimized
@@ -138,21 +125,30 @@ const WidgetCardItem = React.memo<WidgetCardItemProps>(({
     : "shrink-0 h-auto";
 
   return (
-    <Reorder.Item
-      as="div"
-      value={widgetId}
-      dragListener={false}
-      dragControls={dragControls}
-      whileDrag={{ scale: 1.02, zIndex: 50 }}
-      transition={{ type: "spring", stiffness: 350, damping: 30 }}
+    <div
       className={`glass-panel rounded-3xl overflow-hidden flex flex-col shadow-xl border border-white/10 transition-colors duration-200 ${heightClass}`}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        onWidgetDrop(widgetId);
+      }}
     >
       {/* ─── SINGLE UNIFIED HEADER ─── */}
       <div
+        draggable={headerDraggable}
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", widgetId);
+          setHeaderDraggable(true);
+          onWidgetDragStart(widgetId);
+        }}
+        onDragEnd={() => {
+          setHeaderDraggable(true);
+          onWidgetDragEnd();
+        }}
         onPointerDown={(e) => {
           const target = e.target as HTMLElement;
-          if (target.closest("button") || target.closest("input")) return;
-          dragControls.start(e);
+          setHeaderDraggable(!(target.closest("button") || target.closest("input")));
         }}
         className="flex items-center justify-between px-3.5 py-2 border-b border-white/5 bg-white/[0.02] shrink-0 select-none cursor-grab active:cursor-grabbing"
       >
@@ -307,6 +303,7 @@ const WidgetCardItem = React.memo<WidgetCardItemProps>(({
               ref={lyricsRef}
               currentTrack={currentTrack}
               currentTime={currentTime}
+              isPlaying={isPlaying}
               onSeek={onSeek}
               onLyricsLoaded={onLyricsLoaded}
               isCompact={shouldLyricsCompact}
@@ -362,7 +359,7 @@ const WidgetCardItem = React.memo<WidgetCardItemProps>(({
           )}
         </div>
       )}
-    </Reorder.Item>
+    </div>
   );
 }, (prev, next) => {
   if (next.widgetId === "lyrics") {
@@ -506,13 +503,32 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
 
   const visibleWidgets = order.filter(id => visibility[id]);
 
-  // Framer Motion real-time reorder handler
-  const handleReorder = (newVisibleOrder: WidgetId[]) => {
+  // HTML5 native drag-and-drop reorder state
+  const dragIdRef = useRef<WidgetId | null>(null);
+
+  const handleWidgetDragStart = useCallback((id: WidgetId) => {
+    dragIdRef.current = id;
+  }, []);
+
+  const handleWidgetDragEnd = useCallback(() => {
+    dragIdRef.current = null;
+  }, []);
+
+  const handleWidgetDrop = useCallback((targetId: WidgetId) => {
+    const drag = dragIdRef.current;
+    dragIdRef.current = null;
+    if (!drag || drag === targetId) return;
+    const from = visibleWidgets.indexOf(drag);
+    const to = visibleWidgets.indexOf(targetId);
+    if (from === -1 || to === -1) return;
+    const next = [...visibleWidgets];
+    next.splice(from, 1);
+    next.splice(to, 0, drag);
     setOrder(prev => {
       const hidden = prev.filter(id => !visibility[id]);
-      return [...newVisibleOrder, ...hidden];
+      return [...next, ...hidden];
     });
-  };
+  }, [visibleWidgets, visibility]);
 
   // Dynamic Expansion Logic:
   // When tracks do NOT have synced lyrics or any lyrics, lyrics widget occupies a compact bar,
@@ -607,13 +623,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
           </button>
         </div>
       ) : (
-        <Reorder.Group
-          axis="y"
-          values={visibleWidgets}
-          onReorder={handleReorder}
-          as="div"
-          className="flex-1 flex flex-col gap-3 overflow-y-auto overflow-x-hidden min-h-0 no-scrollbar p-1"
-        >
+        <div className="flex-1 flex flex-col gap-3 overflow-y-auto overflow-x-hidden min-h-0 no-scrollbar p-1">
           {visibleWidgets.map((widgetId) => (
             <WidgetCardItem
               key={widgetId}
@@ -625,6 +635,9 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
               hasAnyLyrics={hasAnyLyrics}
               onToggleMinimize={() => toggleMinimize(widgetId)}
               onToggleWidget={() => toggleWidget(widgetId)}
+              onWidgetDragStart={handleWidgetDragStart}
+              onWidgetDragEnd={handleWidgetDragEnd}
+              onWidgetDrop={handleWidgetDrop}
               isPlaying={isPlaying}
               visualizerMode={visualizerMode}
               onSetVisualizerMode={onSetVisualizerMode}
@@ -644,7 +657,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
               visibleWidgets={visibleWidgets}
             />
           ))}
-        </Reorder.Group>
+        </div>
       )}
     </div>
   );

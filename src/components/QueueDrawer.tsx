@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from "react";
-import { ListMusic, Trash2, ArrowUp, ArrowDown, X, Play, Music } from "lucide-react";
+import { ListMusic, Trash2, ArrowUp, ArrowDown, X, Play, Music } from "./icons";
 import { Track } from "../types";
 import { formatBitrate, getTrackCoverUrl } from "../utils/formatters";
 

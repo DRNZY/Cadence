@@ -3,53 +3,140 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import net from "net";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import crypto from "crypto";
 import { getLyricsForTrack, searchLyricsCandidates, getCacheKey, parseLrc } from "./lyricsFetcher.ts";
 import { lastFmRouter } from "./lastfm.ts";
 import { DiscoveryServer } from "./discovery.ts";
+import { isLanExposed, isLoopbackAddress, getBindHosts, getServerToken, tokenMatches, extractToken } from "./auth.ts";
+import { DiscordRpc } from "../electron/discordRpc.cjs";
+import { makeAlbumId, extractPrimaryArtist } from "../shared/albumIdentity.ts";
 
 const execFileAsync = promisify(execFile);
 const app = express();
-const PORT = 3001;
+// Overridable so a dev instance can run alongside an installed build instead of
+// fighting it for the port and silently serving requests from the other copy.
+const PORT = (() => {
+  const fromEnv = parseInt(process.env.CADENCE_PORT || "", 10);
+  return !isNaN(fromEnv) && fromEnv > 0 && fromEnv < 65536 ? fromEnv : 3001;
+})();
 
 // Security Headers Middleware
+/**
+ * Content-Security-Policy.
+ *
+ * The app ships no external scripts and loads no third-party origins, so the
+ * policy can be strict. `unsafe-inline` survives only for styles, because
+ * Tailwind and the inline style attributes used for dynamic values (accent
+ * colours, spectrum gradients) both rely on it; scripts do not get the
+ * exemption, which is the part that actually matters for XSS containment.
+ *
+ * The important property here is that `script-src` has no `unsafe-inline`, so
+ * an injected `<script>` or an inline event handler cannot execute even if markup
+ * injection is found somewhere in the renderer. Before this, one such bug would
+ * have been full compromise of the app context.
+ */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  // Vite's dev server injects styles and the HMR client as inline/eval scripts,
+  // so the policy relaxes only when explicitly running in dev mode.
+  ...(process.env.CADENCE_DEV ? ["style-src 'self' 'unsafe-inline'", "script-src 'self' 'unsafe-eval' 'unsafe-inline'"] : ["style-src 'self' 'unsafe-inline'"]),
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob: data:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+  "worker-src 'self' blob:"
+].join("; ");
+
 app.use((_req, res, next) => {
+  res.setHeader("Content-Security-Policy", CSP);
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
+  // This app makes no cross-origin subresource requests, and nothing embeds it.
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   next();
 });
 
 const isPrivateIpOrigin = (origin: string): boolean => {
   try {
-    const url = new URL(origin);
-    const host = url.hostname;
-    return (
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "::1" ||
-      host === "[::1]" ||
-      host.startsWith("192.168.") ||
-      host.startsWith("10.") ||
-      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
-    );
+    const host = new URL(origin).hostname.replace(/^\[|\]$/g, "");
+
+    // `localhost` is the only name we trust, and only because it cannot be
+    // registered by an attacker.
+    if (host === "localhost") return true;
+
+    // Everything below must be a real IP address. The previous version used
+    // `host.startsWith("10.")` and friends, which matches *hostnames* just as
+    // happily as addresses: anyone who registers `10.evil.com` or
+    // `192.168.attacker.tld` was handed a full, authenticated-looking pass into
+    // this API, including writes. A DNS name is never private, so anything that
+    // does not parse as an IP is rejected outright.
+    if (!net.isIP(host)) return false;
+
+    if (net.isIPv4(host)) {
+      const [a, b] = host.split(".").map(Number);
+      if (a === 127) return true;                    // loopback
+      if (a === 10) return true;                     // 10.0.0.0/8
+      if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+      if (a === 192 && b === 168) return true;       // 192.168.0.0/16
+      if (a === 169 && b === 254) return true;       // link-local
+      return false;
+    }
+
+    // IPv6: loopback, unique-local (fc00::/7), and link-local (fe80::/10).
+    const lower = host.toLowerCase();
+    if (lower === "::1" || lower === "::") return true;
+    if (/^f[cd]/.test(lower)) return true;
+    if (/^fe[89ab]/.test(lower)) return true;
+    return false;
   } catch {
     return false;
   }
 };
+
+/**
+ * Endpoints that must work before a client can prove anything, because they
+ * are what a client uses to *get* a token. Everything else is behind the gate.
+ */
+const PUBLIC_PATHS = new Set(["/api/ping", "/healthz"]);
+
+app.use((req, res, next) => {
+  // When the server is loopback-only there is no remote principal to
+  // authenticate, and demanding a token would just break every existing client
+  // for no security gain. Loopback is the trust boundary at that point.
+  if (!isLanExposed() || isLoopbackAddress(req.socket.remoteAddress)) return next();
+
+  if (req.method === "OPTIONS") return next();
+  if (PUBLIC_PATHS.has(req.path)) return next();
+
+  if (!tokenMatches(extractToken(req))) {
+    return res.status(401).json({
+      error: "Cadence requires an access token when exposed to the network",
+      hint: "Set CADENCE_LAN=1 on the server and send X-Cadence-Token: <token from ~/.config/cadence/lan-token>"
+    });
+  }
+  next();
+});
 
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || origin.startsWith("file://") || origin.startsWith("vscode-webview://") || isPrivateIpOrigin(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("Blocked by Cadence CORS policy"));
+      callback(null, false);
     }
   },
   methods: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
-  allowedHeaders: ["Range", "Accept-Ranges", "Content-Type", "Origin", "X-Requested-With"]
+  allowedHeaders: ["Range", "Accept-Ranges", "Content-Type", "Origin", "X-Requested-With", "X-Cadence-Token", "Authorization"]
 }));
 
 // Origin Validation Defense for cross-site requests
@@ -73,6 +160,23 @@ const LIBRARY_CACHE_FILE = path.join(CADENCE_CACHE_DIR, "library_cache.json");
 const PLAYLISTS_FILE = path.join(USER_DATA_DIR, "playlists.json");
 const FAVORITES_FILE = path.join(USER_DATA_DIR, "favorites.json");
 const SETTINGS_FILE = path.join(USER_DATA_DIR, "settings.json");
+
+/**
+ * Config and cache directories hold the Last.fm session key, the access token,
+ * and the full library index including absolute file paths. `mkdirSync` only
+ * applies `mode` when it creates the leaf, so an existing directory keeps
+ * whatever it had — these calls exist to repair a directory that is already too
+ * permissive, not just to create a correct one.
+ */
+for (const dir of [USER_DATA_DIR, CADENCE_CACHE_DIR, COVER_CACHE_DIR]) {
+  try {
+    if (fs.existsSync(dir)) {
+      fs.chmodSync(dir, 0o700);
+    } else {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+  } catch {}
+}
 
 export function atomicWriteFileSync(filePath: string, data: string) {
   const dir = path.dirname(filePath);
@@ -185,7 +289,40 @@ export interface Track {
   coverPath?: string;
   hasLyrics: boolean;
   size: number;
+  /** REPLAYGAIN_TRACK_GAIN in dB, when the tag exists. */
+  replayGainTrack?: number;
+  /** REPLAYGAIN_ALBUM_GAIN in dB, when the tag exists. */
+  replayGainAlbum?: number;
+  /**
+   * Legacy single-value alias. Resolved as track-then-album purely so older
+   * clients keep working; it cannot express "album mode", because a track with
+   * no track gain silently inherits the album gain and then plays at the wrong
+   * level relative to its neighbours. New code must read the two fields above.
+   */
   replayGain?: number;
+  /** Container bit depth of the audio stream, when ffprobe reports one. */
+  bitsPerSample?: number;
+  /**
+   * ALBUMARTIST, kept separate from the track artist.
+   *
+   * These are different things and conflating them is what split albums apart.
+   * On a compilation the track artist is a different performer per track while
+   * the album artist is "Various Artists"; on a track with a feature the track
+   * artist carries "A feat. B" while the album artist is just "A". Folding the
+   * album artist into the track artist loses the one field that identifies the
+   * release.
+   */
+  albumArtist?: string;
+  /** Disc number from DISCC/disc/discnumber, when the file has one. */
+  discNumber?: number;
+  /** True when the file is flagged as part of a compilation. */
+  compilation?: boolean;
+  /**
+   * Stable identity of the release. MusicBrainz ID when tagged, otherwise a
+   * normalised key derived from album artist, album title and disc number.
+   * Grouping and artwork both key on this, so they cannot disagree.
+   */
+  albumId: string;
 }
 
 export interface Playlist {
@@ -290,16 +427,52 @@ export function parseLrc(content: string): LyricLine[] {
   return result.sort((a, b) => a.time - b.time);
 }
 
-function findCachedCover(artist?: string, album?: string, title?: string): string | undefined {
-  if (!artist && !album && !title) return undefined;
+/**
+ * Filename for a cached cover, derived from the album identity.
+ *
+ * This used to be built from the artist and album *names* with bracketed
+ * qualifiers stripped, which meant "Kind of Blue (Remastered)" and "Kind of
+ * Blue (Deluxe Edition)" and "Kind of Blue" all resolved to the same file. The
+ * first one scanned wrote its bytes and every other release then inherited them
+ * as if they were the same album — which is what put unrelated artwork on
+ * unrelated albums. Keying on `albumId` removes the collision by construction,
+ * because `albumId` is already edition-aware.
+ *
+ * Falls back to the name pair only when no identity is available, which is the
+ * untagged-file case.
+ */
+function coverCacheFileFor(
+  albumId: string | undefined,
+  artist?: string,
+  album?: string,
+  title?: string
+): string | null {
+  let safeKey: string;
+  if (albumId && albumId !== "album:unknown") {
+    // albumId contains a NUL separator and colons; neither is safe in a
+    // filename, so fold the whole identity down to a stable hex digest.
+    safeKey = "id_" + crypto.createHash("sha1").update(albumId).digest("hex").slice(0, 20);
+  } else {
   const cleanArtist = (artist || "").replace(/feat\..*|ft\..*|\(.*?\)|\[.*?\]/gi, "").trim();
-  const cleanAlbum = (album || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
+    const cleanAlbum = (album || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
   const cleanTitle = (title || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
+    const raw = `${cleanArtist}_${cleanAlbum || cleanTitle}`;
+    if (!raw.replace(/_/g, "")) return null;
+    safeKey = raw.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+  }
+  return path.join(COVER_CACHE_DIR, `${safeKey}.jpg`);
+}
 
-  const safeKey = `${cleanArtist}_${cleanAlbum || cleanTitle}`.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
-  const cacheFile = path.join(COVER_CACHE_DIR, `${safeKey}.jpg`);
-  if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 500) {
-    return cacheFile;
+function findCachedCover(
+  albumId?: string,
+  artist?: string,
+  album?: string,
+  title?: string
+): string | undefined {
+  if (!albumId && !artist && !album && !title) return undefined;
+  const cacheFile = coverCacheFileFor(albumId, artist, album, title);
+  if (cacheFile && fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 500) {
+ return cacheFile;
   }
   return undefined;
 }
@@ -347,7 +520,12 @@ function isConfidentCoverMatch(
   return true;
 }
 
-export async function fetchOnlineAlbumCover(artist?: string, album?: string, title?: string): Promise<string | null> {
+export async function fetchOnlineAlbumCover(
+  albumId?: string,
+  artist?: string,
+  album?: string,
+  title?: string
+): Promise<string | null> {
   const cleanArtist = cleanQueryTerm(artist);
   const cleanAlbum = cleanQueryTerm(album);
   const cleanTitle = cleanQueryTerm(title);
@@ -355,8 +533,13 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
   const query = `${cleanArtist} ${cleanAlbum || cleanTitle}`.trim();
   if (!query || query.length < 2) return null;
 
-  const safeKey = `${cleanArtist}_${cleanAlbum || cleanTitle}`.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
-  const cacheFile = path.join(COVER_CACHE_DIR, `${safeKey}.jpg`);
+  // Same key as the local paths. This previously built its own from
+  // `cleanQueryTerm`, which strips the bare word "remastered", so a download
+  // for "Nevermind Remastered" was written to `nirvana_nevermind.jpg` while
+  // every local lookup looked for `nirvana_nevermind_remastered.jpg`. The
+  // download succeeded and was never found again.
+  const cacheFile = coverCacheFileFor(albumId, artist, album, title);
+  if (!cacheFile) return null;
   if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 500) {
     return cacheFile;
   }
@@ -514,13 +697,22 @@ export async function fetchOnlineAlbumCover(artist?: string, album?: string, tit
   return null;
 }
 
-export async function extractEmbeddedCover(filePath: string, artist?: string, album?: string, title?: string): Promise<string | undefined> {
-  const cleanArtist = (artist || "").replace(/feat\..*|ft\..*|- Topic|\(.*?\)|\[.*?\]/gi, "").trim();
-  const cleanAlbum = (album || "").replace(/\(.*?\)|\[.*?\]|- Single|- EP/gi, "").trim();
-  const cleanTitle = (title || "").replace(/\(.*?\)|\[.*?\]/gi, "").trim();
-
-  const safeKey = `${cleanArtist}_${cleanAlbum || cleanTitle}`.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
-  const cacheFile = path.join(COVER_CACHE_DIR, `${safeKey || "emb_" + Buffer.from(filePath).toString("base64url").slice(0, 16)}.jpg`);
+export async function extractEmbeddedCover(
+  filePath: string,
+  albumId?: string,
+  artist?: string,
+  album?: string,
+  title?: string
+): Promise<string | undefined> {
+  const cacheFile =
+    coverCacheFileFor(albumId, artist, album, title) ??
+    // No identity and no usable name pair: fall back to something derived from
+    // the path so at least the extraction is not shared between every file that
+    // failed to tag.
+    path.join(
+      COVER_CACHE_DIR,
+      `emb_${Buffer.from(filePath).toString("base64url").slice(0, 16)}.jpg`
+    );
 
   if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 1000) {
     return cacheFile;
@@ -546,35 +738,64 @@ export async function extractEmbeddedCover(filePath: string, artist?: string, al
   return undefined;
 }
 
-function findCoverArt(trackPath: string, artist?: string, album?: string, title?: string): string | undefined {
+function findCoverArt(
+  trackPath: string,
+  albumId?: string,
+  artist?: string,
+  album?: string,
+  title?: string
+): string | undefined {
   const dir = path.dirname(trackPath);
-  
+
   for (const img of IMAGE_NAMES) {
     const candidate = path.join(dir, img);
     if (fs.existsSync(candidate)) return candidate;
   }
 
   try {
-    const files = fs.readdirSync(dir);
-    for (const f of files) {
-      const lower = f.toLowerCase();
-      if (lower.endsWith(".jpg") || lower.endsWith(".png") || lower.endsWith(".webp") || lower.endsWith(".jpeg")) {
-        return path.join(dir, f);
-      }
-    }
+    // Prefer a conventional front-cover name over whatever happens to sort
+    // first. The old code took the first image the directory listing happened
+    // to yield, which regularly handed back a back cover, a booklet scan or an
+    // "AlbumArtSmall" file.
+    const files = fs.readdirSync(dir)
+      .filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f))
+      .sort((a, b) => frontCoverRank(b) - frontCoverRank(a));
+    if (files.length > 0) return path.join(dir, files[0]);
   } catch (e) {}
 
-  const parentDir = path.dirname(dir);
-  for (const img of IMAGE_NAMES) {
-    const candidate = path.join(parentDir, img);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-
+  // Deliberately no parent-directory probe. `Artist/cover.jpg` was being
+  // handed to every album folder underneath that artist, so all of an artist's
+  // albums rendered with the same artwork. A parent-level image is far more
+  // likely to be a band photo or a logo than any one album's cover, and if it
+  // is genuinely wanted it should be tagged or placed in the album folder.
+  //
   // Check cache
-  const cached = findCachedCover(artist, album, title);
+  const cached = findCachedCover(albumId, artist, album, title);
   if (cached) return cached;
 
   return undefined;
+}
+
+/**
+ * Lower rank sorts earlier, so front-cover-like filenames win.
+ *
+ * Used only to break ties between several images in one folder.
+ */
+function frontCoverRank(fileName: string): number {
+  const f = fileName.toLowerCase();
+  let rank = 100;
+  // Base penalty for each disqualifying word, so "cover-back.jpg" ranks behind
+  // "cover.jpg" rather than ahead of it on a single match.
+  if (/\b(back|backside|disc|vinyl|cd|insert|booklet|scan|interior|inside|foldout|artwork_small|small|thumb)\b/.test(f)) {
+    rank += 1000;
+  }
+  if (/cover|front|folder|albumart|album|artwork|thumb/.test(f)) {
+    rank -= 50;
+  }
+  if (/^(cover|front|folder)\.(jpg|jpeg|png|webp)$/.test(f)) {
+    rank -= 50;
+  }
+  return rank;
 }
 
 function findLyrics(trackPath: string): { hasLyrics: boolean; path?: string } {
@@ -598,7 +819,13 @@ function parseReplayGain(gainStr?: string): number | undefined {
   return undefined;
 }
 
-async function extractMetadata(filePath: string): Promise<Partial<Track>> {
+/**
+ * What ffprobe can tell us about a file. `musicbrainzAlbumId` is carried
+ * through because it feeds `albumId` but is not itself part of a Track.
+ */
+type ExtractedMetadata = Partial<Track> & { musicbrainzAlbumId?: string };
+
+async function extractMetadata(filePath: string): Promise<ExtractedMetadata> {
   try {
     const { stdout } = await execFileAsync("ffprobe", [
       "-v", "quiet",
@@ -619,11 +846,34 @@ async function extractMetadata(filePath: string): Promise<Partial<Track>> {
     const stream = (data.streams || []).find((s: any) => s.codec_type === "audio") || {};
 
     const duration = parseFloat(format.duration || "0");
+    // The album artist is a separate tag from the track artist and has to stay
+    // separate. The old code read `artist || album_artist`, which meant a file
+    // tagged ARTIST=Ye / ALBUMARTIST=Kanye West reported "Ye" and lost the
+    // only field that says which release it belongs to.
     const artist = tagsLower.artist || tagsLower.album_artist || tagsLower.albumartist;
+    const albumArtist =
+      tagsLower.album_artist ||
+      tagsLower.albumartist ||
+  // Vorbis comments spell it "ALBUM ARTIST" with a space, and some taggers
+      // use the credit form rather than the plain one.
+      tagsLower["album artist"] ||
+      tagsLower.album_artist_credit ||
+      tagsLower.albumartistcredit ||
+      tagsLower["album artist credit"] ||
+      tagsLower.album_credit ||
+      tagsLower["album artist credit"];
     const album = tagsLower.album;
     const title = tagsLower.title;
     const year = tagsLower.date || tagsLower.year || tagsLower.originalyear;
     const trackNumber = parseInt(tagsLower.track || "1", 10);
+    // "3/12" is the common encoding; the leading number is what matters.
+    const discNumber = parseInt(
+      tagsLower.disc || tagsLower.discnumber || tagsLower.discc || "0",
+      10
+    );
+    const compilation = /^(1|yes|true)$/i.test(tagsLower.compilation || "");
+    const musicbrainzAlbumId =
+      tagsLower.musicbrainz_albumid || tagsLower["musicbrainz album id"] || undefined;
     let bitrate = parseInt(format.bit_rate || "0", 10);
     if ((!bitrate || isNaN(bitrate) || bitrate <= 0) && duration > 0) {
       try {
@@ -632,23 +882,70 @@ async function extractMetadata(filePath: string): Promise<Partial<Track>> {
       } catch {}
     }
     const sampleRate = parseInt(stream.sample_rate || "44100", 10);
+    const bitsRaw = parseInt(stream.bits_per_raw_sample || "", 10);
+    const bitsGeneric = parseInt(stream.bits_per_sample || "", 10);
+    const bitsPerSample = !isNaN(bitsRaw) && bitsRaw > 0
+      ? bitsRaw
+      : (!isNaN(bitsGeneric) && bitsGeneric > 0 ? bitsGeneric : undefined);
 
-    const replayGain = parseReplayGain(
-      tagsLower.replaygain_track_gain ||
-      tagsLower.replaygain_album_gain ||
-      tagsLower["r128_track_gain"] ||
-      tagsLower["replaygain_gain"]
-    );
+    // Track and album gain are separate signals and must not be collapsed: the
+    // client offers both modes, and album mode is meaningless once the album
+    // value has been folded into the track value. The legacy `replayGain` alias
+    // still falls back track-then-album for older clients.
+    //
+    // `REPLAYGAIN_*_PEAK` is deliberately not read as a gain here. It is the
+    // pre-normalisation sample peak, so treating it as a gain subtracts level
+    // that was never there. It is still worth using, but only as a ceiling:
+    // normalising to a target peak is what a peak tag is good for.
+    //
+    // The spec stores the peak as a LINEAR 0.0-1.0 value, and most taggers
+    // follow that, but plenty write it in dBFS instead. Distinguish by range:
+    // anything in (0, 1] is linear and gets converted, anything above 1 is
+    // already dB. This matters in practice, because running a linear peak
+    // through the dB tag parser yields 0 (the regex takes the leading "0" of
+    // "0.978119"), which silently disables normalisation rather than failing.
+    const REPLAYGAIN_PEAK_FLOOR_DB = -6;
+    const peakToFallbackGain = (raw: unknown): number | undefined => {
+      if (raw === undefined || raw === null) return undefined;
+      const text = String(raw).trim();
+      // "-inf" is what a digital-silence file legitimately reports, and it must
+      // not become NaN on the way to 20*log10.
+      if (!text || /inf|nan/i.test(text)) return undefined;
+      const value = parseFloat(text);
+      if (!isFinite(value) || value === 0) return undefined;
+      // The spec stores the peak LINEAR in 0.0-1.0, so a positive value at or
+      // below 1 is linear. Anything else is already dBFS: dB peaks are always
+      // <= 0 for real audio, and > 1 only for nonsense.
+      const peakDb = value > 0 && value <= 1 ? 20 * Math.log10(value) : value;
+      if (!isFinite(peakDb)) return undefined;
+      // Attenuate down to the floor, but never boost. A file that already peaks
+      // below the floor has nothing to gain from being turned up, and doing so
+      // would make a quiet track louder for no reason.
+      return Math.min(0, REPLAYGAIN_PEAK_FLOOR_DB - peakDb);
+    };
+    const replayGainTrack = parseReplayGain(tagsLower.replaygain_track_gain) ??
+      peakToFallbackGain(tagsLower["replaygain_track_peak"]);
+    const replayGainAlbum = parseReplayGain(tagsLower.replaygain_album_gain);
+    const replayGain = replayGainTrack ?? replayGainAlbum ??
+      parseReplayGain(tagsLower["r128_track_gain"] || tagsLower["replaygain_gain"]) ??
+      peakToFallbackGain(tagsLower["replaygain_track_peak"] || tagsLower["replaygain_album_peak"]);
 
     return {
       title,
       artist,
+      albumArtist,
       album,
       year,
       trackNumber: isNaN(trackNumber) ? undefined : trackNumber,
+ discNumber: isNaN(discNumber) || discNumber <= 0 ? undefined : discNumber,
+      compilation: compilation || undefined,
+      musicbrainzAlbumId,
       duration: isNaN(duration) ? 0 : duration,
       bitrate,
       sampleRate,
+      bitsPerSample,
+      replayGainTrack,
+      replayGainAlbum,
       replayGain
     };
   } catch (err) {
@@ -678,11 +975,45 @@ interface CachedTrackRecord {
   track: Track;
 }
 
+/**
+ * Bump whenever the shape of `Track` or the extraction logic changes.
+ *
+ * The cache is validated per file by mtime and size, which correctly detects
+ * edited audio but cannot detect a change in *this program's* output: an entry
+ * written before `bitsPerSample` and the split ReplayGain fields existed stays
+ * valid forever, and the new fields silently never appear. The version is the
+ * only thing that can invalidate those. Bumping it costs one full re-probe of
+ * the library.
+ */
+// v4 added unified albumId / extractPrimaryArtist and reworked multi-disc grouping
+const LIBRARY_CACHE_VERSION = 4;
+
+interface LibraryCacheFile {
+  version: number;
+  entries: Record<string, CachedTrackRecord>;
+}
+
 function loadLibraryCache(): Record<string, CachedTrackRecord> {
   try {
     if (fs.existsSync(LIBRARY_CACHE_FILE)) {
       const data = fs.readFileSync(LIBRARY_CACHE_FILE, "utf-8");
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      // Pre-version caches were a bare map of path -> record. Treat anything
+      // without an explicit matching version as stale rather than guessing.
+      if (!parsed || typeof parsed !== "object" || typeof parsed.version !== "number" || !parsed.entries) {
+        console.log(
+          `[Cadence Server] Library cache format changed, rebuilding (found version ` +
+          `${parsed?.version ?? "none"}, expected ${LIBRARY_CACHE_VERSION}).`
+        );
+        return {};
+      }
+      if (parsed.version !== LIBRARY_CACHE_VERSION) {
+        console.log(
+          `[Cadence Server] Library cache version ${parsed.version} != ${LIBRARY_CACHE_VERSION}, rebuilding.`
+        );
+        return {};
+      }
+      return parsed.entries;
     }
   } catch (err) {
     console.error("[Cadence Server] Error loading library cache:", err);
@@ -692,7 +1023,22 @@ function loadLibraryCache(): Record<string, CachedTrackRecord> {
 
 function saveLibraryCache(cache: Record<string, CachedTrackRecord>) {
   try {
-    atomicWriteFileSync(LIBRARY_CACHE_FILE, JSON.stringify(cache));
+    const payload: LibraryCacheFile = { version: LIBRARY_CACHE_VERSION, entries: cache };
+    const serialised = JSON.stringify(payload);
+
+    // Skip the write when nothing changed. This runs at the end of every launch
+    // and the file is a few hundred KB, so rewriting an identical copy on every
+    // start is pure I/O for no benefit. Compared against what is already on disk,
+    // so a deleted or retagged file still gets written.
+    try {
+      if (fs.existsSync(LIBRARY_CACHE_FILE)) {
+        if (fs.readFileSync(LIBRARY_CACHE_FILE, "utf-8") === serialised) return;
+      }
+    } catch {
+      // Unreadable or malformed: fall through and rewrite it.
+    }
+
+    atomicWriteFileSync(LIBRARY_CACHE_FILE, serialised);
   } catch (err) {
     console.error("[Cadence Server] Error saving library cache:", err);
   }
@@ -745,7 +1091,14 @@ async function scanLibrary(): Promise<Track[]> {
     const parts = rel.split(path.sep);
 
     let fallbackArtist = "Unknown Artist";
-    let fallbackAlbum = "Unknown Album";
+    // For a file sitting directly in an artist folder with no tags, the album is
+    // genuinely unknown and "Unknown Album" is the honest answer. But the
+    // previous code applied the same constant to every artist, so each untagged
+    // artist produced their own separate "Unknown Album" group that the UI then
+    // rendered as a distinct album card. Using the artist name as the album
+    // keeps untagged files grouped under one card per artist instead of
+    // scattering placeholder cards through the library.
+    let fallbackAlbum = "";
     let fallbackTitle = path.parse(fullPath).name;
 
     if (parts.length >= 3) {
@@ -753,33 +1106,54 @@ async function scanLibrary(): Promise<Track[]> {
       fallbackAlbum = parts[1];
     } else if (parts.length === 2) {
       fallbackArtist = parts[0];
+      // No album folder: fall back to the filename minus its track-number
+      // prefix, which is the album far more often than it is not, and to the
+      // artist folder when the file carries no number at all.
+      const numbered = /^\s*\d+\s*[-._)]\s*(.+)$/.exec(path.parse(fullPath).name);
+      fallbackAlbum = numbered ? numbered[1] : fallbackArtist;
     }
 
     const trackTitle = meta.title || fallbackTitle;
     const trackArtist = meta.artist || fallbackArtist;
-    const trackAlbum = meta.album || fallbackAlbum;
+    // The album artist is what identifies the release, so it is the fallback
+    // for both the displayed artist on untagged files and the grouping key.
+    const trackAlbumArtist = meta.albumArtist || extractPrimaryArtist(meta.artist) || fallbackArtist;
+    const trackAlbum = meta.album || fallbackAlbum || "Unknown Album";
+    const albumId = makeAlbumId(
+      meta.musicbrainzAlbumId,
+      trackAlbumArtist,
+      trackAlbum,
+      meta.discNumber
+    );
 
-    let coverPath = findCoverArt(fullPath, trackArtist, trackAlbum, trackTitle);
+    let coverPath = findCoverArt(fullPath, albumId, trackAlbumArtist, trackAlbum, trackTitle);
     if (!coverPath) {
-      coverPath = await extractEmbeddedCover(fullPath, trackArtist, trackAlbum, trackTitle);
+      coverPath = await extractEmbeddedCover(fullPath, albumId, trackAlbumArtist, trackAlbum, trackTitle);
     }
     const { hasLyrics } = findLyrics(fullPath);
 
-    const track: Track = {
+const track: Track = {
       id: Buffer.from(fullPath).toString("base64url"),
       title: trackTitle,
-      artist: trackArtist,
+    artist: trackArtist,
       album: trackAlbum,
+      albumArtist: trackAlbumArtist,
+   albumId,
+      discNumber: meta.discNumber,
+      compilation: meta.compilation,
       year: meta.year,
       trackNumber: meta.trackNumber,
       duration: meta.duration || 0,
       format: ext.replace(".", "").toUpperCase(),
       bitrate: meta.bitrate,
       sampleRate: meta.sampleRate,
+      bitsPerSample: meta.bitsPerSample,
       filePath: fullPath,
       coverPath,
       hasLyrics,
       size: stats.size,
+      replayGainTrack: meta.replayGainTrack,
+      replayGainAlbum: meta.replayGainAlbum,
       replayGain: meta.replayGain
     };
 
@@ -797,7 +1171,15 @@ async function scanLibrary(): Promise<Track[]> {
 
   return tracks.sort((a, b) => {
     if (a.artist !== b.artist) return a.artist.localeCompare(b.artist);
-    if (a.album !== b.album) return a.album.localeCompare(b.album);
+    // Sort on the stable album identity, not the display name. Two tracks from
+  // the same release can carry different album spellings, and sorting on the
+  // spelling would interleave them.
+    if (a.albumId !== b.albumId) return a.albumId.localeCompare(b.albumId);
+  if (a.album !== b.album) return a.album.localeCompare(b.album);
+    // Disc before track, or the two halves of a two-disc set interleave.
+    if ((a.discNumber || 1) !== (b.discNumber || 1)) {
+      return (a.discNumber || 1) - (b.discNumber || 1);
+    }
     return (a.trackNumber || 0) - (b.trackNumber || 0);
   });
 }
@@ -828,6 +1210,7 @@ app.all("/api/rescan", async (req, res) => {
   isScanning = true;
   try {
     cachedTracks = await scanLibrary();
+    broadcastCtl({ type: "library_updated" });
     res.json({ count: cachedTracks.length, tracks: cachedTracks });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -836,19 +1219,114 @@ app.all("/api/rescan", async (req, res) => {
   }
 });
 
-// Remote Control SSE Engine & Playback Bridge
-const ctlClients: Array<(data: string) => void> = [];
+/**
+ * Remote Control SSE Engine & Playback Bridge.
+ *
+ * Each entry owns a socket, so the array is a bounded resource and is treated
+ * as one. `push` refuses the connection rather than growing without limit, and
+ * `broadcastCtl` counts its own failures so a client that has stopped reading
+ * is dropped instead of being written to forever.
+ */
+const MAX_CTL_CLIENTS = 16;
+
+interface CtlClient {
+  send: (data: string) => boolean;
+  id: number;
+}
+
+const ctlClients: CtlClient[] = [];
+let ctlClientSeq = 0;
+
+function removeCtlClient(id: number) {
+  const idx = ctlClients.findIndex(c => c.id === id);
+  if (idx !== -1) ctlClients.splice(idx, 1);
+}
+
 let currentPlaybackState: any = { status: "stopped", currentTrack: null, currentTime: 0, duration: 0, lastUpdated: Date.now() };
+const discordRpc = new DiscordRpc();
+discordRpc.connect();
+
+/**
+ * Discord presence is throttled to whole seconds.
+ *
+ * The client already reports state at second granularity, but the same route is
+ * also hit by `cadence-ctl` and by any LAN caller, and Discord's own guidance is
+ * that SET_ACTIVITY is not a per-frame operation. Each call writes a frame to
+ * the IPC socket, so an unthrottled stream of them competes with actual audio
+ * delivery for the same process.
+ */
+let lastDiscordActivitySecond = -1;
+let lastDiscordActivitySignature = "";
+
+function updateDiscordActivity(state: any) {
+  if (state.status !== "playing" || !state.currentTrack) {
+    discordRpc.clearActivity();
+    lastDiscordActivitySignature = "";
+    lastDiscordActivitySecond = -1;
+    return;
+  }
+  const track = state.currentTrack;
+  const now = Math.floor(Date.now() / 1000);
+  const position = Math.floor(state.currentTime || 0);
+
+  // Only the start/end timestamps actually change second to second. If nothing
+  // visible to the user differs, skip the socket write entirely.
+  const duration = Math.floor(state.duration || track.duration || 0);
+  const start = now - position;
+  const signature = `${track.id || track.title}|${start}|${duration}`;
+  if (signature === lastDiscordActivitySignature) return;
+  const secondBucket = Math.floor(now);
+  if (secondBucket === lastDiscordActivitySecond) return;
+  lastDiscordActivitySecond = secondBucket;
+  lastDiscordActivitySignature = signature;
+
+  discordRpc.setActivity({
+    details: track.title,
+    state: `${track.artist || "Unknown Artist"}${track.album ? ` • ${track.album}` : ""}`,
+    timestamps: { start, ...(duration > 0 ? { end: start + duration } : {}) },
+    assets: {
+      large_image: "cadence_logo",
+      large_text: "Cadence Studio",
+      small_image: "playing",
+      small_text: `${track.format || "Audio"} • 32-bit DSP`,
+    },
+    instance: false,
+  });
+}
+
+process.on("SIGTERM", () => discordRpc.destroy());
 let favoritesUpdatedAt = Date.now();
 let playlistsUpdatedAt = Date.now();
 
+/**
+ * Fan a payload out to every remote-control client.
+ *
+ * `send` reports failure, and a failure means the socket is gone. The previous
+ * version swallowed errors and left the entry in place, so a client that had
+ * errored or stopped reading stayed in the array for the life of the process
+ * and was written to on every subsequent broadcast. Pruning on failure is what
+ * keeps the client list honest.
+ */
 export function broadcastCtl(payload: any) {
   const str = typeof payload === "string" ? payload : JSON.stringify(payload);
+
+  // A broadcast is an amplifier: one request body becomes N socket writes. Cap
+  // the frame so a single large request cannot be multiplied across every idle
+  // client at once.
+  if (str.length > 64 * 1024) {
+    console.warn("[Cadence Server] Refusing oversized control broadcast:", str.length, "bytes");
+    return;
+  }
+
+  const dead: number[] = [];
   for (const client of ctlClients) {
     try {
-      client(str);
-    } catch {}
+      if (!client.send(str)) dead.push(client.id);
+    } catch {
+      dead.push(client.id);
+    }
   }
+  for (const id of dead) removeCtlClient(id);
 }
 
 // Playlists API
@@ -1150,7 +1628,10 @@ app.post("/api/lyrics/save", async (req, res) => {
 
   try {
     const cacheFile = getCacheKey(artist, title);
-    fs.writeFileSync(cacheFile, content, "utf-8");
+    // Owner-only: lyrics can be personal, and this endpoint is reachable by
+    // anything that can talk to the server.
+    fs.writeFileSync(cacheFile, content, { encoding: "utf-8", mode: 0o600 });
+    try { fs.chmodSync(cacheFile, 0o600); } catch {}
     const lines = lrc ? parseLrc(lrc) : plain.split(/\r?\n/).map((text: string, idx: number) => ({ time: idx * 4, text }));
     res.json({ status: "ok", cached: true, synced: !!lrc, lines });
   } catch (err: any) {
@@ -1159,7 +1640,6 @@ app.post("/api/lyrics/save", async (req, res) => {
 });
 
 app.options("/stream", (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Range, Accept-Ranges, Content-Type");
   res.sendStatus(200);
@@ -1188,7 +1668,6 @@ app.get("/stream", (req, res) => {
 
   const contentType = mimeTypes[ext] || "audio/mpeg";
 
-  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Range, Accept-Ranges, Content-Type");
   res.setHeader("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges");
   res.setHeader("Accept-Ranges", "bytes");
@@ -1231,6 +1710,7 @@ app.get("/stream", (req, res) => {
 
 app.get("/covers", async (req, res) => {
   const coverPath = req.query.path as string;
+  const albumId = req.query.albumId as string;
   const artist = req.query.artist as string;
   const album = req.query.album as string;
   const title = req.query.title as string;
@@ -1246,18 +1726,16 @@ app.get("/covers", async (req, res) => {
   if (coverPath && isCoverPathAllowed(coverPath) && fs.existsSync(coverPath)) {
     const ext = path.extname(coverPath).toLowerCase();
     res.setHeader("Content-Type", mimeTypes[ext] || "image/jpeg");
-    res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "public, max-age=86400");
     return fs.createReadStream(coverPath).pipe(res);
   }
 
   // 2. Cached or online auto-fetched cover
   if (artist || album || title) {
-    const cachedOrOnline = await fetchOnlineAlbumCover(artist, album, title);
+    const cachedOrOnline = await fetchOnlineAlbumCover(albumId, artist, album, title);
     if (cachedOrOnline && fs.existsSync(cachedOrOnline)) {
       const ext = path.extname(cachedOrOnline).toLowerCase();
       res.setHeader("Content-Type", mimeTypes[ext] || "image/jpeg");
-      res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Cache-Control", "public, max-age=86400");
       return fs.createReadStream(cachedOrOnline).pipe(res);
     }
@@ -1315,38 +1793,67 @@ app.get("/covers", async (req, res) => {
   </svg>`;
 
   res.setHeader("Content-Type", "image/svg+xml");
-  res.setHeader("Access-Control-Allow-Origin", "*");
   res.send(svg);
 });
 
 app.get("/api/ctl/events", (req, res) => {
+  if (ctlClients.length >= MAX_CTL_CLIENTS) {
+    // Refusing here is the whole point: every connection below this line pins a
+    // file descriptor and a timer, and there was previously nothing stopping an
+    // unauthenticated peer from opening as many as it liked.
+    res.setHeader("Retry-After", "5");
+    return res.status(503).json({ error: `Too many remote-control clients (max ${MAX_CTL_CLIENTS})` });
+  }
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
-  res.setHeader("Access-Control-Allow-Origin", "*");
   res.flushHeaders();
 
-  const send = (data: string) => {
-    res.write(`data: ${data}\n\n`);
+  const id = ++ctlClientSeq;
+
+  // Return false when the socket can no longer accept data. `res.write` does not
+  // throw on a dead peer, it just returns false and buffers, which is how a
+  // client that stopped reading used to accumulate memory indefinitely.
+  const write = (chunk: string): boolean => {
+    try {
+      return res.write(chunk) !== false;
+    } catch {
+      return false;
+    }
   };
 
-  ctlClients.push(send);
+  // Only `data:` frames are delivered to the client's `onmessage`. The
+  // keep-alive is an SSE comment and must stay outside `send`, or the renderer
+  // would receive ": keep-alive" as a playback command.
+  const send = (data: string): boolean => write(`data: ${data}\n\n`);
+
+  ctlClients.push({ send, id });
   send(JSON.stringify({ type: "init", state: currentPlaybackState }));
 
   const keepAlive = setInterval(() => {
-    res.write(": keep-alive\n\n");
+    if (!write(": keep-alive\n\n")) {
+      clearInterval(keepAlive);
+      removeCtlClient(id);
+    }
   }, 15000);
 
-  req.on("close", () => {
+  const cleanup = () => {
     clearInterval(keepAlive);
-    const idx = ctlClients.indexOf(send);
-    if (idx !== -1) ctlClients.splice(idx, 1);
-  });
+    removeCtlClient(id);
+  };
+
+  req.on("close", cleanup);
+  req.on("error", cleanup);
+  res.on("error", cleanup);
 });
 
 app.post("/api/ctl/playback", (req, res) => {
   const body = req.body || {};
-  let track = body.track;
+
+  // A track supplied inline is only honoured if it matches a real library
+  // entry, so a forged `filePath` cannot make the player read an arbitrary path.
+  let track = resolveTrackFromRequest(body.track);
 
   if (!track && body.trackId) {
     track = cachedTracks.find(t => t.id === body.trackId);
@@ -1426,16 +1933,16 @@ app.post("/api/ctl/playback", (req, res) => {
       status: "paused",
       lastUpdated: Date.now()
     };
-  } else if (body.action === "seek" && typeof body.time === "number") {
+  } else if (body.action === "seek" && typeof body.time === "number" && Number.isFinite(body.time)) {
     currentPlaybackState = {
       ...currentPlaybackState,
-      currentTime: body.time,
+      currentTime: Math.max(0, body.time),
       lastUpdated: Date.now()
     };
   } else if (body.action === "volume" && typeof body.volume === "number") {
     currentPlaybackState = {
       ...currentPlaybackState,
-      volume: Math.max(0, Math.min(1, body.volume)),
+      volume: Number.isFinite(body.volume) ? Math.max(0, Math.min(1, body.volume)) : 0,
       lastUpdated: Date.now()
     };
   } else if (body.action === "shuffle" && typeof body.shuffle === "boolean") {
@@ -1444,7 +1951,7 @@ app.post("/api/ctl/playback", (req, res) => {
       shuffle: body.shuffle,
       lastUpdated: Date.now()
     };
-  } else if (body.action === "repeat" && typeof body.repeat === "string") {
+  } else if (body.action === "repeat" && typeof body.repeat === "string" && ["off", "all", "one"].includes(body.repeat)) {
     currentPlaybackState = {
       ...currentPlaybackState,
       repeat: body.repeat,
@@ -1453,25 +1960,74 @@ app.post("/api/ctl/playback", (req, res) => {
   }
 
   const payload = { type: "playback-command", ...body, track, trackId: track ? track.id : body.trackId, timestamp: Date.now() };
-  const payloadStr = JSON.stringify(payload);
+  broadcastCtl(payload);
 
-  for (const client of ctlClients) {
-    try {
-      client(payloadStr);
-    } catch {}
-  }
-
-  res.json({ success: true, clientsNotified: ctlClients.length, track, command: body });
+  // The echo used to return the entire request body, which made a 10 MB POST
+  // into a 10 MB response for no benefit. The caller already knows what it sent.
+  res.json({ success: true, clientsNotified: ctlClients.length, track });
 });
 
-app.post("/api/ctl/state", (req, res) => {
-  currentPlaybackState = { ...req.body, lastUpdated: Date.now() };
-  const payloadStr = JSON.stringify({ type: "state-update", state: currentPlaybackState });
-  for (const client of ctlClients) {
-    try {
-      client(payloadStr);
-    } catch {}
+/**
+ * Coerce a caller-supplied track reference into a real library entry.
+ *
+ * The bridge used to accept `body.track` verbatim and hand it to the renderer,
+ * which streams `track.filePath` straight from disk. Any peer could therefore
+ * name an arbitrary path and make the desktop app load it. Resolving against the
+ * scanned library means a forged object cannot introduce a path that the library
+ * scan never produced.
+ */
+function resolveTrackFromRequest(candidate: any) {
+  if (!candidate || typeof candidate !== "object") return undefined;
+  const id = typeof candidate.id === "string" ? candidate.id : undefined;
+  if (id) {
+    const byId = cachedTracks.find(t => t.id === id);
+    if (byId) return byId;
   }
+  const filePath = typeof candidate.filePath === "string" ? candidate.filePath : undefined;
+  if (filePath) {
+    const byPath = cachedTracks.find(t => t.filePath === filePath);
+    if (byPath) return byPath;
+  }
+  return undefined;
+}
+
+/**
+ * Build a playback state from a caller-supplied object, keeping only fields we
+ * recognise and only with the types each consumer expects.
+ */
+function sanitizePlaybackState(input: any) {
+  const src = input && typeof input === "object" ? input : {};
+  const state: any = { ...currentPlaybackState, lastUpdated: Date.now() };
+
+  if (typeof src.status === "string" && ["playing", "paused", "stopped"].includes(src.status)) {
+    state.status = src.status;
+  }
+  if (typeof src.currentTime === "number" && Number.isFinite(src.currentTime)) {
+    state.currentTime = Math.max(0, src.currentTime);
+  }
+  if (typeof src.duration === "number" && Number.isFinite(src.duration)) {
+    state.duration = Math.max(0, src.duration);
+  }
+  if (typeof src.volume === "number" && Number.isFinite(src.volume)) {
+    state.volume = Math.min(1, Math.max(0, src.volume));
+  }
+  if (typeof src.shuffle === "boolean") state.shuffle = src.shuffle;
+  if (typeof src.repeat === "string" && ["off", "all", "one"].includes(src.repeat)) {
+    state.repeat = src.repeat;
+  }
+  if (src.currentTrack !== undefined) {
+    state.currentTrack = resolveTrackFromRequest(src.currentTrack) ?? null;
+  }
+  return state;
+}
+
+app.post("/api/ctl/state", (req, res) => {
+  // Previously the whole body was spread in, so any caller could set the
+  // server's canonical state to an arbitrary object and have it surface in the
+  // CLI status line and the user's Discord presence.
+  currentPlaybackState = sanitizePlaybackState(req.body);
+  updateDiscordActivity(currentPlaybackState);
+  broadcastCtl({ type: "state-update", state: currentPlaybackState });
   res.json({ success: true });
 });
 
@@ -1545,9 +2101,60 @@ if (fs.existsSync(DIST_DIR)) {
   });
 }
 
+/**
+ * Network exposure.
+ *
+ * The default is loopback only. This is the single most consequential default in
+ * the file: the server has no per-user authentication of its own, so binding a
+ * wide interface means every host on the network inherits the full library,
+ * the settings, and remote playback control. Reaching a loopback port already
+ * requires local code execution, so nothing is given up.
+ *
+ * `CADENCE_LAN=1` is the explicit opt-in. It enables the token gate installed
+ * earlier in the middleware chain, so opting in is never a naked exposure.
+ */
 const discoveryServer = new DiscoveryServer(PORT);
-discoveryServer.start();
+if (isLanExposed()) {
+  getServerToken();
+  discoveryServer.start();
+  console.log("[Cadence Server] Discovery beacon: enabled (LAN mode)");
+} else {
+  console.log("[Cadence Server] Discovery beacon: disabled (loopback-only)");
+}
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`[Cadence Audio Server] Running on http://0.0.0.0:${PORT}`);
-});
+// Cap concurrent sockets. A streaming server legitimately holds a handful, and
+// an unbounded number is a cheap denial-of-service primitive.
+//
+// One listener per loopback family, because Chromium resolves `localhost` to
+// `::1` on this host and does not retry IPv4. If the IPv6 bind fails because
+// IPv6 is unavailable, that is logged and the IPv4 listener carries the app.
+const bindHosts = getBindHosts();
+const listeners: import("http").Server[] = [];
+
+for (const host of bindHosts) {
+  try {
+    const server = app.listen(PORT, host);
+    server.maxConnections = 128;
+    server.headersTimeout = 20000;
+    server.requestTimeout = 30000;
+    server.on("error", (err) => {
+      console.error(`[Cadence Audio Server] Listen failed on ${host}:${PORT}:`, err.message);
+    });
+    listeners.push(server);
+  } catch (err: any) {
+    console.error(`[Cadence Audio Server] Could not bind ${host}:${PORT}:`, err.message);
+  }
+}
+
+if (listeners.length === 0) {
+  console.error(`[Cadence Audio Server] FATAL: no listener could bind port ${PORT}`);
+  process.exit(1);
+}
+
+if (isLanExposed()) {
+  console.log(`[Cadence Audio Server] Running on http://0.0.0.0:${PORT} (LAN mode, token required)`);
+  console.log("[Cadence Audio Server] Access token: ~/.config/cadence/lan-token");
+} else {
+  console.log(`[Cadence Audio Server] Running on http://localhost:${PORT} (loopback only, ${listeners.length} listener(s))`);
+  console.log("[Cadence Audio Server] Set CADENCE_LAN=1 to expose on the network");
+}

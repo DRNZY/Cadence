@@ -1,6 +1,13 @@
+export interface LyricWord {
+  start: number;
+  end?: number;
+  text: string;
+}
+
 export interface LyricLine {
   time: number;
   text: string;
+  words?: LyricWord[];
 }
 
 export interface LyricsState {
@@ -8,6 +15,7 @@ export interface LyricsState {
   source: "local" | "online" | "cache" | "none";
   provider?: string;
   isInstrumental?: boolean;
+  hasWordSync?: boolean;
   lines: LyricLine[];
 }
 
@@ -26,7 +34,32 @@ export interface Track {
   coverPath?: string;
   hasLyrics: boolean;
   size: number;
-  replayGain?: number; // In dB (e.g. -6.5 or +2.1)
+  /** REPLAYGAIN_TRACK_GAIN in dB, when the tag exists. */
+  replayGainTrack?: number;
+  /** REPLAYGAIN_ALBUM_GAIN in dB, when the tag exists. */
+  replayGainAlbum?: number;
+  /** Legacy alias, track-then-album. Prefer the two fields above. */
+  replayGain?: number;
+  bitsPerSample?: number;
+  /**
+   * ALBUMARTIST, separate from the track artist. Present on most well-tagged
+   * files and the field that identifies a release when tracks carry individual
+   * credits.
+   */
+  albumArtist?: string;
+  /** Disc number, when the file carries one. Multi-disc sets order by this. */
+  discNumber?: number;
+  /** True when the file is flagged as part of a compilation. */
+  compilation?: boolean;
+  /**
+   * Stable identity of the release, computed once by the server. MusicBrainz ID
+   * when tagged, otherwise a normalised album-artist + album + disc key.
+   *
+   * Optional only so cached libraries written by an older server still
+   * deserialise; `albumGroupKey` in LibraryBrowser falls back to the name pair
+   * when it is absent.
+   */
+  albumId?: string;
 }
 
 export interface Playlist {
@@ -40,18 +73,29 @@ export interface Playlist {
 }
 
 export interface DspSettings {
-  gaplessEnabled: boolean;
-  crossfadeSeconds: number; // 0 = pure gapless, 1-10s = smooth crossfade
+  /**
+   * Seconds of equal-power crossfade between tracks. 0 disables the crossfade
+   * rather than enabling sample-accurate gapless: the decoder is an
+   * HTMLMediaElement, so a source change restarts it and cannot be scheduled
+   * to the sample. Do not label 0 as "gapless" in the UI.
+   */
+  crossfadeSeconds: number;
   replayGainEnabled: boolean;
   replayGainMode: "track" | "album";
   preampGain: number; // -6dB to +6dB
-  spatial3D?: boolean;
-  bassBoost?: boolean;
-  compressor?: boolean;
-  limiter?: boolean;
-  tubeWarmth?: boolean;
-  mono?: boolean;
-  stereoWidth?: number;
+  /**
+   * Attenuates the whole EQ by the largest positive band boost so a boosted
+   * curve cannot push the sum past 0 dBFS. This is what separates a
+   * parametric EQ from a toy one: without it, +6 dB on three bands means the
+   * limiter, and a limiter means the EQ is lying about what it did.
+   */
+  eqHeadroomCompensation: boolean;
+  /** Engages the convolution room. Only meaningful once an IR is loaded. */
+  convolutionEnabled: boolean;
+  /** Name of the loaded impulse response, for display. */
+  convolutionName?: string;
+  /** Ceiling for the output safety limiter, in dBFS. */
+  ceilingDb: number;
 }
 
 export type DeckMode = "cover" | "vinyl" | "cd" | "minimal";

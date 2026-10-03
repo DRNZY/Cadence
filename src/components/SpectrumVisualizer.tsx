@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import { VisualizerMode } from "../types";
-import { Activity, Radio, Waves, Zap } from "lucide-react";
+import { Activity, Radio, Waves, Zap } from "./icons";
 
 interface SpectrumVisualizerProps {
   isPlaying: boolean;
@@ -68,8 +68,9 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
     const height = displayHeight;
     const peaks: number[] = new Array(128).fill(0);
     let lastRenderTime = performance.now();
+    let fallbackData: Uint8Array | null = null;
 
-    // Helper to get active theme accent color
+    // Active theme accent color, resolved once per effect run (not per frame)
     const getActiveColor = () => {
       if (accentColor && accentColor.startsWith("#")) return accentColor;
       try {
@@ -79,10 +80,25 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
       return "#38bdf8";
     };
 
+    const activeColor = getActiveColor();
     const isLight = document.documentElement.classList.contains("light");
     const restingFill = isLight ? "rgba(0, 0, 0, 0.12)" : "rgba(255, 255, 255, 0.08)";
     const restingStroke = isLight ? "rgba(0, 0, 0, 0.18)" : "rgba(255, 255, 255, 0.12)";
     const peakCapColor = isLight ? "rgba(0, 0, 0, 0.75)" : "rgba(255, 255, 255, 0.9)";
+
+    // Reusable fill gradient, rebuilt only when accent color or size changes
+    let cachedGrad: { key: string; grad: CanvasGradient } | null = null;
+    const getBarGradient = () => {
+      const key = `${activeColor}|${height}`;
+      if (!cachedGrad || cachedGrad.key !== key) {
+        const grad = ctx.createLinearGradient(0, height, 0, 0);
+        grad.addColorStop(0, "rgba(255, 255, 255, 0.05)");
+        grad.addColorStop(0.5, activeColor.includes("rgb") ? activeColor.replace("rgb", "rgba").replace(")", ", 0.75)") : `${activeColor}aa`);
+        grad.addColorStop(1, activeColor);
+        cachedGrad = { key, grad };
+      }
+      return cachedGrad.grad;
+    };
 
     const drawRestingState = () => {
       ctx.clearRect(0, 0, width, height);
@@ -116,14 +132,7 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
       }
     };
 
-    if (!isPlaying) {
-      drawRestingState();
-      return;
-    }
-
     const render = (now: number) => {
-      if (document.hidden) return;
-
       // Throttle to 60 FPS max
       if (now - lastRenderTime < 16) {
         animId = requestAnimationFrame(render);
@@ -132,19 +141,13 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
       lastRenderTime = now;
 
       ctx.clearRect(0, 0, width, height);
-      const activeColor = getActiveColor();
-
-      // Dynamic Gradient derived from active theme accent
-      const barGrad = ctx.createLinearGradient(0, height, 0, 0);
-      barGrad.addColorStop(0, "rgba(255, 255, 255, 0.05)");
-      barGrad.addColorStop(0.5, activeColor.includes("rgb") ? activeColor.replace("rgb", "rgba").replace(")", ", 0.75)") : `${activeColor}aa`);
-      barGrad.addColorStop(1, activeColor);
 
       if (visualizerMode === "bars") {
-        const freqData = getFrequencyData() || new Uint8Array(128);
+        const freqData = getFrequencyData() || (fallbackData ??= new Uint8Array(128));
         const numBars = Math.min(64, Math.max(28, Math.floor(width / 11)));
         const barWidth = (width / numBars) * 0.68;
         const gap = (width / numBars) * 0.32;
+        const barGrad = getBarGradient();
 
         for (let i = 0; i < numBars; i++) {
           const freqIndex = Math.floor((i / numBars) * (freqData.length * 0.85));
@@ -171,11 +174,9 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
           ctx.fillRect(x, peakY, barWidth, 1.5);
         }
       } else if (visualizerMode === "wave") {
-        const timeData = getTimeDomainData() || new Uint8Array(128);
+        const timeData = getTimeDomainData() || (fallbackData ??= new Uint8Array(128));
         ctx.lineWidth = 2.5;
         ctx.strokeStyle = activeColor;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = 8;
 
         ctx.beginPath();
         const sliceWidth = width / Math.max(1, timeData.length);
@@ -190,13 +191,10 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
           x += sliceWidth;
         }
         ctx.stroke();
-        ctx.shadowBlur = 0;
       } else if (visualizerMode === "oscilloscope") {
-        const timeData = getTimeDomainData() || new Uint8Array(128);
+        const timeData = getTimeDomainData() || (fallbackData ??= new Uint8Array(128));
         ctx.lineWidth = 1.8;
         ctx.strokeStyle = activeColor;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = 6;
 
         ctx.beginPath();
         const step = Math.max(1, Math.floor(timeData.length / width));
@@ -207,9 +205,8 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
           else ctx.lineTo(i, y);
         }
         ctx.stroke();
-        ctx.shadowBlur = 0;
       } else if (visualizerMode === "radial") {
-        const freqData = getFrequencyData() || new Uint8Array(128);
+        const freqData = getFrequencyData() || (fallbackData ??= new Uint8Array(128));
         const centerX = width / 2;
         const centerY = height / 2;
         const radius = Math.min(width, height) * 0.28;
@@ -238,19 +235,37 @@ export const SpectrumVisualizer: React.FC<SpectrumVisualizerProps> = React.memo(
       animId = requestAnimationFrame(render);
     };
 
-    animId = requestAnimationFrame(render);
-
+    // Suspend the loop entirely when the tab is hidden instead of spinning
+    let running = false;
+    const start = () => {
+      if (running) return;
+      running = true;
+      lastRenderTime = performance.now();
+      animId = requestAnimationFrame(render);
+    };
+    const stop = () => {
+      running = false;
+      cancelAnimationFrame(animId);
+    };
     const handleVisibilityChange = () => {
-      if (!document.hidden && isPlaying) {
+      if (document.hidden) {
+        stop();
+      } else if (isPlaying && !running) {
         lastRenderTime = performance.now();
-        cancelAnimationFrame(animId);
-        animId = requestAnimationFrame(render);
+        start();
       }
     };
+
+    if (!isPlaying) {
+      drawRestingState();
+    } else {
+      start();
+    }
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      cancelAnimationFrame(animId);
+      stop();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [isPlaying, visualizerMode, getFrequencyData, getTimeDomainData, accentColor, size]);
