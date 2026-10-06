@@ -59,10 +59,9 @@ app.use((_req, res, next) => {
   res.setHeader("Content-Security-Policy", CSP);
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  // This app makes no cross-origin subresource requests, and nothing embeds it.
+  // Allow cross-origin media subresources so HTML5 Audio and Canvas can process streams
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   next();
 });
 
@@ -1693,6 +1692,7 @@ app.get("/stream", (req, res) => {
       "Content-Length": chunksize,
       "Content-Type": contentType,
       "Access-Control-Allow-Origin": "*",
+      "Cross-Origin-Resource-Policy": "cross-origin",
     });
     file.pipe(res);
   } else {
@@ -1701,6 +1701,7 @@ app.get("/stream", (req, res) => {
       "Content-Type": contentType,
       "Accept-Ranges": "bytes",
       "Access-Control-Allow-Origin": "*",
+      "Cross-Origin-Resource-Policy": "cross-origin",
     });
     const file = fs.createReadStream(filePath);
     req.on("close", () => file.destroy());

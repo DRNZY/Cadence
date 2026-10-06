@@ -279,14 +279,11 @@ const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!audioCtxRef.current) {
-        // latencyHint "playback" asks the platform for the largest output buffer
-        // it is willing to give, trading latency for stability. The default,
-        // "interactive", asks for the smallest, which is correct for a game and
-        // wrong for a player: it leaves so little headroom that any GC pause or
-        // compositor hiccup starves the graph and you hear a dropout. This single
-        // option is the difference between a player that glitches under load and
-        // one that does not.
-        audioCtxRef.current = new AudioCtx({ latencyHint: "playback" });
+        try {
+          audioCtxRef.current = new AudioCtx({ latencyHint: "playback" });
+        } catch {
+          audioCtxRef.current = new AudioCtx();
+        }
       }
       const ctx = audioCtxRef.current;
 
@@ -705,22 +702,20 @@ prevNode.connect(eqBypass);
         }
         await audio.play();
         setIsPlaying(true);
+        setIsLoading(false);
         if (master && audioCtxRef.current) {
           const t = audioCtxRef.current.currentTime;
           master.gain.cancelScheduledValues(t);
           master.gain.setValueAtTime(0, t);
           master.gain.linearRampToValueAtTime(targetLevel, t + 0.025);
         }
-} catch (err: any) {
+      } catch (err: any) {
         console.error("[Cadence AudioEngine] Playback error:", err.message || err);
-    setIsPlaying(false);
-        // The gain was parked at zero above and the fade-in never ran, so
-      // leaving it there mutes the session until a *different* track happens
-  // to load. Restoring it here means a failed play is recoverable by simply
-        // pressing play again.
+        setIsPlaying(false);
+        setIsLoading(false);
         if (master && audioCtxRef.current) {
-  rampGain(audioCtxRef.current, master, targetLevel, 0.05);
-    }
+          rampGain(audioCtxRef.current, master, targetLevel, 0.05);
+        }
       }
     }
 
