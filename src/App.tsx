@@ -7,13 +7,6 @@ import { useAudioEngine } from "./hooks/useAudioEngine";
 import { useLastFmScrobbler } from "./hooks/useLastFmScrobbler";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { extractColors, applyThemeColors, THEME_PRESETS, buildCustomGradient } from "./utils/colorExtractor";
-import { lazy, Suspense } from "react";
-/** In-panel placeholder. Small, local, and it does not take the window down. */
-const PanelLoading = () => (
-  <div className="flex-1 min-h-0 flex items-center justify-center">
-    <div className="w-6 h-6 rounded-full border-2 border-primary/40 border-t-transparent animate-spin" />
-  </div>
-);
 
 /**
  * Panel scope.
@@ -27,12 +20,12 @@ const Panel = ({ label, children }: { label: string; children: React.ReactNode }
   <ErrorBoundary label={label}>{children}</ErrorBoundary>
 );
 
-const LibraryBrowser = lazy(() => import("./components/LibraryBrowser").then(m => ({ default: m.LibraryBrowser })));
-const VinylDeck = lazy(() => import("./components/VinylDeck").then(m => ({ default: m.VinylDeck })));
-const LyricsDeck = lazy(() => import("./components/LyricsDeck").then(m => ({ default: m.LyricsDeck })));
-const WidgetContainer = lazy(() => import("./components/WidgetContainer").then(m => ({ default: m.WidgetContainer })));
-const EqualizerModal = lazy(() => import("./components/EqualizerModal").then(m => ({ default: m.EqualizerModal })));
-const SettingsModal = lazy(() => import("./components/SettingsModal").then(m => ({ default: m.SettingsModal })));
+import { LibraryBrowser } from "./components/LibraryBrowser";
+import { VinylDeck } from "./components/VinylDeck";
+import { LyricsDeck } from "./components/LyricsDeck";
+import { WidgetContainer } from "./components/WidgetContainer";
+import { EqualizerModal } from "./components/EqualizerModal";
+import { SettingsModal } from "./components/SettingsModal";
 import { ControlBar } from "./components/ControlBar";
 import { SleepTimerModal } from "./components/SleepTimerModal";
 import { loadSettings } from "./utils/settings";
@@ -949,10 +942,6 @@ const unbindPlay = (window as any).electronAPI?.onPlayCommand?.((payload: any) =
   );
 
   return (
-    <>
-      {/* Per-panel fallbacks rather than one app-wide boundary. A chunk that was not warm
-          used to blank the entire interface, transport included. */}
-      <Suspense fallback={<PanelLoading />}>
     <div
       id="app-root"
       className={`flex h-screen w-screen relative overflow-hidden select-none transition-colors duration-500 ${
@@ -1439,8 +1428,6 @@ const unbindPlay = (window as any).electronAPI?.onPlayCommand?.((payload: any) =
         onCancelTimer={handleCancelSleepTimer}
       />
     </div>
-      </Suspense>
-    </>
   );
 };
 

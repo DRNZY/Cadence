@@ -31,7 +31,6 @@ STAGE=""
 
 cat > "$INSTALL_BIN/cadence" <<'EOF'
 #!/usr/bin/env bash
-export WEBKIT_DISABLE_DMABUF_RENDERER=1
 exec "$HOME/.local/lib/cadence/native/cadence-bin" "$@"
 EOF
 chmod +x "$INSTALL_BIN/cadence"

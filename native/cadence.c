@@ -188,6 +188,7 @@ static void activate(GApplication *app, gpointer data) {
   webkit_settings_set_media_playback_requires_user_gesture(settings, FALSE);
   webkit_settings_set_enable_webaudio(settings, TRUE);
   webkit_settings_set_enable_developer_extras(settings, TRUE);
+  webkit_settings_set_enable_write_console_messages_to_stdout(settings, TRUE);
   webkit_settings_set_hardware_acceleration_policy(settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND);
   g_signal_connect(view, "decide-policy", G_CALLBACK(decide_policy), state);
   g_signal_connect(view, "permission-request", G_CALLBACK(deny_permission), NULL);
@@ -269,7 +270,6 @@ static gboolean quit_on_signal(gpointer data) {
 }
 
 int main(int argc, char **argv) {
-  g_setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", FALSE);
   Cadence state = {0};
   char *binary = g_file_read_link("/proc/self/exe", NULL);
   char *native_dir = g_path_get_dirname(binary ? binary : argv[0]);

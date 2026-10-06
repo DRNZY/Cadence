@@ -74,13 +74,19 @@ export function useAudioEngine(options?: AudioEngineOptions | (() => void)) {
     optsRef.current = options;
   }
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const inputBusRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const filtersRef = useRef<BiquadFilterNode[]>([]);
   const gainNodeRef = useRef<GainNode | null>(null);
   const replayGainNodeRef = useRef<GainNode | null>(null);
-  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const currentBufferRef = useRef<AudioBuffer | null>(null);
+  const bufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
+  const playbackStartTimeRef = useRef<number>(0);
+  const playbackStartOffsetRef = useRef<number>(0);
+  const pausedAtRef = useRef<number>(0);
+  const isManualStopRef = useRef<boolean>(false);
   const isNodesConnectedRef = useRef<boolean>(false);
   const wasPlayingBeforeScratchRef = useRef<boolean>(false);
   const scratchAnimFrameRef = useRef<number | null>(null);
@@ -274,7 +280,7 @@ const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
 
   // Initialize Web Audio Context & Graph
   const initAudioNodes = useCallback(() => {
-    if (isNodesConnectedRef.current || !audioRef.current) return;
+    if (isNodesConnectedRef.current) return;
 
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -410,16 +416,11 @@ const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
       dcBlock.Q.value = Math.SQRT1_2;
       dcBlockRef.current = dcBlock;
 
-      if (!sourceNodeRef.current && audioRef.current) {
-        const source = ctx.createMediaElementSource(audioRef.current);
-        sourceNodeRef.current = source;
+      if (!inputBusRef.current) {
+        const inputBus = ctx.createGain();
+        inputBusRef.current = inputBus;
 
-// Chain:
-        //   source -> dcBlock -> replayGain/preamp -> eqHeadroom -> [10 EQ]
-     //     -> eqBypass -> colour dry/wet -> colourMixBus -> convolver dry/wet
-    //         -> ceiling -> master gain -> destination
-     //   with the analyser tapped off the ceiling, not in series with it.
-   let prevNode: AudioNode = source;
+        let prevNode: AudioNode = inputBus;
         prevNode.connect(dcBlock);
         prevNode = dcBlock;
 
@@ -492,82 +493,46 @@ prevNode.connect(eqBypass);
     ceilingCurve
   ]);
 
-  // Handle HTML5 Audio element setup
+  // Track playback position tracking animation loop
   useEffect(() => {
-    const audio = new Audio();
-    audio.crossOrigin = "anonymous";
-    audio.preload = "auto";
-    audio.volume = 1.0;
-    audio.preservesPitch = keyLock;
-    audioRef.current = audio;
+    if (!isPlaying) return;
+    let animId: number;
+    let lastMediaSync = 0;
 
-    const handleTimeUpdate = () => {
-      if (loopRef.current.active && loopRef.current.end > loopRef.current.start) {
-        if (audio.currentTime >= loopRef.current.end) {
-          audio.currentTime = loopRef.current.start;
-          setCurrentTime(loopRef.current.start);
-          return;
+    const tick = () => {
+      if (audioCtxRef.current && isPlaying) {
+        const ctx = audioCtxRef.current;
+        let pos = playbackStartOffsetRef.current + (ctx.currentTime - playbackStartTimeRef.current) * playbackRate;
+
+        if (loopRef.current.active && loopRef.current.end > loopRef.current.start) {
+          const loopLen = loopRef.current.end - loopRef.current.start;
+          if (pos >= loopRef.current.end) {
+            pos = loopRef.current.start + ((pos - loopRef.current.start) % loopLen);
+          }
+        }
+
+        const totalDur = duration || currentBufferRef.current?.duration || 0;
+        const clamped = Math.max(0, Math.min(totalDur, pos));
+        setCurrentTime(clamped);
+
+        const now = performance.now();
+        if ("mediaSession" in navigator && totalDur > 0 && now - lastMediaSync > 500) {
+          lastMediaSync = now;
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: totalDur,
+              playbackRate: playbackRate || 1.0,
+              position: Math.min(clamped, totalDur)
+            });
+          } catch {}
         }
       }
-      setCurrentTime(audio.currentTime);
-
-      // MediaSession position sync
-      if ("mediaSession" in navigator && audio.duration && !isNaN(audio.duration)) {
-        try {
-          navigator.mediaSession.setPositionState({
-            duration: audio.duration,
-            playbackRate: audio.playbackRate || 1.0,
-            position: Math.min(audio.currentTime, audio.duration)
-          });
-        } catch {}
-      }
+      animId = requestAnimationFrame(tick);
     };
 
-    const handleLoadedMetadata = () => {
-      setDuration(audio.duration || 0);
-      setIsLoading(false);
-    };
-
-    const handlePlay = () => {
-      setIsPlaying(true);
-      if ("mediaSession" in navigator) {
-        navigator.mediaSession.playbackState = "playing";
-      }
-    };
-
-    const handlePause = () => {
-      setIsPlaying(false);
-      if ("mediaSession" in navigator) {
-        navigator.mediaSession.playbackState = "paused";
-      }
-    };
-
-    const handleWaiting = () => setIsLoading(true);
-    const handlePlaying = () => setIsLoading(false);
-    const handleEnded = () => {
-      setIsPlaying(false);
-      if (optsRef.current.onTrackEnd) optsRef.current.onTrackEnd();
-    };
-
-    audio.addEventListener("timeupdate", handleTimeUpdate);
-    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
-    audio.addEventListener("play", handlePlay);
-    audio.addEventListener("pause", handlePause);
-    audio.addEventListener("waiting", handleWaiting);
-    audio.addEventListener("playing", handlePlaying);
-    audio.addEventListener("ended", handleEnded);
-
-    return () => {
-      audio.pause();
-      audio.removeEventListener("timeupdate", handleTimeUpdate);
-      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
-      audio.removeEventListener("play", handlePlay);
-      audio.removeEventListener("pause", handlePause);
-      audio.removeEventListener("waiting", handleWaiting);
-      audio.removeEventListener("playing", handlePlaying);
-      audio.removeEventListener("ended", handleEnded);
-    };
-  }, []);
+    animId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animId);
+  }, [isPlaying, playbackRate, duration]);
 
   // Update ReplayGain on track or DSP settings change
   useEffect(() => {
@@ -627,28 +592,108 @@ prevNode.connect(eqBypass);
     };
   }, []);
 
+  const fetchAndDecode = useCallback(async (track: Track): Promise<AudioBuffer | null> => {
+    initAudioNodes();
+    const ctx = audioCtxRef.current;
+    if (!ctx) return null;
+
+    const cached = bufferCacheRef.current.get(track.filePath);
+    if (cached) return cached;
+
+    try {
+      const url = `/stream?path=${encodeURIComponent(track.filePath)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const arrayBuffer = await res.arrayBuffer();
+      const decoded = await ctx.decodeAudioData(arrayBuffer);
+
+      if (bufferCacheRef.current.size >= 8) {
+        const firstKey = bufferCacheRef.current.keys().next().value;
+        if (firstKey) bufferCacheRef.current.delete(firstKey);
+      }
+      bufferCacheRef.current.set(track.filePath, decoded);
+      return decoded;
+    } catch (err) {
+      console.error("[Cadence AudioEngine] Failed to load/decode track:", err);
+      return null;
+    }
+  }, [initAudioNodes]);
+
+  const startBufferPlayback = useCallback((buffer: AudioBuffer, offset: number = 0, fadeMs: number = 25) => {
+    initAudioNodes();
+    const ctx = audioCtxRef.current;
+    const inputBus = inputBusRef.current;
+    const master = gainNodeRef.current;
+    if (!ctx || !inputBus || !master) return;
+
+    if (ctx.state === "suspended") {
+      void ctx.resume().catch(() => {});
+    }
+
+    if (sourceNodeRef.current) {
+      isManualStopRef.current = true;
+      try {
+        sourceNodeRef.current.onended = null;
+        sourceNodeRef.current.stop();
+        sourceNodeRef.current.disconnect();
+      } catch {}
+      sourceNodeRef.current = null;
+    }
+
+    isManualStopRef.current = false;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = playbackRate;
+
+    if (loopRef.current.active && loopRef.current.end > loopRef.current.start) {
+      source.loop = true;
+      source.loopStart = loopRef.current.start;
+      source.loopEnd = loopRef.current.end;
+    }
+
+    source.connect(inputBus);
+
+    source.onended = () => {
+      if (!isManualStopRef.current) {
+        setIsPlaying(false);
+        if (optsRef.current.onTrackEnd) {
+          optsRef.current.onTrackEnd();
+        }
+      }
+    };
+
+    const safeOffset = Math.max(0, Math.min(buffer.duration, offset));
+    source.start(0, safeOffset);
+    sourceNodeRef.current = source;
+    playbackStartTimeRef.current = ctx.currentTime;
+    playbackStartOffsetRef.current = safeOffset;
+    pausedAtRef.current = safeOffset;
+    setCurrentTime(safeOffset);
+    setIsPlaying(true);
+    setIsLoading(false);
+
+    const targetLevel = isMuted ? 0 : volume;
+    if (fadeMs > 0) {
+      const now = ctx.currentTime;
+      master.gain.cancelScheduledValues(now);
+      master.gain.setValueAtTime(0, now);
+      master.gain.linearRampToValueAtTime(targetLevel, now + fadeMs / 1000);
+    } else {
+      rampGain(ctx, master, targetLevel, 0.02);
+    }
+  }, [initAudioNodes, playbackRate, isMuted, volume]);
+
   // Play Track with Optional Crossfade
   const playTrack = useCallback(async (track: Track) => {
     initAudioNodes();
-    if (audioCtxRef.current?.state === "suspended") {
-      void audioCtxRef.current.resume().catch(() => {});
-    }
-
-    if (!audioRef.current) return;
-
     setCurrentTrack(track);
     setIsLoading(true);
-    const streamUrl = `/stream?path=${encodeURIComponent(track.filePath)}`;
 
     const crossfade = dspSettings.crossfadeSeconds;
     const ctx = audioCtxRef.current;
     const master = gainNodeRef.current;
-    const targetLevel = isMuted ? 0 : volume;
 
     if (crossfade > 0 && isPlaying && master && ctx) {
-      // Exact linear ramps, because a crossfade has to actually arrive at 0 and
-      // back at target. setTargetAtTime is asymptotic and would leave a few
-      // percent of the old track bleeding into the new one.
       const now = ctx.currentTime;
       const half = crossfade / 2;
       master.gain.cancelScheduledValues(now);
@@ -656,68 +701,18 @@ prevNode.connect(eqBypass);
       master.gain.linearRampToValueAtTime(0, now + half);
 
       await waitAudioClock(half);
-
-      const audio = audioRef.current;
-      audio.src = streamUrl;
-      audio.playbackRate = playbackRate;
-      audio.volume = 1.0;
-      try {
-        await audio.play();
-        setIsPlaying(true);
-        const t = audioCtxRef.current?.currentTime;
-        if (t !== undefined && master) {
-          master.gain.cancelScheduledValues(t);
-          master.gain.setValueAtTime(0, t);
-          master.gain.linearRampToValueAtTime(targetLevel, t + half);
-        }
-} catch (err) {
-        console.error("Playback error:", err);
-      setIsPlaying(false);
-        // Same reasoning as the non-crossfade branch: the fade back up to
-        // target never ran, so put the master back where it belongs.
-        if (master && ctx) {
-          rampGain(ctx, master, targetLevel, 0.05);
-        }
-      }
-    } else {
-      const audio = audioRef.current;
-      audio.src = streamUrl;
-      audio.playbackRate = playbackRate;
-      audio.volume = 1.0;
-      audio.load();
-
-      // Even a gapless start is ramped. Pointing an element at a new source
-      // restarts its decoder, and the step at the start of the new stream is a
-      // small but real click. A 25 ms fade-in is inaudible as a fade and
-      // removes the transient entirely.
-      if (master && audioCtxRef.current) {
-        const t = audioCtxRef.current.currentTime;
-        master.gain.cancelScheduledValues(t);
-        master.gain.setValueAtTime(0, t);
-      }
-
-      try {
-        if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-          void audioCtxRef.current.resume().catch(() => {});
-        }
-        await audio.play();
-        setIsPlaying(true);
-        setIsLoading(false);
-        if (master && audioCtxRef.current) {
-          const t = audioCtxRef.current.currentTime;
-          master.gain.cancelScheduledValues(t);
-          master.gain.setValueAtTime(0, t);
-          master.gain.linearRampToValueAtTime(targetLevel, t + 0.025);
-        }
-      } catch (err: any) {
-        console.error("[Cadence AudioEngine] Playback error:", err.message || err);
-        setIsPlaying(false);
-        setIsLoading(false);
-        if (master && audioCtxRef.current) {
-          rampGain(audioCtxRef.current, master, targetLevel, 0.05);
-        }
-      }
     }
+
+    const decoded = await fetchAndDecode(track);
+    if (!decoded) {
+      setIsLoading(false);
+      setIsPlaying(false);
+      return;
+    }
+
+    currentBufferRef.current = decoded;
+    setDuration(decoded.duration);
+    startBufferPlayback(decoded, 0, crossfade > 0 ? (crossfade / 2) * 1000 : 25);
 
     // Update MediaSession Metadata
     if ("mediaSession" in navigator) {
@@ -734,92 +729,75 @@ prevNode.connect(eqBypass);
           { src: coverUrl, sizes: "512x512", type: "image/jpeg" }
         ]
       });
-    }
-  }, [initAudioNodes, playbackRate, isMuted, volume, isPlaying, dspSettings.crossfadeSeconds, waitAudioClock]);
-
-  const playPromiseRef = useRef<Promise<void> | null>(null);
-
-  const play = useCallback(async () => {
-    if (!audioRef.current) return;
-    initAudioNodes();
-    if (audioCtxRef.current?.state === "suspended") {
-      void audioCtxRef.current.resume().catch(() => {});
-    }
-    try {
-      const p = audioRef.current.play();
-      playPromiseRef.current = p;
-      await p;
-      setIsPlaying(true);
-    } catch (e: any) {
-      if (e?.name !== "AbortError") {
-        console.error("[Cadence AudioEngine] play error:", e);
-      }
-    } finally {
-      playPromiseRef.current = null;
-    }
-  }, [initAudioNodes]);
-
-  const pause = useCallback(async () => {
-    if (!audioRef.current) return;
-    if (playPromiseRef.current) {
       try {
-        await playPromiseRef.current;
+        navigator.mediaSession.playbackState = "playing";
       } catch {}
     }
-    audioRef.current.pause();
-    setIsPlaying(false);
-  }, []);
+  }, [initAudioNodes, dspSettings.crossfadeSeconds, isPlaying, isMuted, volume, waitAudioClock, fetchAndDecode, startBufferPlayback]);
 
-  const togglePlayPause = useCallback(async () => {
-    if (!audioRef.current) return;
-    initAudioNodes();
-
-    if (isPlaying) {
-      if (playPromiseRef.current) {
-        try {
-          await playPromiseRef.current;
-        } catch {}
-      }
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      if (audioCtxRef.current?.state === "suspended") {
-        void audioCtxRef.current.resume().catch(() => {});
-      }
-      try {
-        const p = audioRef.current.play();
-        playPromiseRef.current = p;
-        await p;
-        setIsPlaying(true);
-      } catch (err: any) {
-        if (err?.name !== "AbortError") {
-          console.error("[Cadence AudioEngine] Play error:", err);
-        }
-      } finally {
-        playPromiseRef.current = null;
+  const play = useCallback(async () => {
+    if (!currentBufferRef.current && currentTrack) {
+      await playTrack(currentTrack);
+      return;
+    }
+    if (currentBufferRef.current) {
+      startBufferPlayback(currentBufferRef.current, pausedAtRef.current, 15);
+      if ("mediaSession" in navigator) {
+        try { navigator.mediaSession.playbackState = "playing"; } catch {}
       }
     }
-  }, [isPlaying, initAudioNodes]);
+  }, [currentTrack, playTrack, startBufferPlayback]);
+
+  const pause = useCallback(async () => {
+    if (!isPlaying) return;
+    isManualStopRef.current = true;
+    if (audioCtxRef.current && sourceNodeRef.current) {
+      const ctx = audioCtxRef.current;
+      const currentPos = playbackStartOffsetRef.current + (ctx.currentTime - playbackStartTimeRef.current) * playbackRate;
+      pausedAtRef.current = Math.max(0, Math.min(duration, currentPos));
+      try {
+        sourceNodeRef.current.stop();
+        sourceNodeRef.current.disconnect();
+      } catch {}
+      sourceNodeRef.current = null;
+    }
+    setIsPlaying(false);
+    if ("mediaSession" in navigator) {
+      try { navigator.mediaSession.playbackState = "paused"; } catch {}
+    }
+  }, [isPlaying, playbackRate, duration]);
+
+  const togglePlayPause = useCallback(async () => {
+    if (isPlaying) {
+      await pause();
+    } else {
+      await play();
+    }
+  }, [isPlaying, pause, play]);
 
   const togglePlay = togglePlayPause;
 
   const seek = useCallback((timeInSeconds: number) => {
-    if (!audioRef.current) return;
     const target = Math.max(0, Math.min(timeInSeconds, duration));
-    audioRef.current.currentTime = target;
+    pausedAtRef.current = target;
     setCurrentTime(target);
-  }, [duration]);
+    if (isPlaying && currentBufferRef.current) {
+      startBufferPlayback(currentBufferRef.current, target, 0);
+    }
+  }, [duration, isPlaying, startBufferPlayback]);
+
+  const seekSmooth = useCallback((timeInSeconds: number) => {
+    const target = Math.max(0, Math.min(timeInSeconds, duration));
+    pausedAtRef.current = target;
+    setCurrentTime(target);
+    if (isPlaying && currentBufferRef.current) {
+      startBufferPlayback(currentBufferRef.current, target, 15);
+    }
+  }, [duration, isPlaying, startBufferPlayback]);
 
   const setAudioVolume = useCallback((val: number) => {
     const clamped = Math.max(0, Math.min(val, 1));
     setVolume(clamped);
-    // The element's own volume stays at unity so there is exactly one gain
-    // stage in the chain. Two attenuators in series is the classic cause of
-    // "the volume control feels wrong" complaints, and it is what the previous
-    // pass removed; keep it that way.
-    if (audioRef.current) {
-      audioRef.current.volume = 1.0;
-    }
     if (gainNodeRef.current && audioCtxRef.current) {
       rampGain(audioCtxRef.current, gainNodeRef.current, isMuted ? 0 : clamped);
     }
@@ -828,9 +806,6 @@ prevNode.connect(eqBypass);
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
       const next = !prev;
-      if (audioRef.current) {
-        audioRef.current.volume = 1.0;
-      }
       if (gainNodeRef.current && audioCtxRef.current) {
         // Ramp rather than assign: a hard jump from 0.85 to 0 is a click.
         rampGain(audioCtxRef.current, gainNodeRef.current, next ? 0 : volume);
@@ -840,11 +815,16 @@ prevNode.connect(eqBypass);
   }, [volume]);
 
   const setSpeed = useCallback((rate: number) => {
-    setPlaybackRate(rate);
-    if (audioRef.current) {
-      audioRef.current.playbackRate = rate;
+    const clamped = Math.max(0.1, Math.min(3.0, rate));
+    setPlaybackRate(clamped);
+    if (isPlaying && audioCtxRef.current && sourceNodeRef.current) {
+      const ctx = audioCtxRef.current;
+      const currentPos = playbackStartOffsetRef.current + (ctx.currentTime - playbackStartTimeRef.current) * playbackRate;
+      playbackStartOffsetRef.current = currentPos;
+      playbackStartTimeRef.current = ctx.currentTime;
+      sourceNodeRef.current.playbackRate.setValueAtTime(clamped, ctx.currentTime);
     }
-  }, []);
+  }, [isPlaying, playbackRate]);
 
   const fadeVolume = useCallback((targetVolume: number, durationSeconds: number) => {
     if (!audioCtxRef.current || !gainNodeRef.current) return;
@@ -969,17 +949,12 @@ prevNode.connect(eqBypass);
 
   const setKeyLock = useCallback((locked: boolean) => {
     setKeyLockState(locked);
-    if (audioRef.current) {
-      audioRef.current.preservesPitch = locked;
-    }
   }, []);
 
   const nudgePitch = useCallback((deltaPercent: number) => {
-    if (!audioRef.current) return;
-    const currentRate = audioRef.current.playbackRate;
-    const nudgeRate = Math.max(0.1, Math.min(3.0, currentRate + deltaPercent / 100));
-    audioRef.current.playbackRate = nudgeRate;
-  }, []);
+    const nudgeRate = Math.max(0.1, Math.min(3.0, playbackRate + deltaPercent / 100));
+    setSpeed(nudgeRate);
+  }, [playbackRate, setSpeed]);
 
   const resetPitch = useCallback(() => {
     setSpeed(1.0);
@@ -1086,41 +1061,32 @@ prevNode.connect(eqBypass);
       scratchAnimFrameRef.current = null;
     }
     wasPlayingBeforeScratchRef.current = isPlaying;
-    if (audioRef.current && isPlaying) {
-      audioRef.current.pause();
+    if (isPlaying) {
+      pause();
     }
-  }, [initAudioNodes, isPlaying]);
+  }, [initAudioNodes, isPlaying, pause]);
 
   /**
    * Seek scrubbing, coalesced to one seek per animation frame.
-   *
-   * `scratch` fires on pointer move, which can be several hundred times a
-   * second. Each `currentTime` write makes the decoder tear down and restart,
-   * so the raw version produced a burst of clicks that scaled with mouse speed.
-   * Accumulating the target and applying it once per frame caps the work at the
-   * display rate and leaves a single, far quieter discontinuity per frame.
    */
   const flushScratch = useCallback(() => {
     scratchAnimFrameRef.current = null;
-    const audio = audioRef.current;
     const target = scratchTargetRef.current;
     scratchTargetRef.current = null;
-    if (!audio || target === null) return;
-    const totalDur = audio.duration || duration || 0;
-    audio.currentTime = Math.max(0, Math.min(totalDur, target));
-    setCurrentTime(audio.currentTime);
+    if (target === null) return;
+    const totalDur = duration || currentBufferRef.current?.duration || 0;
+    const clamped = Math.max(0, Math.min(totalDur, target));
+    pausedAtRef.current = clamped;
+    setCurrentTime(clamped);
   }, [duration]);
 
   const scratch = useCallback((_velocityDegPerSec: number, deltaAngle: number) => {
-    if (!audioRef.current) return;
-    const audio = audioRef.current;
-    const totalDur = audio.duration || duration || 0;
+    const totalDur = duration || currentBufferRef.current?.duration || 0;
     if (totalDur <= 0) return;
 
     // Physical turntable 33.3 RPM rotation: 360 deg = 1.8 seconds of audio
-    // Spinning forward advances the song, spinning backward rewinds the song
     const scrubDeltaSec = (deltaAngle / 360) * 1.8;
-    const base = scratchTargetRef.current ?? audio.currentTime;
+    const base = scratchTargetRef.current ?? pausedAtRef.current;
     scratchTargetRef.current = Math.max(0, Math.min(totalDur, base + scrubDeltaSec));
 
     if (scratchAnimFrameRef.current === null) {
@@ -1133,19 +1099,13 @@ prevNode.connect(eqBypass);
       cancelAnimationFrame(scratchAnimFrameRef.current);
       scratchAnimFrameRef.current = null;
     }
-    // Apply any seek that was still queued so the release lands where the
-    // platter actually is, not one frame behind it.
     if (scratchTargetRef.current !== null) {
       flushScratch();
     }
-    if (!audioRef.current) return;
-    const audio = audioRef.current;
-
-    audio.playbackRate = playbackRate;
-    if (wasPlayingBeforeScratchRef.current) {
-      audio.play().then(() => setIsPlaying(true)).catch(() => {});
+    if (wasPlayingBeforeScratchRef.current && currentBufferRef.current) {
+      startBufferPlayback(currentBufferRef.current, pausedAtRef.current, 30);
     }
-  }, [playbackRate, flushScratch]);
+  }, [flushScratch, startBufferPlayback]);
 
   /**
    * Latest values for the MediaSession handlers.
@@ -1199,23 +1159,21 @@ prevNode.connect(eqBypass);
       });
       navigator.mediaSession.setActionHandler("seekbackward", (details) => {
         const offset = details.seekOffset || 10;
-      seekRef.current((audioRef.current ? audioRef.current.currentTime : 0) - offset);
+        seekRef.current(pausedAtRef.current - offset);
       });
       navigator.mediaSession.setActionHandler("seekforward", (details) => {
-    const offset = details.seekOffset || 10;
-        seekRef.current((audioRef.current ? audioRef.current.currentTime : 0) + offset);
+        const offset = details.seekOffset || 10;
+        seekRef.current(pausedAtRef.current + offset);
       });
       navigator.mediaSession.setActionHandler("stop", () => {
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
-        }
+        pause();
+        seekRef.current(0);
       });
     } catch (e) {
       console.warn("MediaSession action handler notice:", e);
     }
     // Registered once; see the note above.
-  }, []);
+  }, [pause]);
 
   const getFrequencyData = useCallback((): Uint8Array => {
     if (!analyserRef.current) return new Uint8Array(0);
@@ -1332,44 +1290,6 @@ prevNode.connect(eqBypass);
     updateDspSettings({ convolutionEnabled: enabled });
     applyConvolutionMix(enabled);
   }, [updateDspSettings, applyConvolutionMix]);
-
-  /**
-   * Seek with a short dip.
-   *
-   * `currentTime` on a media element inside a Web Audio graph forces a decoder
-   * flush, and the discontinuity is a click. For a UI click-to-seek, muting for
-   * the few milliseconds of the seek is inaudible; for scrub, the frame
-   * coalescing above does the same job without touching the gain.
-   */
-  const seekSmooth = useCallback((timeInSeconds: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const target = Math.max(0, Math.min(timeInSeconds, duration));
-    const ctx = audioCtxRef.current;
-    const master = gainNodeRef.current;
-    const wasAudible = isPlaying && !isMuted;
-
-    if (ctx && master && wasAudible) {
-      const now = ctx.currentTime;
-      const level = master.gain.value;
-      master.gain.cancelScheduledValues(now);
-      master.gain.setValueAtTime(level, now);
-      master.gain.linearRampToValueAtTime(0, now + 0.006);
-      setTimeout(() => {
-        audio.currentTime = target;
-        setCurrentTime(target);
-        const back = audioCtxRef.current?.currentTime;
-        if (back !== undefined && gainNodeRef.current) {
-          gainNodeRef.current.gain.cancelScheduledValues(back);
-          gainNodeRef.current.gain.setValueAtTime(0, back);
-          gainNodeRef.current.gain.linearRampToValueAtTime(level, back + 0.012);
-        }
-      }, 8);
-    } else {
-      audio.currentTime = target;
-      setCurrentTime(target);
-    }
-  }, [duration, isPlaying, isMuted]);
 
   // Keep the graph in step with DSP settings that are not set directly by a
   // control: the ceiling curve, the EQ headroom trim, and the convolution mix.

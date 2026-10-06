@@ -1650,63 +1650,22 @@ app.get("/stream", (req, res) => {
     return res.status(404).send("File not found or access denied");
   }
 
-  const stat = fs.statSync(filePath);
-  const fileSize = stat.size;
-  const range = req.headers.range;
-  const ext = path.extname(filePath).toLowerCase();
-
-  const mimeTypes: Record<string, string> = {
-    ".flac": "audio/flac",
-    ".mp3": "audio/mpeg",
-    ".wav": "audio/wav",
-    ".m4a": "audio/mp4",
-    ".ogg": "audio/ogg",
-    ".opus": "audio/opus",
-    ".aac": "audio/aac"
-  };
-
-  const contentType = mimeTypes[ext] || "audio/mpeg";
-
+  const resolved = path.resolve(filePath);
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Range, Accept-Ranges, Content-Type");
   res.setHeader("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   res.setHeader("Accept-Ranges", "bytes");
 
-  if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-    if (isNaN(start) || isNaN(end) || start < 0 || end < start || start >= fileSize) {
-      res.setHeader("Content-Range", `bytes */${fileSize}`);
-      return res.status(416).send("Requested range not satisfiable");
+  res.sendFile(resolved, {
+    acceptRanges: true,
+    cacheControl: false,
+    dotfiles: "allow"
+  }, (err) => {
+    if (err && !res.headersSent) {
+      res.status(500).send("Stream error");
     }
-
-    const safeEnd = Math.min(end, fileSize - 1);
-    const chunksize = safeEnd - start + 1;
-    const file = fs.createReadStream(filePath, { start, end: safeEnd });
-    req.on("close", () => file.destroy());
-    
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${safeEnd}/${fileSize}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": chunksize,
-      "Content-Type": contentType,
-      "Access-Control-Allow-Origin": "*",
-      "Cross-Origin-Resource-Policy": "cross-origin",
-    });
-    file.pipe(res);
-  } else {
-    res.writeHead(200, {
-      "Content-Length": fileSize,
-      "Content-Type": contentType,
-      "Accept-Ranges": "bytes",
-      "Access-Control-Allow-Origin": "*",
-      "Cross-Origin-Resource-Policy": "cross-origin",
-    });
-    const file = fs.createReadStream(filePath);
-    req.on("close", () => file.destroy());
-    file.pipe(res);
-  }
+  });
 });
 
 app.get("/covers", async (req, res) => {

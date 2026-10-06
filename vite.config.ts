@@ -22,6 +22,6 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    target: "chrome130"
+    target: "es2022"
   },
 });
