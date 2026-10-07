@@ -57,20 +57,50 @@ export const VinylDeck: React.FC<VinylDeckProps> = React.memo(({
   const [isScratching, setIsScratching] = useState(false);
   const [scratchRpmDisplay, setScratchRpmDisplay] = useState<number>(0);
   /**
-   * Hover tilt is written straight to a transform on one element.
-   *
-   * It used to be `useState` set from inside a rAF callback, so sweeping the
-   * mouse across the sleeve re-rendered this whole component once per animation
-   * frame, geometry maths and full sub-tree included. A CSS transform needs
-   * none of that.
+   * Ultra-smooth lerped 3D card tilt for Album Cover hero presentation.
+   * Driven by dynamic rAF physics interpolation with zero CSS transition fighting,
+   * completely eliminating boundary jitter, hover oscillation, and input lag.
    */
   const tiltRef = useRef<HTMLDivElement | null>(null);
   const tiltRafRef = useRef<number | null>(null);
+  const currentTiltRef = useRef<{ x: number; y: number; scale: number }>({ x: 0, y: 0, scale: 1 });
+  const targetTiltRef = useRef<{ x: number; y: number; scale: number }>({ x: 0, y: 0, scale: 1 });
+  const isCoverHoveredRef = useRef<boolean>(false);
 
-  const applyTilt = (x: number, y: number) => {
-    if (tiltRef.current) {
-      tiltRef.current.style.transform = `rotateX(${y}deg) rotateY(${x}deg)`;
-    }
+  const startTiltLoop = () => {
+    if (tiltRafRef.current) return;
+    const animateTilt = () => {
+      const current = currentTiltRef.current;
+      const target = targetTiltRef.current;
+      const lerpFactor = isCoverHoveredRef.current ? 0.14 : 0.08;
+
+      current.x += (target.x - current.x) * lerpFactor;
+      current.y += (target.y - current.y) * lerpFactor;
+      current.scale += (target.scale - current.scale) * lerpFactor;
+
+      if (tiltRef.current) {
+        tiltRef.current.style.transform = `rotateX(${current.y.toFixed(2)}deg) rotateY(${current.x.toFixed(2)}deg) scale3d(${current.scale.toFixed(4)}, ${current.scale.toFixed(4)}, 1)`;
+      }
+
+      const dx = Math.abs(target.x - current.x);
+      const dy = Math.abs(target.y - current.y);
+      const ds = Math.abs(target.scale - current.scale);
+
+      if (!isCoverHoveredRef.current && dx < 0.02 && dy < 0.02 && ds < 0.001) {
+        current.x = 0;
+        current.y = 0;
+        current.scale = 1;
+        if (tiltRef.current) {
+          tiltRef.current.style.transform = "rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
+        }
+        tiltRafRef.current = null;
+        return;
+      }
+
+      tiltRafRef.current = requestAnimationFrame(animateTilt);
+    };
+
+    tiltRafRef.current = requestAnimationFrame(animateTilt);
   };
 
   const platterRef = useRef<HTMLDivElement | null>(null);
@@ -293,20 +323,31 @@ const tick = (now: number) => {
     }
   };
 
-  // 3D Card Hover for Cover mode with RAF throttling
+  // 3D Card Hover for Cover mode with buttery smooth lerped physics
+  const handleCoverMouseEnter = () => {
+    isCoverHoveredRef.current = true;
+    startTiltLoop();
+  };
+
   const handleCoverMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    isCoverHoveredRef.current = true;
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-    if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
-    tiltRafRef.current = requestAnimationFrame(() => {
-      applyTilt(x * 14, -y * 14);
-    });
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const normX = Math.max(-0.5, Math.min(0.5, (e.clientX - rect.left) / rect.width - 0.5));
+    const normY = Math.max(-0.5, Math.min(0.5, (e.clientY - rect.top) / rect.height - 0.5));
+
+    targetTiltRef.current = {
+      x: normX * 12,
+      y: -normY * 12,
+      scale: 1.025
+    };
+    startTiltLoop();
   };
 
   const handleCoverMouseLeave = () => {
-    if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
-    applyTilt(0, 0);
+    isCoverHoveredRef.current = false;
+    targetTiltRef.current = { x: 0, y: 0, scale: 1 };
+    startTiltLoop();
   };
 
   return (
@@ -404,7 +445,8 @@ const tick = (now: number) => {
           >
             {/* Sleeve + Peeking Vinyl Record Presentation (Fluid Dynamic Scaling & Centered Envelope) */}
             <div 
-              className="relative flex items-center justify-center select-none"
+              className="relative flex items-center justify-center select-none cursor-pointer"
+              onMouseEnter={handleCoverMouseEnter}
               onMouseMove={handleCoverMouseMove}
               onMouseLeave={handleCoverMouseLeave}
               style={{
@@ -420,7 +462,7 @@ const tick = (now: number) => {
                 className="relative w-full h-full flex items-center justify-center"
                 style={{
                   transformStyle: "preserve-3d",
-                  transition: "transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)"
+                  willChange: "transform"
                 }}
               >
                 {/* Vinyl Record that slides out smoothly from behind sleeve */}
@@ -461,14 +503,14 @@ const tick = (now: number) => {
                     transform: "translateZ(26px)",
                     transformStyle: "preserve-3d"
                   }}
-                  className={`shrink-0 aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 group z-10 ${
+                  className={`shrink-0 aspect-square rounded-3xl overflow-hidden shadow-2xl relative border border-white/15 bg-neutral-900 z-10 ${
                     isPlaying ? "self-start" : ""
                   }`}
                 >
                   <img
                     src={coverUrl}
                     alt={currentTrack?.album || "Cover"}
-                    className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
+                    className="w-full h-full object-cover select-none pointer-events-none"
                   />
                   {/* Glass sheen highlight */}
                   <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
